@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/flow-report.schema.json",
+  "title": "Flow Report",
+  "type": "object",
+  "required": ["schema_version", "run_id", "status", "summary", "current_step", "gate_summaries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "current_step": {
+      "type": "string"
+    },
+    "next_action": {
+      "type": "string"
+    },
+    "gate_summaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "status", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "gate_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "surface_report_ref": {
+      "type": "string"
+    }
+  }
+}

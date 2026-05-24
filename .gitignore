@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.surface/
+.veritas/
+.DS_Store

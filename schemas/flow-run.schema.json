@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/flow-run.schema.json",
+  "title": "Flow Run",
+  "type": "object",
+  "required": ["schema_version", "run_id", "definition_id", "status", "current_step", "transitions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "definition_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
+    },
+    "current_step": {
+      "type": "string"
+    },
+    "next_action": {
+      "type": "string"
+    },
+    "gate_outcomes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate_outcome"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exception"
+      }
+    }
+  },
+  "$defs": {
+    "gate_outcome": {
+      "type": "object",
+      "required": ["gate_id", "status", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "gate_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "missing", "stale", "not_applicable", "accepted_by_exception"]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from_step", "to_step", "status", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "from_step": {
+          "type": "string"
+        },
+        "to_step": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["allowed", "blocked", "skipped", "accepted_by_exception"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "required": ["id", "summary", "authority"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "authority": {
+          "type": "string"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

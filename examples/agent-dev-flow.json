@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.1",
+  "id": "agent-dev-basic",
+  "name": "Agent-Assisted Development",
+  "description": "A first Flow sketch for agent-assisted development work through Kagents.",
+  "terminal_steps": ["completed"],
+  "steps": [
+    {
+      "id": "plan",
+      "label": "Plan",
+      "gates": [
+        {
+          "id": "plan-accepted",
+          "label": "Plan accepted",
+          "required_evidence": ["plan-artifact", "acceptance-criteria"],
+          "on_pass": "implement",
+          "on_missing": "plan"
+        }
+      ],
+      "next": ["implement"]
+    },
+    {
+      "id": "implement",
+      "label": "Implement",
+      "gates": [
+        {
+          "id": "implementation-recorded",
+          "label": "Implementation recorded",
+          "required_evidence": ["modified-files", "execution-notes"],
+          "on_pass": "verify",
+          "on_missing": "implement"
+        }
+      ],
+      "next": ["verify"]
+    },
+    {
+      "id": "verify",
+      "label": "Verify",
+      "gates": [
+        {
+          "id": "verification-evidence",
+          "label": "Verification evidence",
+          "required_evidence": ["test-or-check-output", "acceptance-map"],
+          "on_pass": "repo-readiness",
+          "on_fail": "implement",
+          "on_missing": "verify"
+        }
+      ],
+      "next": ["repo-readiness"]
+    },
+    {
+      "id": "repo-readiness",
+      "label": "Repo readiness",
+      "gates": [
+        {
+          "id": "veritas-readiness",
+          "label": "Veritas readiness",
+          "required_evidence": ["veritas-readiness-report"],
+          "evidence_provider": "veritas",
+          "on_pass": "publish",
+          "on_fail": "implement",
+          "on_missing": "repo-readiness"
+        }
+      ],
+      "next": ["publish"]
+    },
+    {
+      "id": "publish",
+      "label": "Publish",
+      "gates": [
+        {
+          "id": "published-change",
+          "label": "Published change",
+          "required_evidence": ["commit", "branch", "pull-request-or-no-pr-decision"],
+          "on_pass": "release-decision",
+          "on_missing": "publish"
+        }
+      ],
+      "next": ["release-decision"]
+    },
+    {
+      "id": "release-decision",
+      "label": "Release decision",
+      "gates": [
+        {
+          "id": "release-evidence",
+          "label": "Release evidence",
+          "required_evidence": ["ci-status", "release-decision", "docs-or-no-docs-decision"],
+          "on_pass": "completed",
+          "on_missing": "release-decision"
+        }
+      ],
+      "next": ["completed"]
+    },
+    {
+      "id": "completed",
+      "label": "Completed"
+    }
+  ]
+}
