@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kontour.ai/schemas/gate-evidence.schema.json",
+  "$id": "https://kontourai.io/schemas/gate-evidence.schema.json",
   "title": "Gate Evidence Manifest",
   "type": "object",
   "required": ["schema_version", "evidence"],

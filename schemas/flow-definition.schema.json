@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kontour.ai/schemas/flow-definition.schema.json",
+  "$id": "https://kontourai.io/schemas/flow-definition.schema.json",
   "title": "Flow Definition",
   "type": "object",
   "required": ["id", "version", "steps", "gates"],

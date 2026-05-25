@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kontour.ai/schemas/flow-report.schema.json",
+  "$id": "https://kontourai.io/schemas/flow-report.schema.json",
   "title": "Flow Report",
   "type": "object",
   "required": ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"],
