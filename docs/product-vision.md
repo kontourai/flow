@@ -105,17 +105,19 @@ The difference matters:
 - An approval tool asks a human.
 - Flow explains why the process was allowed to advance.
 
-## Initial Product Shape
+## v0.1 Product Shape
 
-The first useful version should include:
+The first publishable version is a local npm package:
 
 - JSON Schema for Flow Definitions, Flow Runs, and Flow Reports
 - a local file-backed run store
 - a small gate evaluator
-- CLI commands for start, status, attach-evidence, evaluate, report, and resume
-- evidence adapters for command results, CI, Veritas readiness, human decisions, and trace links
-- hook adapters for agent runtimes through consumers such as Kagents
-- Surface projection for process trust state
+- CLI commands for init, start, status, attach-evidence, evaluate, accept-exception, report, resume, and list
+- documented evidence kinds for command results, files, CI, Veritas readiness, human decisions, and trace links
+- Markdown and JSON Flow Reports
+- continuation from `.flow/runs/<run-id>/` without chat memory
+
+Runtime hooks, hosted services, multi-agent dispatch, web UI, and Surface projection are intentionally outside v0.1.
 
 ## Success Criteria
 
@@ -133,4 +135,3 @@ Flow is working when:
 ## One-Sentence Positioning
 
 Flow keeps AI and automation on the required path by making every important transition evidence-backed, inspectable, and resumable.
-

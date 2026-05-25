@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/gate-evidence.schema.json",
+  "title": "Gate Evidence Manifest",
+  "type": "object",
+  "required": ["schema_version", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": ["id", "gate_id", "kind", "requested_kind", "status", "attached_at"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "gate_id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["command", "file", "ci", "veritas-readiness", "human-attestation", "trace-link", "custom"]
+        },
+        "requested_kind": { "type": "string" },
+        "status": { "type": "string", "enum": ["passed", "failed", "unknown"] },
+        "original_path": { "type": "string" },
+        "stored_path": { "type": "string" },
+        "sha256": { "type": "string" },
+        "attached_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

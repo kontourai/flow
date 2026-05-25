@@ -1,53 +1,112 @@
 # Kontour Flow
 
-Kontour Flow is a process transparency and gate enforcement product for work that must follow an inspectable path.
+Process transparency for agentic work.
 
-Flow is part of Kontour AI's transparency building blocks for the AI era:
+Flow records the required path for a piece of work, the evidence each gate expected, the evidence that was actually collected, and any exceptions accepted by a human authority. It does not run agents or replace CI. It explains why work was allowed to advance.
 
-- Surface makes claims inspectable.
-- Flow makes required process paths inspectable.
-- Veritas makes AI-authored code changes inspectable.
-- Kagents applies those primitives inside agent runtimes.
+## Install
 
-Flow helps humans and agents answer:
-
-- What process was supposed to run?
-- Which step is active now?
-- What evidence allowed each gate to pass?
-- Which transition was blocked, skipped, or accepted by exception?
-- What should happen next before anyone relies on the result?
-
-Flow is built with Kontour Surface. Normal Flow users should not need to configure Surface directly.
-
-## Product Boundary
-
-Flow is not an agent runtime, multi-agent orchestrator, task board, or repo standards engine.
-
-- Surface owns portable claims, evidence, policies, freshness, gaps, and trust snapshots.
-- Flow owns process runs, steps, gates, transitions, exceptions, and Flow Reports.
-- Veritas owns repo standards, repo maps, requirements, change guidance, and merge readiness.
-- Kagents owns agent-facing modes, skills, runtime adapters, provider settings, and useful Flow-backed workflow packs.
-
-## First Wedge
-
-The first concrete use case is agent-assisted development workflow enforcement through Kagents:
-
-```text
-plan -> implement -> verify -> repo readiness -> publish -> release decision
+```sh
+npm install -D @kontourai/flow
 ```
 
-For repo readiness, Flow may use Veritas as an evidence provider. Flow records the Veritas readiness artifact as gate evidence; it does not reinterpret repo standards.
+## Quickstart
 
-## Repository Layout
+```sh
+npx flow init
+npx flow start .flow/definitions/agent-dev-flow.json --run-id dev-1847 --params subject=feature-search-filters
+npx flow attach-evidence dev-1847 --gate plan-gate --file ./acceptance.md --kind acceptance-criteria
+npx flow evaluate dev-1847
+npx flow status dev-1847 --format summary
+```
 
-- `CONTEXT.md` - product glossary and boundary language.
-- `docs/product-vision.md` - north star, product-line fit, and success criteria.
-- `docs/market-positioning.md` - competitive landscape, non-goals, and differentiation.
-- `docs/product-boundaries.md` - how Flow relates to Surface, Veritas, and Kagents.
-- `docs/adr/` - architecture and product decisions.
-- `schemas/` - initial JSON Schema sketches for Flow definitions, runs, and reports.
-- `examples/` - small example Flow definitions.
+The summary output is designed for humans and agents:
 
-## Status
+```text
+flow run: agent-dev-flow / feature-search-filters
+current step: verify
 
-This repo is an early product boundary and schema sketch. It exists to keep process transparency focused instead of folding it into Kagents or duplicating Veritas.
+PASS  plan gate: acceptance criteria linked
+PASS  implementation gate: scoped files changed
+BLOCK verify gate: browser evidence missing
+      expected: tests, lint, screenshot, Veritas readiness
+
+next action: run browser check before publish
+continuation: resume from verify, not chat memory
+report: .flow/runs/dev-1847/report.md
+```
+
+## CLI
+
+```text
+flow init
+flow start <definition> [--run-id <id>] [--params key=value ...]
+flow status <run-id> [--format summary|json|markdown]
+flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>]
+flow evaluate <run-id> [--gate <gate>]
+flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
+flow report <run-id> [--format summary|markdown|json]
+flow resume <run-id>
+flow list
+```
+
+## Local Run Store
+
+Flow v0.1 is local and file-backed. A run is stored at `.flow/runs/<run-id>/`:
+
+- `definition.json` is the Flow Definition snapshot from run start.
+- `state.json` records the current step, transition history, gate outcomes, accepted exceptions, and next action.
+- `evidence/manifest.json` records attached gate evidence metadata.
+- `evidence/<id>.*` contains copied evidence files.
+- `report.md` is the human-readable Flow Report.
+- `report.json` is the machine-readable Flow Report.
+
+The continuation contract is intentionally simple: `flow resume <run-id>` reads only the run directory and prints the current step, next action, open gates, accepted exceptions, and a one-line instruction for the next agent.
+
+## Evidence Kinds
+
+`flow attach-evidence --kind <kind>` accepts these documented kinds:
+
+- `command`
+- `file`
+- `ci`
+- `veritas-readiness`
+- `human-attestation`
+- `trace-link`
+
+Unknown kinds are accepted as `custom` and stored with the originally requested kind. The v0.1 CLI attaches evidence from files; richer adapters can write the same manifest shape.
+
+## Gate Evaluation
+
+For the current step, `flow evaluate` applies the v0.1 rules:
+
+- all required evidence kinds present and not failed: `pass`
+- any required evidence kind missing: `block`
+- any evidence marked failed: `route-back`
+- no required evidence and no decision: `wait`
+- an accepted exception on a gate counts as `pass`
+
+When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory.
+
+## Library
+
+The package also exports the runtime primitives used by the CLI:
+
+```js
+import { startRun, attachEvidence, evaluateRun, loadRun } from "@kontourai/flow";
+```
+
+## Schemas
+
+Runtime code and tests reference the JSON Schemas in `schemas/`:
+
+- `flow-definition.schema.json`
+- `flow-run.schema.json`
+- `gate-evidence.schema.json`
+- `flow-report.schema.json`
+
+`npm test` and `npm pack` fail if the checked schemas drift from the v0.1 runtime contract.
+
+## Boundaries
+
+Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Kagents owns agent-facing workflow distribution.

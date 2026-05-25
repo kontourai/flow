@@ -1,0 +1,38 @@
+{
+  "name": "@kontourai/flow",
+  "version": "0.1.0",
+  "description": "Process transparency for agentic work.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "flow": "src/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src/",
+    "schemas/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test scripts/check-schemas.mjs",
+    "check:schemas": "node scripts/check-schemas.mjs",
+    "prepack": "npm test && npm run check:schemas"
+  },
+  "keywords": [
+    "agents",
+    "workflow",
+    "process-transparency",
+    "evidence"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/flow.git"
+  }
+}
