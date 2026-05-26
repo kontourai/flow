@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import {
   applyEvaluation,
+  applyFlowConfigMerge,
   defaultFlowConfig,
   evaluateGate,
   FLOW_SCHEMA_VERSION,
   initialState,
+  previewFlowConfigMerge,
   renderMarkdownReport,
+  renderConfigMergeMarkdown,
   renderResume,
   renderSummary,
   reportJson,
@@ -98,12 +101,14 @@ test("schemas describe the runtime contract", async () => {
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
   const reportSchema = await json("schemas/flow-report.schema.json");
   const configSchema = await json("schemas/flow-config.schema.json");
+  const configMergeReportSchema = await json("schemas/flow-config-merge-report.schema.json");
 
   assert.equal(definitionSchema.properties.version.type, "string");
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(reportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(configSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(configMergeReportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
 
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
@@ -121,6 +126,189 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaFields(evidenceSchema, ["schema_version", "evidence"]);
   requireSchemaFields(reportSchema, ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
   requireSchemaFields(configSchema, ["schema_version"]);
+  requireSchemaFields(configMergeReportSchema, ["schema_version", "mode", "status", "local_config_path", "proposal_path", "proposed_changes", "accepted_changes", "rejected_changes", "conflicts", "unchanged", "exceptions", "merged_config", "summary"]);
+  assert.ok(configMergeReportSchema.$defs.change.properties.path);
+  assert.ok(configMergeReportSchema.$defs.change.properties.section);
+  assert.ok(configMergeReportSchema.$defs.change.properties.local_value);
+});
+
+function localConfigFixture() {
+  return {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: {
+      "quality.tests": {
+        producers: ["ci/main"],
+        authority_traces: ["github:main"]
+      },
+      "quality.browser-evidence": {
+        producers: ["browser/main"]
+      }
+    },
+    gate_overrides: {
+      "verify-gate": {
+        expectations: {
+          "tests-passed": {
+            required: true,
+            accepted_statuses: ["trusted"],
+            trusted_producers: ["ci/main"]
+          }
+        }
+      }
+    }
+  };
+}
+
+function proposedConfigFixture() {
+  return {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: {
+      "quality.tests": {
+        producers: ["ci/kit"],
+        authority_traces: ["github:kit"]
+      },
+      "quality.browser-evidence": {
+        producers: ["browser/main"]
+      },
+      "quality.lint": {
+        producers: ["lint/kit"]
+      }
+    },
+    gate_overrides: {
+      "verify-gate": {
+        expectations: {
+          "tests-passed": {
+            required: false,
+            accepted_statuses: ["trusted", "verified"],
+            trusted_producers: ["ci/kit"]
+          },
+          "lint-passed": {
+            required: true,
+            accepted_statuses: ["trusted"]
+          }
+        }
+      }
+    }
+  };
+}
+
+test("config merge preview reports accepted, rejected, conflicts, unchanged without mutating inputs", () => {
+  const local = localConfigFixture();
+  const before = JSON.stringify(local);
+  const report = previewFlowConfigMerge(local, proposedConfigFixture(), {
+    localConfigPath: "/tmp/project/.flow/config.json",
+    proposalPath: "/tmp/proposal.json"
+  });
+
+  assert.equal(JSON.stringify(local), before);
+  assert.equal(report.mode, "preview");
+  assert.equal(report.status, "conflicts");
+  assert.ok(report.proposed_changes.length > 0);
+  assert.ok(report.accepted_changes.some((change) => change.path === "$.trusted_producers.quality.lint.producers"));
+  assert.ok(report.accepted_changes.some((change) => change.path === "$.gate_overrides.verify-gate.expectations.lint-passed.required"));
+  assert.ok(report.unchanged.some((change) => change.path === "$.trusted_producers.quality.browser-evidence.producers"));
+  assert.ok(report.conflicts.some((change) => change.path === "$.trusted_producers.quality.tests.producers"));
+  assert.ok(report.rejected_changes.some((change) => change.path === "$.gate_overrides.verify-gate.expectations.tests-passed.required"));
+  assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
+  assert.equal(report.merged_config.gate_overrides["verify-gate"].expectations["tests-passed"].required, true);
+  assert.deepEqual(Object.keys(report.summary), ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"]);
+});
+
+test("config merge accepts conflicting authority only with explicit exception reason and authority", () => {
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), {
+      acceptConflicts: ["$.trusted_producers.quality.tests"]
+    }),
+    /requires exception reason and authority/
+  );
+
+  const report = previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), {
+    acceptConflicts: ["$.trusted_producers.quality.tests"],
+    exceptionReason: "project owner accepted kit authority update",
+    authority: "owner@example.com"
+  });
+
+  assert.ok(report.exceptions.length >= 2);
+  assert.equal(report.exceptions[0].reason, "project owner accepted kit authority update");
+  assert.equal(report.exceptions[0].authority, "owner@example.com");
+  assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].producers, ["ci/kit"]);
+  assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].authority_traces, ["github:kit"]);
+  assert.ok(report.conflicts.every((change) => !change.path.startsWith("$.trusted_producers.quality.tests")));
+});
+
+test("config merge markdown exposes human review buckets", () => {
+  const report = previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture());
+  const markdown = renderConfigMergeMarkdown(report);
+  assert.match(markdown, /# Flow Project Config Merge Report/);
+  assert.match(markdown, /## Accepted Changes/);
+  assert.match(markdown, /## Rejected Changes/);
+  assert.match(markdown, /## Conflicts/);
+  assert.match(markdown, /\$\.trusted_producers\.quality\.tests\.producers/);
+});
+
+test("config merge apply writes only accepted changes unless conflicts are explicitly accepted", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
+  await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`);
+
+  const blocked = await applyFlowConfigMerge(cwd, "proposal.json");
+  assert.equal(blocked.status, "blocked");
+  let config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["ci/main"]);
+  assert.equal(config.gate_overrides["verify-gate"].expectations["tests-passed"].required, true);
+
+  const applied = await applyFlowConfigMerge(cwd, "proposal.json", {
+    acceptConflicts: [
+      "$.trusted_producers.quality.tests",
+      "$.gate_overrides.verify-gate.expectations.tests-passed"
+    ],
+    exceptionReason: "maintainer accepted kit update",
+    authority: "flow-maintainer"
+  });
+  assert.equal(applied.status, "applied");
+  assert.ok(applied.exceptions.length > 0);
+  config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["ci/kit"]);
+  assert.equal(config.gate_overrides["verify-gate"].expectations["tests-passed"].required, false);
+  assert.deepEqual(config.trusted_producers["quality.lint"].producers, ["lint/kit"]);
+});
+
+test("CLI config preview and apply support JSON and Markdown reports", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-config-merge-"));
+  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
+  await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`);
+
+  const preview = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "json"], { cwd });
+  const previewReport = JSON.parse(preview.stdout);
+  assert.equal(previewReport.mode, "preview");
+  assert.equal(previewReport.status, "conflicts");
+  const afterPreview = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(afterPreview.trusted_producers["quality.tests"].producers, ["ci/main"]);
+
+  const markdown = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "markdown"], { cwd });
+  assert.match(markdown.stdout, /## Conflicts/);
+
+  const applied = await execFile(process.execPath, [
+    cli,
+    "config",
+    "apply",
+    "proposal.json",
+    "--format",
+    "json",
+    "--accept-conflict",
+    "$.trusted_producers.quality.tests",
+    "--accept-conflict",
+    "$.gate_overrides.verify-gate.expectations.tests-passed",
+    "--exception-reason",
+    "CLI smoke accepted kit update",
+    "--authority",
+    "cli-smoke"
+  ], { cwd });
+  const applyReport = JSON.parse(applied.stdout);
+  assert.equal(applyReport.status, "applied");
+  assert.ok(applyReport.exceptions.some((entry) => entry.authority === "cli-smoke"));
 });
 
 test("example definition matches the v0.1 runtime shape", async () => {

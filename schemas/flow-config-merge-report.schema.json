@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-config-merge-report.schema.json",
+  "title": "Flow Project Config Merge Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "mode",
+    "status",
+    "local_config_path",
+    "proposal_path",
+    "proposed_changes",
+    "accepted_changes",
+    "rejected_changes",
+    "conflicts",
+    "unchanged",
+    "exceptions",
+    "merged_config",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "mode": { "type": "string", "enum": ["preview", "apply"] },
+    "status": { "type": "string", "enum": ["ready", "conflicts", "blocked", "applied"] },
+    "local_config_path": { "type": "string", "minLength": 1 },
+    "proposal_path": { "type": ["string", "null"] },
+    "proposed_changes": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "accepted_changes": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "rejected_changes": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "conflicts": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "unchanged": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+    "exceptions": { "type": "array", "items": { "$ref": "#/$defs/exception" } },
+    "merged_config": { "$ref": "flow-config.schema.json" },
+    "summary": {
+      "type": "object",
+      "required": ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"],
+      "additionalProperties": false,
+      "properties": {
+        "proposed": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "conflicts": { "type": "integer", "minimum": 0 },
+        "unchanged": { "type": "integer", "minimum": 0 },
+        "exceptions": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "change": {
+      "type": "object",
+      "required": ["path", "section", "operation", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "pattern": "^\\$\\." },
+        "section": { "type": "string", "enum": ["trusted_producers", "gate_overrides", "config"] },
+        "operation": { "type": "string", "enum": ["add", "replace", "unchanged"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "local_value": true,
+        "proposed_value": true,
+        "accepted_value": true
+      }
+    },
+    "exception": {
+      "type": "object",
+      "required": ["path", "section", "reason", "authority", "local_value", "proposed_value", "accepted_value"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "pattern": "^\\$\\." },
+        "section": { "type": "string", "enum": ["trusted_producers", "gate_overrides", "config"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "authority": { "type": "string", "minLength": 1 },
+        "local_value": true,
+        "proposed_value": true,
+        "accepted_value": true
+      }
+    }
+  }
+}
