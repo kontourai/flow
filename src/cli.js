@@ -12,12 +12,14 @@ import {
   renderResume,
   renderSummary,
   reportJson,
-  startRun
+  startRun,
+  validateDefinitionWithDiagnostics
 } from "./index.js";
 
 function usage() {
   return `Usage:
   flow init
+  flow validate-definition <path> [--json]
   flow start <definition> [--run-id <id>] [--params key=value ...]
   flow status <run-id> [--format summary|json|markdown]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
@@ -126,6 +128,45 @@ async function printStatus(runId, format) {
   }
 }
 
+async function readDefinitionForValidation(definitionPath) {
+  const resolved = path.resolve(process.cwd(), definitionPath);
+  try {
+    return JSON.parse(await readFile(resolved, "utf8"));
+  } catch (error) {
+    const diagnostic = {
+      code: error instanceof SyntaxError ? "definition.file.json.invalid" : "definition.file.read_failed",
+      severity: "error",
+      path: "$",
+      message: `unable to read Flow Definition ${definitionPath}: ${error.message}`
+    };
+    return { __flowReadError: diagnostic };
+  }
+}
+
+function validationPayload(definitionPath, result) {
+  return {
+    valid: result.valid,
+    path: definitionPath,
+    error_count: result.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length,
+    diagnostics: result.diagnostics
+  };
+}
+
+function printDefinitionValidation(definitionPath, payload, json) {
+  if (json) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+  if (payload.valid) {
+    console.log(`valid Flow Definition: ${definitionPath}`);
+    return;
+  }
+  console.log(`invalid Flow Definition: ${definitionPath}`);
+  for (const diagnostic of payload.diagnostics) {
+    console.log(`${diagnostic.severity.toUpperCase()} ${diagnostic.code} ${diagnostic.path}: ${diagnostic.message}`);
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   if (!command || command === "--help" || command === "-h") {
@@ -138,6 +179,18 @@ async function main() {
   if (command === "init") {
     const root = await ensureFlowLayout();
     console.log(`initialized ${path.relative(process.cwd(), root) || root}`);
+    return;
+  }
+
+  if (command === "validate-definition") {
+    const definitionPath = requireArg(args[0], "flow validate-definition requires a definition path");
+    const definition = await readDefinitionForValidation(definitionPath);
+    const result = definition.__flowReadError
+      ? { valid: false, diagnostics: [definition.__flowReadError] }
+      : validateDefinitionWithDiagnostics(definition);
+    const payload = validationPayload(definitionPath, result);
+    printDefinitionValidation(definitionPath, payload, Boolean(flags.json));
+    if (!payload.valid) process.exitCode = 1;
     return;
   }
 

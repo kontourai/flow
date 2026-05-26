@@ -9,6 +9,7 @@ Agents skip steps, accept weak evidence, summarize work as complete, and lose th
 ```sh
 npm install -D @kontourai/flow
 npx flow init
+npx flow validate-definition examples/agent-dev-flow.json --json
 npx flow start examples/agent-dev-flow.json --run-id dev-1847
 npx flow attach-evidence dev-1847 --gate verify-gate \
   --file ./test-output.json --kind command
@@ -53,6 +54,7 @@ report: .flow/runs/dev-1847/report.md
 
 ```text
 flow init
+flow validate-definition <path> [--json]
 flow start <definition> [--run-id <id>] [--params key=value ...]
 flow status <run-id> [--format summary|json|markdown]
 flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>]
@@ -167,12 +169,50 @@ When `route_back_policy.max_attempts` is exceeded, `on_exceeded` decides the out
 
 Flow Run state and reports expose route-back details for continuation and analysis: selected route, final route target, route reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, classifier, diagnostics, analytics loop key, and recovery step. The CLI records these metadata fields through `flow attach-evidence`, but Flow core remains neutral: Builder Kit or Flow Agents policy can choose reason ids and mappings, while Flow itself only applies the authored Flow Definition, `route_reason`, and persisted transition history.
 
+## Definition Validation
+
+Validate arbitrary Flow Definition JSON before starting a run:
+
+```sh
+npx flow validate-definition examples/builder-kit-flow.json
+npx flow validate-definition examples/invalid-claim-expectation-flow.json --json
+```
+
+`--json` emits a stable machine-readable payload:
+
+```json
+{
+  "valid": false,
+  "path": "examples/invalid-claim-expectation-flow.json",
+  "error_count": 6,
+  "diagnostics": [
+    {
+      "code": "definition.expectation.claim.required",
+      "severity": "error",
+      "path": "$.gates.verify-gate.expects[0].claim",
+      "message": "surface.claim expectations must include claim"
+    }
+  ]
+}
+```
+
+Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, `claim.accepted_statuses`, and legacy `requires` entries. The legacy `validateDefinition(definition)` API is still pass/throw; it now uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
+
 ## Library
 
 The package also exports the runtime primitives used by the CLI:
 
 ```js
-import { startRun, attachEvidence, evaluateRun, loadRun } from "@kontourai/flow";
+import {
+  startRun,
+  attachEvidence,
+  evaluateRun,
+  loadRun,
+  validateDefinitionWithDiagnostics
+} from "@kontourai/flow";
+
+const result = validateDefinitionWithDiagnostics(definition);
+if (!result.valid) console.error(result.diagnostics);
 ```
 
 ## Schemas

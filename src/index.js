@@ -104,7 +104,156 @@ export function getStep(definition, stepId) {
   return definition.steps.find((step) => step.id === stepId);
 }
 
+export function createDiagnostic(code, path, message, related = {}) {
+  return {
+    code,
+    severity: "error",
+    path,
+    message,
+    ...(Object.keys(related).length ? { related } : {})
+  };
+}
+
+function isObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+function validateExpectation(expectation, path, diagnostics) {
+  if (!isObject(expectation)) {
+    diagnostics.push(createDiagnostic("definition.expectation.invalid", path, "expectation must be an object"));
+    return;
+  }
+  if (!isNonEmptyString(expectation.id)) {
+    diagnostics.push(createDiagnostic("definition.expectation.id.required", `${path}.id`, "expectation.id must be a non-empty string"));
+  }
+  if (expectation.kind !== "surface.claim") {
+    diagnostics.push(createDiagnostic("definition.expectation.kind.unsupported", `${path}.kind`, "expectation.kind must be surface.claim"));
+  }
+  if (typeof expectation.required !== "boolean") {
+    diagnostics.push(createDiagnostic("definition.expectation.required.invalid", `${path}.required`, "expectation.required must be a boolean"));
+  }
+  if (!isNonEmptyString(expectation.description)) {
+    diagnostics.push(createDiagnostic("definition.expectation.description.required", `${path}.description`, "expectation.description must be a non-empty string"));
+  }
+  if (expectation.kind === "surface.claim" && !isObject(expectation.claim)) {
+    diagnostics.push(createDiagnostic("definition.expectation.claim.required", `${path}.claim`, "surface.claim expectations must include claim"));
+    return;
+  }
+  if (!isObject(expectation.claim)) return;
+  if (!isNonEmptyString(expectation.claim.type)) {
+    diagnostics.push(createDiagnostic("definition.expectation.claim.type.required", `${path}.claim.type`, "surface.claim expectations must include claim.type"));
+  }
+  if (expectation.claim.subject !== undefined && !isNonEmptyString(expectation.claim.subject)) {
+    diagnostics.push(createDiagnostic("definition.expectation.claim.subject.invalid", `${path}.claim.subject`, "claim.subject must be a non-empty string when present"));
+  }
+  if (expectation.claim.accepted_statuses !== undefined) {
+    if (!Array.isArray(expectation.claim.accepted_statuses) || expectation.claim.accepted_statuses.length === 0) {
+      diagnostics.push(createDiagnostic("definition.expectation.claim.accepted_statuses.invalid", `${path}.claim.accepted_statuses`, "claim.accepted_statuses must be a non-empty array"));
+    } else {
+      expectation.claim.accepted_statuses.forEach((status, index) => {
+        if (!isNonEmptyString(status)) {
+          diagnostics.push(createDiagnostic("definition.expectation.claim.accepted_status.invalid", `${path}.claim.accepted_statuses[${index}]`, "accepted status must be a non-empty string"));
+        }
+      });
+    }
+  }
+}
+
+export function definitionDiagnostics(definition) {
+  const diagnostics = [];
+  if (!isObject(definition)) {
+    return [createDiagnostic("definition.invalid", "$", "definition must be an object")];
+  }
+  if (!isNonEmptyString(definition.id)) {
+    diagnostics.push(createDiagnostic("definition.id.required", "$.id", "definition.id must be a non-empty string"));
+  }
+  if (!isNonEmptyString(definition.version)) {
+    diagnostics.push(createDiagnostic("definition.version.required", "$.version", "definition.version must be a non-empty string"));
+  }
+  if (!Array.isArray(definition.steps) || definition.steps.length === 0) {
+    diagnostics.push(createDiagnostic("definition.steps.required", "$.steps", "definition.steps must be a non-empty array"));
+  }
+  if (!isObject(definition.gates) || Object.keys(definition.gates).length === 0) {
+    diagnostics.push(createDiagnostic("definition.gates.required", "$.gates", "definition.gates must be a non-empty object"));
+  }
+
+  const stepIds = new Set();
+  if (Array.isArray(definition.steps)) {
+    definition.steps.forEach((step, index) => {
+      const stepPath = `$.steps[${index}]`;
+      if (!isObject(step)) {
+        diagnostics.push(createDiagnostic("definition.step.invalid", stepPath, "step must be an object"));
+        return;
+      }
+      if (!isNonEmptyString(step.id)) {
+        diagnostics.push(createDiagnostic("definition.step.id.required", `${stepPath}.id`, "step.id must be a non-empty string"));
+      } else if (stepIds.has(step.id)) {
+        diagnostics.push(createDiagnostic("definition.step.id.duplicate", `${stepPath}.id`, `duplicate step id: ${step.id}`));
+      } else {
+        stepIds.add(step.id);
+      }
+    });
+  }
+
+  if (isObject(definition.gates)) {
+    for (const [gateId, gate] of Object.entries(definition.gates)) {
+      const gatePath = `$.gates.${gateId}`;
+      if (!isObject(gate)) {
+        diagnostics.push(createDiagnostic("definition.gate.invalid", gatePath, `gate ${gateId} must be an object`));
+        continue;
+      }
+      if (!isNonEmptyString(gate.step)) {
+        diagnostics.push(createDiagnostic("definition.gate.step.required", `${gatePath}.step`, `gate ${gateId} must include step`));
+      } else if (!stepIds.has(gate.step)) {
+        diagnostics.push(createDiagnostic("definition.gate.step.unknown", `${gatePath}.step`, `gate ${gateId} references unknown step: ${gate.step}`, { gate_id: gateId, step: gate.step }));
+      }
+      if (gate.expects !== undefined) {
+        if (!Array.isArray(gate.expects)) {
+          diagnostics.push(createDiagnostic("definition.gate.expects.invalid", `${gatePath}.expects`, `gate ${gateId} expects must be an array`));
+        } else {
+          gate.expects.forEach((expectation, index) => validateExpectation(expectation, `${gatePath}.expects[${index}]`, diagnostics));
+        }
+      }
+      if (gate.requires !== undefined) {
+        if (!Array.isArray(gate.requires)) {
+          diagnostics.push(createDiagnostic("definition.gate.requires.invalid", `${gatePath}.requires`, `gate ${gateId} requires must be an array`));
+        } else {
+          gate.requires.forEach((requiredKind, index) => {
+            if (!isNonEmptyString(requiredKind)) {
+              diagnostics.push(createDiagnostic("definition.gate.requires.kind.invalid", `${gatePath}.requires[${index}]`, "legacy requires entries must be non-empty strings"));
+            }
+          });
+        }
+      }
+      for (const [reason, targetStep] of Object.entries(gate.on_route_back ?? {})) {
+        if (!stepIds.has(targetStep)) {
+          diagnostics.push(createDiagnostic("definition.gate.route_back.target.unknown", `${gatePath}.on_route_back.${reason}`, `gate ${gateId} on_route_back.${reason} references unknown step: ${targetStep}`, { gate_id: gateId, reason, step: targetStep }));
+        }
+      }
+      const exceededTarget = gate.route_back_policy?.on_exceeded;
+      if (exceededTarget && exceededTarget !== "block" && !stepIds.has(exceededTarget)) {
+        diagnostics.push(createDiagnostic("definition.gate.route_back_policy.on_exceeded.unknown", `${gatePath}.route_back_policy.on_exceeded`, `gate ${gateId} route_back_policy.on_exceeded references unknown step: ${exceededTarget}`, { gate_id: gateId, step: exceededTarget }));
+      }
+    }
+  }
+  return diagnostics;
+}
+
+export function validateDefinitionWithDiagnostics(definition) {
+  const diagnostics = definitionDiagnostics(definition);
+  return {
+    valid: diagnostics.every((diagnostic) => diagnostic.severity !== "error"),
+    diagnostics
+  };
+}
+
 export function validateDefinition(definition) {
+  const diagnostic = validateDefinitionWithDiagnostics(definition).diagnostics[0];
+  if (diagnostic) throw new Error(diagnostic.message);
   const stepIds = new Set((definition.steps ?? []).map((step) => step.id));
   for (const [gateId, gate] of Object.entries(definition.gates ?? {})) {
     if (gate.step && !stepIds.has(gate.step)) {

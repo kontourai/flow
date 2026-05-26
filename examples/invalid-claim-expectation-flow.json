@@ -1,0 +1,58 @@
+{
+  "id": "invalid-claim-expectation-flow",
+  "version": "1",
+  "steps": [
+    { "id": "plan", "next": "verify" },
+    { "id": "verify", "next": null }
+  ],
+  "gates": {
+    "verify-gate": {
+      "step": "verify",
+      "expects": [
+        {
+          "id": "missing-claim",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "This entry is missing claim."
+        },
+        {
+          "id": "missing-claim-type",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "This entry is missing claim.type.",
+          "claim": {
+            "subject": "builder.verify",
+            "accepted_statuses": ["trusted"]
+          }
+        },
+        {
+          "id": "bad-accepted-statuses",
+          "kind": "surface.claim",
+          "required": false,
+          "description": "This entry has malformed accepted statuses.",
+          "claim": {
+            "type": "quality.tests",
+            "subject": "builder.verify",
+            "accepted_statuses": []
+          }
+        },
+        {
+          "id": "bad-kind",
+          "kind": "surface-claim",
+          "required": true,
+          "description": "This entry uses a legacy typo.",
+          "claim": {
+            "type": "quality.tests"
+          }
+        }
+      ],
+      "on_route_back": {
+        "implementation_defect": "missing-step"
+      },
+      "route_back_policy": {
+        "max_attempts": 1,
+        "on_exceeded": "missing-recovery"
+      }
+    }
+  }
+}
