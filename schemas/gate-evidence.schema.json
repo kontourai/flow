@@ -37,6 +37,35 @@
         },
         "producer": { "type": "string" },
         "authority_trace": { "type": "string" },
+        "route_reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "expectation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "uniqueItems": true
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "kind": { "type": "string" },
+            "source": { "type": "string" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "analytics": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "original_path": { "type": "string" },
         "stored_path": { "type": "string" },
         "sha256": { "type": "string" },

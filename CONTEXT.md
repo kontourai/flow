@@ -48,6 +48,22 @@ _Avoid_: Flow Agents authority, adapter-owned policy, duplicated producer trust 
 The movement from one step to another, including the reason it was allowed, blocked, skipped, or accepted by exception.
 _Avoid_: Implicit next step, uncontrolled agent continuation
 
+**Route Back**:
+A gate outcome that sends a Flow Run from the gate's step back to a selected step after failed or missing evidence. Route back is a Flow core transition primitive, not a Builder Kit policy.
+_Avoid_: Hidden retry, agent-specific recovery prompt, Builder Kit-only behavior
+
+**Route Reason**:
+An open string id attached to failed gate evidence or inferred by Flow for missing required evidence. Recommended standard ids are `missing_evidence`, `implementation_defect`, `plan_gap`, and `decision_gap`; projects may define custom ids without changing Flow core.
+_Avoid_: Closed enum, model-only diagnosis, unrecorded explanation
+
+**Route-Back Transition**:
+A persisted transition with route-back metadata: gate id, route reason, source step, selected target step, final route target, attempt, max attempts, exceeded state, evidence refs, expectation ids, and optional classifier, diagnostics, and analytics. Attempt counts are derived from persisted route-back transitions with the same gate id, reason, source step, and selected target step.
+_Avoid_: Timestamp-based retry count, in-memory loop counter, chat-memory continuation
+
+**Route-Back Policy**:
+The gate-level loop protection settings `max_attempts` and `on_exceeded`. `on_exceeded` may name a recovery step or use `block` to stop at the current step with the exceeded condition recorded.
+_Avoid_: Silent infinite loop, uninspectable retry limit, adapter-owned retry semantics inside Flow core
+
 **Gate Evidence**:
 Evidence attached to a gate outcome. Gate evidence may include tests, CI, review findings, Veritas readiness reports, human attestations, provider health checks, source pointers, or Surface trust snapshots.
 _Avoid_: Agent confidence, summary without trace, Veritas evidence check as the generic term
@@ -75,6 +91,10 @@ _Avoid_: Flow-owned repo standards, duplicating Veritas requirements
 **Flow Agents Consumer**:
 The first expected consumer of Flow. Flow Agents coordinates kits, runtime adapters, installs, control surfaces, skills, hooks, provider settings, and Console views. It can author, adapt, and install Flow project config, but it is not the authority source of truth for gate expectations, trusted producers, or project overrides.
 _Avoid_: Flow owning agent harness support directly
+
+**Flow Core Neutrality**:
+Flow core provides route-back mechanics, validation, persistence, reports, and CLI metadata capture. It does not encode Builder Kit-specific reason policy, recovery strategy, provider behavior, or agent orchestration semantics.
+_Avoid_: Hardcoded kit policy, provider-specific route classifiers in Flow core, closed reason vocabulary
 
 ## Flagged Ambiguities
 

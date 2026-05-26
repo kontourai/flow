@@ -55,7 +55,7 @@ report: .flow/runs/dev-1847/report.md
 flow init
 flow start <definition> [--run-id <id>] [--params key=value ...]
 flow status <run-id> [--format summary|json|markdown]
-flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>]
+flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>]
 flow evaluate <run-id> [--gate <gate>]
 flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
 flow report <run-id> [--format summary|markdown|json]
@@ -89,6 +89,17 @@ The continuation contract is intentionally simple: `flow resume <run-id>` reads 
 
 Unknown kinds are accepted as `custom` and stored with the originally requested kind. The v0.1 CLI attaches evidence from files; richer adapters can write the same manifest shape.
 
+Failed evidence can carry route-back metadata:
+
+```sh
+flow attach-evidence dev-1847 --gate verify-gate --file ./test-output.json \
+  --kind command --status failed --route-reason implementation_defect \
+  --classifier-kind manual --classifier-source cli --classifier-confidence 0.75 \
+  --analytics-loop-key verify:implementation_defect --expectation-id tests-passed
+```
+
+For nested metadata, pass `--route-metadata ./route-metadata.json`. The file may contain `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics`. CLI flags override overlapping `route_reason`, `classifier`, `analytics.loop_key`, and `expectation_ids` values from the file. Flow uses only `route_reason`, the Flow Definition route map/policy, and persisted route-back transitions to select the route; classifier, diagnostics, and analytics are recorded for reports and learning but do not affect routing.
+
 ## Gate Expectations
 
 Flow Definitions describe what each gate expects before a run can advance. The typed form is `expects`, an array of expectation entries. Use `kind: "surface.claim"` when a gate needs rich evidence backed by a Surface claim instead of a simple evidence-kind string.
@@ -119,6 +130,42 @@ For the current step, `flow evaluate` applies the v0.1 rules:
 - an accepted exception on a gate counts as `pass`
 
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory.
+
+## Route Back
+
+A gate can route failed evidence back to a specific step by adding `on_route_back` to the gate definition:
+
+```json
+{
+  "step": "verify",
+  "on_route_back": {
+    "missing_evidence": "verify",
+    "implementation_defect": "implement",
+    "plan_gap": "plan",
+    "decision_gap": "plan",
+    "default": "implement"
+  },
+  "route_back_policy": {
+    "max_attempts": 2,
+    "on_exceeded": "block"
+  }
+}
+```
+
+Route reason ids are open strings. Flow documents these standard recommended ids but does not enforce a closed enum:
+
+- `missing_evidence`: Flow or an evidence producer found that required gate evidence is absent.
+- `implementation_defect`: the implementation failed the gate and should return to implementation.
+- `plan_gap`: the plan or acceptance shape is insufficient and should return to planning.
+- `decision_gap`: the work needs a decision or clarification before it can proceed.
+
+Custom reason ids are allowed when a project, kit, or adapter needs narrower routing. Add custom ids to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If a failed evidence item has no `route_reason`, Flow uses `default` when present and otherwise preserves the legacy fallback to the gate's own `step`. Flow only infers `missing_evidence` when Flow itself detects missing required evidence.
+
+Route-back attempts are deterministic. Flow counts prior persisted `route_back` transitions with the same gate id, route reason or `default`, source step, and selected target step. Timestamps, classifier data, diagnostics, analytics metadata, and in-memory counters do not affect routing or attempt counts.
+
+When `route_back_policy.max_attempts` is exceeded, `on_exceeded` decides the outcome. A step id routes the run to that recovery step and records both the selected route and recovery step. The special value `block` blocks the run at the current step while recording the exceeded route-back attempt. Flow validates new route targets against defined step ids; `block` is only special for `route_back_policy.on_exceeded`.
+
+Flow Run state and reports expose route-back details for continuation and analysis: selected route, final route target, route reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, classifier, diagnostics, analytics loop key, and recovery step. The CLI records these metadata fields through `flow attach-evidence`, but Flow core remains neutral: Builder Kit or Flow Agents policy can choose reason ids and mappings, while Flow itself only applies the authored Flow Definition, `route_reason`, and persisted transition history.
 
 ## Library
 

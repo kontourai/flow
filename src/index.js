@@ -104,6 +104,25 @@ export function getStep(definition, stepId) {
   return definition.steps.find((step) => step.id === stepId);
 }
 
+export function validateDefinition(definition) {
+  const stepIds = new Set((definition.steps ?? []).map((step) => step.id));
+  for (const [gateId, gate] of Object.entries(definition.gates ?? {})) {
+    if (gate.step && !stepIds.has(gate.step)) {
+      throw new Error(`gate ${gateId} references unknown step: ${gate.step}`);
+    }
+    for (const [reason, targetStep] of Object.entries(gate.on_route_back ?? {})) {
+      if (!stepIds.has(targetStep)) {
+        throw new Error(`gate ${gateId} on_route_back.${reason} references unknown step: ${targetStep}`);
+      }
+    }
+    const exceededTarget = gate.route_back_policy?.on_exceeded;
+    if (exceededTarget && exceededTarget !== "block" && !stepIds.has(exceededTarget)) {
+      throw new Error(`gate ${gateId} route_back_policy.on_exceeded references unknown step: ${exceededTarget}`);
+    }
+  }
+  return definition;
+}
+
 export function gatesForStep(definition, stepId) {
   return Object.entries(definition.gates)
     .map(([id, gate]) => ({ id, ...gate }))
@@ -141,7 +160,8 @@ export function nextActionForStep(definition, stepId, outcome = null) {
     return `attach ${outcome.missing.map(evidenceLabel).join(", ")} before continuing`;
   }
   if (outcome?.status === "route-back") {
-    return `return to ${outcome.route_back_to} and replace failing evidence`;
+    const attempt = outcome.attempt ? ` attempt ${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "";
+    return `return to ${outcome.route_back_to} and replace failing evidence${attempt}`;
   }
   const gate = gatesForStep(definition, stepId)[0];
   if (!gate) return "no open gate";
@@ -162,6 +182,62 @@ export function acceptedExceptionFor(state, gateId) {
 
 export function attachedEvidenceFor(manifest, gateId) {
   return manifest.evidence.filter((entry) => entry.gate_id === gateId);
+}
+
+export function routeReasonForFailedEvidence(entry) {
+  return typeof entry?.route_reason === "string" && entry.route_reason.length ? entry.route_reason : null;
+}
+
+export function routeTargetForReason(gate, routeReason) {
+  const routes = gate.on_route_back ?? {};
+  if (routeReason && routes[routeReason]) return routes[routeReason];
+  if (routes.default) return routes.default;
+  return gate.step;
+}
+
+export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep }) {
+  const reasonKey = routeReason ?? "default";
+  const priorMatches = (state.transitions ?? []).filter((transition) => {
+    return transition.type === "route_back"
+      && transition.gate_id === gateId
+      && (transition.route_reason ?? transition.reason) === reasonKey
+      && transition.from_step === fromStep
+      && transition.to_step === toStep;
+  });
+  return priorMatches.length + 1;
+}
+
+export function routeBackDecision(state, gate, routeReason, evidence = [], options = {}) {
+  const selectedTarget = routeTargetForReason(gate, routeReason);
+  const maxAttempts = gate.route_back_policy?.max_attempts;
+  const attempt = routeBackAttempt(state, {
+    gateId: gate.id,
+    routeReason,
+    fromStep: gate.step,
+    toStep: selectedTarget
+  });
+  const limitExceeded = Number.isInteger(maxAttempts) && attempt > maxAttempts;
+  const exceededTarget = gate.route_back_policy?.on_exceeded;
+  const toStep = limitExceeded && exceededTarget && exceededTarget !== "block" ? exceededTarget : selectedTarget;
+  const status = limitExceeded && exceededTarget === "block" ? "block" : "route-back";
+  const routeData = {
+    route_back_to: toStep,
+    selected_route: selectedTarget,
+    recovery_step: limitExceeded && exceededTarget && exceededTarget !== "block" ? exceededTarget : undefined,
+    route_reason: routeReason ?? undefined,
+    reason: routeReason ?? "default",
+    attempt,
+    max_attempts: maxAttempts,
+    limit_exceeded: limitExceeded,
+    evidence_refs: evidence.map((entry) => entry.id),
+    expectation_ids: options.expectationIds ?? evidence.flatMap((entry) => entry.expectation_ids ?? [])
+  };
+  const firstEvidence = evidence[0] ?? {};
+  for (const field of ["classifier", "diagnostics", "analytics"]) {
+    if (firstEvidence[field] !== undefined) routeData[field] = firstEvidence[field];
+  }
+  if (firstEvidence.analytics?.loop_key !== undefined) routeData.analytics_loop_key = firstEvidence.analytics.loop_key;
+  return routeData.status ? routeData : { ...routeData, status };
 }
 
 export function expectationsForGate(gate, config = defaultFlowConfig()) {
@@ -227,12 +303,13 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
   const evidence = attachedEvidenceFor(manifest, gateId);
   const failed = evidence.filter((entry) => entry.status === "failed");
   if (failed.length) {
+    const routeReason = routeReasonForFailedEvidence(failed[0]);
+    const route = routeBackDecision(state, gate, routeReason, failed);
     return {
       gate_id: gateId,
-      status: "route-back",
+      status: route.status,
       summary: `${slugLabel(gate.id)} has failing evidence`,
-      evidence_refs: failed.map((entry) => entry.id),
-      route_back_to: gate.step
+      ...route
     };
   }
 
@@ -254,6 +331,18 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
 
   if (missingRequired.length) {
     const first = expectations.find((expectation) => expectation.id === missingRequired[0]);
+    if (gate.on_route_back?.missing_evidence) {
+      const route = routeBackDecision(state, gate, "missing_evidence", evidence, { expectationIds: missingRequired });
+      return {
+        gate_id: gateId,
+        status: route.status,
+        summary: `${expectationLabel(first)} missing`,
+        missing: missingRequired,
+        optional_missing: missingOptional,
+        matched_expectations: matched,
+        ...route
+      };
+    }
     return {
       gate_id: gateId,
       status: "block",
@@ -344,22 +433,59 @@ export function applyEvaluation(definition, state, outcome) {
     state.status = nextStep ? "active" : "completed";
   } else if (outcome.status === "block") {
     state.status = "blocked";
-    state.transitions.push({
-      from_step: gate.step,
-      to_step: getStep(definition, gate.step)?.next ?? null,
-      status: "blocked",
-      reason: outcome.summary,
-      at: new Date().toISOString(),
-      gate_id: outcome.gate_id
-    });
+    if (outcome.limit_exceeded) {
+      state.transitions.push({
+        type: "route_back",
+        from_step: gate.step,
+        to_step: outcome.route_back_to,
+        status: "blocked",
+        reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,
+        route_reason: outcome.route_reason,
+        selected_route: outcome.selected_route,
+        recovery_step: outcome.recovery_step,
+        attempt: outcome.attempt,
+        max_attempts: outcome.max_attempts,
+        limit_exceeded: outcome.limit_exceeded,
+        evidence_refs: outcome.evidence_refs,
+        expectation_ids: outcome.expectation_ids,
+        classifier: outcome.classifier,
+        diagnostics: outcome.diagnostics,
+        analytics: outcome.analytics,
+        analytics_loop_key: outcome.analytics_loop_key,
+        at: new Date().toISOString(),
+        gate_id: outcome.gate_id
+      });
+    } else {
+      state.transitions.push({
+        from_step: gate.step,
+        to_step: getStep(definition, gate.step)?.next ?? null,
+        status: "blocked",
+        reason: outcome.summary,
+        at: new Date().toISOString(),
+        gate_id: outcome.gate_id
+      });
+    }
   } else if (outcome.status === "route-back") {
     state.status = "active";
     state.current_step = outcome.route_back_to;
     state.transitions.push({
+      type: "route_back",
       from_step: gate.step,
       to_step: outcome.route_back_to,
       status: "blocked",
-      reason: outcome.summary,
+      reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,
+      route_reason: outcome.route_reason,
+      selected_route: outcome.selected_route,
+      recovery_step: outcome.recovery_step,
+      attempt: outcome.attempt,
+      max_attempts: outcome.max_attempts,
+      limit_exceeded: outcome.limit_exceeded,
+      evidence_refs: outcome.evidence_refs,
+      expectation_ids: outcome.expectation_ids,
+      classifier: outcome.classifier,
+      diagnostics: outcome.diagnostics,
+      analytics: outcome.analytics,
+      analytics_loop_key: outcome.analytics_loop_key,
       at: new Date().toISOString(),
       gate_id: outcome.gate_id
     });
@@ -397,6 +523,7 @@ export function examplePath(file) {
 export async function startRun(definitionPath, options = {}) {
   const cwd = options.cwd ?? process.cwd();
   const definition = await readJson(path.resolve(cwd, definitionPath));
+  validateDefinition(definition);
   const runId = options.runId ?? `run.${Date.now()}`;
   const dir = runDir(runId, cwd);
   if (existsSync(dir)) throw new Error(`run already exists: ${runId}`);
@@ -412,6 +539,7 @@ export async function startRun(definitionPath, options = {}) {
 export async function loadRun(runId, cwd = process.cwd()) {
   const dir = runDir(runId, cwd);
   const definition = await readJson(path.join(dir, "definition.json"));
+  validateDefinition(definition);
   const state = await readJson(path.join(dir, "state.json"));
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, "evidence", "manifest.json");
@@ -467,6 +595,11 @@ export async function attachEvidence(runId, options) {
   }
   if (options.producer) entry.producer = options.producer;
   if (options.authorityTrace) entry.authority_trace = options.authorityTrace;
+  if (options.route_reason) entry.route_reason = options.route_reason;
+  if (options.expectation_ids) entry.expectation_ids = options.expectation_ids;
+  if (options.classifier) entry.classifier = options.classifier;
+  if (options.diagnostics) entry.diagnostics = options.diagnostics;
+  if (options.analytics) entry.analytics = options.analytics;
   run.manifest.evidence.push(entry);
   await saveRun(run);
   return entry;
@@ -544,7 +677,7 @@ export function reportJson(definition, state, manifest) {
     gate_summaries: Object.keys(definition.gates).map((gateId) => {
       const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gateId);
       const evidence = attachedEvidenceFor(manifest, gateId);
-      return {
+      const summary = {
         gate_id: gateId,
         status: outcome?.status ?? "wait",
         summary: outcome?.summary ?? `${slugLabel(gateId)} waiting`,
@@ -553,6 +686,23 @@ export function reportJson(definition, state, manifest) {
         optional_missing: outcome?.optional_missing ?? [],
         matched_expectations: outcome?.matched_expectations ?? []
       };
+      for (const field of [
+        "route_back_to",
+        "selected_route",
+        "recovery_step",
+        "route_reason",
+        "attempt",
+        "max_attempts",
+        "limit_exceeded",
+        "expectation_ids",
+        "classifier",
+        "diagnostics",
+        "analytics",
+        "analytics_loop_key"
+      ]) {
+        if (outcome?.[field] !== undefined) summary[field] = outcome[field];
+      }
+      return summary;
     })
   };
 }
@@ -577,6 +727,15 @@ export function renderMarkdownReport(definition, state, manifest) {
     if (gate.missing?.length) lines.push(`  - Missing: ${gate.missing.map(evidenceLabel).join(", ")}`);
     if (gate.optional_missing?.length) lines.push(`  - Optional missing: ${gate.optional_missing.map(evidenceLabel).join(", ")}`);
     if (gate.evidence_refs.length) lines.push(`  - Evidence: ${gate.evidence_refs.join(", ")}`);
+    if (gate.status === "route-back" || gate.limit_exceeded) {
+      const attempt = gate.attempt ? `${gate.attempt}${gate.max_attempts ? `/${gate.max_attempts}` : ""}` : "n/a";
+      lines.push(`  - Route back: ${gate.route_reason ?? gate.reason ?? "default"} -> ${gate.route_back_to} (attempt ${attempt}, limit exceeded: ${gate.limit_exceeded ? "yes" : "no"})`);
+      if (gate.selected_route && gate.selected_route !== gate.route_back_to) lines.push(`  - Selected route: ${gate.selected_route}`);
+      if (gate.recovery_step) lines.push(`  - Recovery step: ${gate.recovery_step}`);
+      if (gate.expectation_ids?.length) lines.push(`  - Expectations: ${gate.expectation_ids.join(", ")}`);
+      if (gate.classifier?.kind) lines.push(`  - Classifier: ${gate.classifier.kind}${gate.classifier.source ? ` from ${gate.classifier.source}` : ""}`);
+      if (gate.analytics_loop_key) lines.push(`  - Analytics loop: ${gate.analytics_loop_key}`);
+    }
   }
   lines.push("", "## Accepted Exceptions", "");
   if (state.exceptions.length) {
@@ -617,6 +776,12 @@ export function renderSummary(definition, state) {
     if (outcome?.missing?.length) {
       lines.push(`      expected: ${expectationsForGate(gate).filter((entry) => entry.required).map(expectationLabel).join(", ")}`);
     }
+    if (outcome?.status === "route-back" || outcome?.limit_exceeded) {
+      const attempt = outcome.attempt ? `${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "n/a";
+      lines.push(`      route: ${outcome.route_reason ?? outcome.reason ?? "default"} -> ${outcome.route_back_to}; attempt ${attempt}; limit exceeded: ${outcome.limit_exceeded ? "yes" : "no"}`);
+      if (outcome.recovery_step) lines.push(`      recovery: ${outcome.recovery_step}`);
+      if (outcome.analytics_loop_key) lines.push(`      analytics loop: ${outcome.analytics_loop_key}`);
+    }
   }
   lines.push("", `next action: ${state.next_action}`);
   lines.push(`continuation: ${continuationLine(state)}`);
@@ -626,12 +791,18 @@ export function renderSummary(definition, state) {
 
 export function renderResume(definition, state) {
   const gates = openGates(definition, state);
+  const routeBacks = state.gate_outcomes.filter((outcome) => outcome.status === "route-back" || outcome.limit_exceeded);
   const lines = [
     `flow run: ${definition.id} / ${state.subject}`,
     `current step: ${state.current_step}`,
     `next action: ${state.next_action}`,
     `open gates: ${gates.length ? gates.map((gate) => gate.id).join(", ") : "none"}`,
     `accepted exceptions: ${state.exceptions.length ? state.exceptions.map((entry) => `${entry.gate_id} by ${entry.authority}`).join(", ") : "none"}`,
+    `route backs: ${routeBacks.length ? routeBacks.map((outcome) => {
+      const attempt = outcome.attempt ? `${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "n/a";
+      const recovery = outcome.recovery_step ? `, recovery ${outcome.recovery_step}` : "";
+      return `${outcome.gate_id} ${outcome.route_reason ?? outcome.reason ?? "default"} -> ${outcome.route_back_to} attempt ${attempt}, limit exceeded ${outcome.limit_exceeded ? "yes" : "no"}${recovery}`;
+    }).join("; ") : "none"}`,
     `guidance: continue from recorded Flow state; ${state.next_action}`
   ];
   return `${lines.join("\n")}\n`;

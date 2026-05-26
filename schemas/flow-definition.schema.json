@@ -61,6 +61,30 @@
             "pattern": "^[a-z0-9][a-z0-9._-]*$"
           },
           "uniqueItems": true
+        },
+        "on_route_back": {
+          "type": "object",
+          "propertyNames": {
+            "anyOf": [
+              { "const": "default" },
+              { "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        },
+        "route_back_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_attempts": { "type": "integer", "minimum": 1 },
+            "on_exceeded": {
+              "type": "string",
+              "pattern": "^(block|[a-z0-9][a-z0-9._-]*)$"
+            }
+          }
         }
       }
     },

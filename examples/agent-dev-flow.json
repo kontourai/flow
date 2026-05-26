@@ -37,6 +37,17 @@
           }
         }
       ],
+      "on_route_back": {
+        "implementation_defect": "implement",
+        "plan_gap": "plan",
+        "decision_gap": "plan",
+        "missing_evidence": "verify",
+        "default": "implement"
+      },
+      "route_back_policy": {
+        "max_attempts": 3,
+        "on_exceeded": "block"
+      },
       "requires": ["tests", "lint", "browser-evidence", "veritas-readiness"]
     }
   }

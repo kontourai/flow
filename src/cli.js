@@ -20,7 +20,7 @@ function usage() {
   flow init
   flow start <definition> [--run-id <id>] [--params key=value ...]
   flow status <run-id> [--format summary|json|markdown]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
   flow evaluate <run-id> [--gate <gate>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
   flow report <run-id> [--format summary|markdown|json]
@@ -44,6 +44,14 @@ function parseArgs(argv) {
       while (argv[i + 1] && !argv[i + 1].startsWith("--")) {
         flags.params.push(argv[++i]);
       }
+      continue;
+    }
+    if (key === "expectation-id") {
+      flags[key] ??= [];
+      const next = argv[i + 1];
+      if (!next || next.startsWith("--")) throw new Error("--expectation-id requires a value");
+      flags[key].push(next);
+      i += 1;
       continue;
     }
     const next = argv[i + 1];
@@ -70,6 +78,41 @@ function parseParams(values = []) {
 function requireArg(value, message) {
   if (!value) throw new Error(message);
   return value;
+}
+
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
+function mergeObject(base, next) {
+  if (!next) return base;
+  return { ...(base ?? {}), ...next };
+}
+
+async function parseRouteMetadata(flags) {
+  const metadataFile = flags["route-metadata"] ?? flags.metadata;
+  const fileMetadata = metadataFile
+    ? JSON.parse(await readFile(path.resolve(process.cwd(), metadataFile), "utf8"))
+    : {};
+  const classifier = compactObject({
+    kind: flags["classifier-kind"],
+    source: flags["classifier-source"],
+    confidence: flags["classifier-confidence"] === undefined ? undefined : Number(flags["classifier-confidence"])
+  });
+  if (classifier.confidence !== undefined && Number.isNaN(classifier.confidence)) {
+    throw new Error("--classifier-confidence must be a number");
+  }
+  const analytics = compactObject({
+    loop_key: flags["analytics-loop-key"]
+  });
+  return {
+    ...fileMetadata,
+    route_reason: flags["route-reason"] ?? fileMetadata.route_reason,
+    expectation_ids: flags["expectation-id"] ?? fileMetadata.expectation_ids,
+    classifier: Object.keys(classifier).length ? mergeObject(fileMetadata.classifier, classifier) : fileMetadata.classifier,
+    diagnostics: fileMetadata.diagnostics,
+    analytics: Object.keys(analytics).length ? mergeObject(fileMetadata.analytics, analytics) : fileMetadata.analytics
+  };
 }
 
 async function printStatus(runId, format) {
@@ -118,6 +161,7 @@ async function main() {
 
   if (command === "attach-evidence") {
     const runId = requireArg(args[0], "flow attach-evidence requires a run id");
+    const routeMetadata = await parseRouteMetadata(flags);
     const entry = await attachEvidence(runId, {
       gate: requireArg(flags.gate, "--gate is required"),
       file: requireArg(flags.file, "--file is required"),
@@ -127,7 +171,12 @@ async function main() {
       claimSubject: flags["claim-subject"],
       claimStatus: flags["claim-status"],
       producer: flags.producer,
-      authorityTrace: flags["authority-trace"]
+      authorityTrace: flags["authority-trace"],
+      route_reason: routeMetadata.route_reason,
+      expectation_ids: routeMetadata.expectation_ids,
+      classifier: routeMetadata.classifier,
+      diagnostics: routeMetadata.diagnostics,
+      analytics: routeMetadata.analytics
     });
     console.log(`attached evidence: ${entry.id}`);
     console.log(`gate: ${entry.gate_id}`);
