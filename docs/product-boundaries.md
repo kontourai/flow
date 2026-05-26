@@ -30,6 +30,10 @@ Normal Flow users should not need to configure Surface directly.
 
 Flow gates use `expects` entries to describe evidence expectations. When a gate needs rich claim-backed evidence, Flow uses `kind: "surface.claim"` and evaluates claim type, optional subject, accepted statuses, and the trusted producer mappings from Flow project config.
 
+Flow may consume copied Surface TrustReport or Trust Snapshot JSON files as artifact-backed `surface.claim` evidence. The Flow-owned contract is neutral: `artifact_type`, `subject`, `producer`, `status`, `issued_at`, `expires_at`, `authority_traces`, `claims`, and local `integrity` metadata. Flow projects those fields into gate evaluation and reports diagnostics for stale, rejected, untrusted producer, authority gap, integrity mismatch, and subject mismatch cases.
+
+Flow does not import Surface services at runtime for this local contract, and it does not make Veritas-specific field names part of the schema or runtime contract. A Veritas tool can produce a compatible Surface-shaped artifact, but Flow evaluates it as Surface evidence under the Flow Definition and `.flow/config.json`.
+
 ## Veritas Boundary
 
 Veritas owns repo-local development governance:
