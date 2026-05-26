@@ -137,25 +137,25 @@ Flow does not own:
 - business process modeling suites
 - task boards or CRM workflows
 
-Consumers can own those concerns. Kagents is the first expected consumer for agent harnesses. Veritas is the first expected evidence provider for repo/change readiness.
+Consumers can own those concerns. Flow Agents is the first expected consumer for agent harnesses. Veritas is the first expected evidence provider for repo/change readiness.
 
 ## Competitive Angle
 
 The best public angle is:
 
-> Transparency building blocks for the AI era.
+> Kontour AI shows the work behind AI.
 
 Surface makes claims inspectable.
 Flow makes process transitions inspectable.
 Veritas makes AI-authored code changes inspectable.
-Kagents uses those foundations to keep agents useful in the tools people already use.
+Flow Agents uses those foundations to keep agents useful in the tools people already use.
 
 This lets each product stand alone:
 
 - Surface can be adopted by any product that needs claim/evidence transparency.
 - Flow can be adopted by any product that needs evidence-gated process transparency.
 - Veritas can be adopted by software teams that need repo-local merge confidence.
-- Kagents can be adopted by users who want portable agent workflows across runtimes.
+- Flow Agents can be adopted by users who want portable agent workflows across runtimes.
 
 And it lets the product line cohere:
 
@@ -179,7 +179,7 @@ Good Flow messaging should pass these tests:
 The first wedge should be agentic development workflows:
 
 1. A user asks an agent to build something.
-2. Kagents routes the work into a Flow-backed path.
+2. Flow Agents routes the work into a Flow-backed path.
 3. Flow records plan, implementation, verification, publish, release, and learning gates.
 4. Veritas supplies repo readiness evidence where relevant.
 5. Hooks in Codex, Claude Code, Kiro, or GitHub Actions prevent premature stopping or advancement.

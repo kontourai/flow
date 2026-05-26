@@ -20,7 +20,7 @@ function usage() {
   flow init
   flow start <definition> [--run-id <id>] [--params key=value ...]
   flow status <run-id> [--format summary|json|markdown]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>]
   flow evaluate <run-id> [--gate <gate>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
   flow report <run-id> [--format summary|markdown|json]
@@ -122,7 +122,12 @@ async function main() {
       gate: requireArg(flags.gate, "--gate is required"),
       file: requireArg(flags.file, "--file is required"),
       kind: flags.kind,
-      status: flags.status
+      status: flags.status,
+      claimType: flags["claim-type"],
+      claimSubject: flags["claim-subject"],
+      claimStatus: flags["claim-status"],
+      producer: flags.producer,
+      authorityTrace: flags["authority-trace"]
     });
     console.log(`attached evidence: ${entry.id}`);
     console.log(`gate: ${entry.gate_id}`);

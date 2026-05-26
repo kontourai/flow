@@ -10,6 +10,34 @@
   "gates": {
     "plan-gate": { "step": "plan", "requires": ["acceptance-criteria"] },
     "implement-gate": { "step": "implement", "requires": ["scoped-diff"] },
-    "verify-gate": { "step": "verify", "requires": ["tests", "lint", "browser-evidence", "veritas-readiness"] }
+    "verify-gate": {
+      "step": "verify",
+      "expects": [
+        {
+          "id": "tests-passed",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Test results are ready for verification.",
+          "claim": {
+            "type": "quality.tests",
+            "subject": "builder.verify",
+            "accepted_statuses": ["trusted"]
+          }
+        },
+        {
+          "id": "browser-evidence-reviewed",
+          "kind": "surface.claim",
+          "required": false,
+          "description": "Browser evidence was reviewed when the change has a user-visible surface.",
+          "explore_hint": "Attach this claim for UI changes.",
+          "claim": {
+            "type": "quality.browser-evidence",
+            "subject": "builder.verify",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ],
+      "requires": ["tests", "lint", "browser-evidence", "veritas-readiness"]
+    }
   }
 }

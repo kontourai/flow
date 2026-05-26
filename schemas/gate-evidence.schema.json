@@ -22,10 +22,21 @@
         "gate_id": { "type": "string" },
         "kind": {
           "type": "string",
-          "enum": ["command", "file", "ci", "veritas-readiness", "human-attestation", "trace-link", "custom"]
+          "enum": ["command", "file", "ci", "surface.claim", "veritas-readiness", "human-attestation", "trace-link", "custom"]
         },
         "requested_kind": { "type": "string" },
         "status": { "type": "string", "enum": ["passed", "failed", "unknown"] },
+        "claim": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "type": { "type": "string" },
+            "subject": { "type": "string" },
+            "status": { "type": "string" }
+          }
+        },
+        "producer": { "type": "string" },
+        "authority_trace": { "type": "string" },
         "original_path": { "type": "string" },
         "stored_path": { "type": "string" },
         "sha256": { "type": "string" },

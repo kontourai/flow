@@ -32,7 +32,20 @@
           "status": { "type": "string", "enum": ["pass", "block", "route-back", "wait"] },
           "summary": { "type": "string" },
           "evidence_refs": { "type": "array", "items": { "type": "string" } },
-          "missing": { "type": "array", "items": { "type": "string" } }
+          "missing": { "type": "array", "items": { "type": "string" } },
+          "optional_missing": { "type": "array", "items": { "type": "string" } },
+          "matched_expectations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["expectation_id", "evidence_id"],
+              "additionalProperties": false,
+              "properties": {
+                "expectation_id": { "type": "string" },
+                "evidence_id": { "type": "string" }
+              }
+            }
+          }
         }
       }
     }

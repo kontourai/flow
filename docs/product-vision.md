@@ -39,7 +39,7 @@ Agents should be allowed to move quickly when evidence is strong. They should be
 
 ## Product Line Fit
 
-Kontour AI builds transparency building blocks for the AI era.
+Kontour AI shows the work behind AI.
 
 ```text
 Surface
@@ -54,7 +54,7 @@ Veritas
   Code/change transparency.
   Repo standards, requirements, evidence checks, merge readiness.
 
-Kagents
+Flow Agents
   Agent-facing workflow distribution.
   Modes, skills, runtime adapters, hooks, providers, console.
 ```
@@ -63,7 +63,7 @@ Flow is built with Surface. Normal Flow users should not need to operate Surface
 
 Veritas can provide evidence to Flow when a process gate needs repo/change readiness.
 
-Kagents can consume Flow when agent work needs stateful gates across Codex, Claude Code, Kiro, GitHub Actions, Hermes, Pi, Droid, and future runtimes.
+Flow Agents can consume Flow when agent work needs stateful gates across Codex, Claude Code, Kiro, GitHub Actions, Hermes, Pi, Droid, and future runtimes.
 
 ## What Flow Makes Possible
 
@@ -74,6 +74,8 @@ Flow records what path was expected and what path actually happened. A report sh
 ### Evidence-gated transitions
 
 A step does not complete just because an agent says it is done. Gates decide whether a transition is allowed, and gates require evidence.
+
+Gate expectations should be explicit enough to survive handoff. Flow Definitions use typed `expects` entries, including `kind: "surface.claim"` when a gate needs rich claim-backed evidence such as a decision, artifact, release, pull request, change, work item, Flow step, or Flow run claim.
 
 ### Context-safe continuation
 
@@ -86,6 +88,8 @@ Human approval should include what was being approved, why approval was needed, 
 ### Runtime-native enforcement
 
 Flow should not require a wrapper chat interface. Consumers can enforce Flow gates through hooks, CI jobs, workflow steps, MCP tools, CLIs, or embedded SDK calls.
+
+Flow Agents is one such consumer. It coordinates Flow Kits, runtime adapters, installs, and control surfaces while Flow remains the authority for gate semantics, project config, trusted producer mappings, and gate overrides.
 
 ### Portable reporting
 
@@ -114,6 +118,8 @@ The first publishable version is a local npm package:
 - a small gate evaluator
 - CLI commands for init, start, status, attach-evidence, evaluate, accept-exception, report, resume, and list
 - documented evidence kinds for command results, files, CI, Veritas readiness, human decisions, and trace links
+- typed gate expectations through `expects`, including `surface.claim`
+- project config for trusted producer mappings and gate overrides
 - Markdown and JSON Flow Reports
 - continuation from `.flow/runs/<run-id>/` without chat memory
 
@@ -130,7 +136,7 @@ Flow is working when:
 - workflow state survives handoff and context compaction
 - evidence can be inspected after the fact
 - consumers can integrate Flow without replacing their execution runtime
-- Surface, Veritas, and Kagents each remain focused
+- Surface, Veritas, and Flow Agents each remain focused
 
 ## One-Sentence Positioning
 

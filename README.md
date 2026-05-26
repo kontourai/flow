@@ -1,16 +1,29 @@
 # Kontour Flow
 
-Process transparency for agentic work.
+Process transparency for any required-path work. Flow shows why a process was allowed to move forward — gate by gate, with the evidence behind each transition.
 
-Flow records the required path for a piece of work, the evidence each gate expected, the evidence that was actually collected, and any exceptions accepted by a human authority. It does not run agents or replace CI. It explains why work was allowed to advance.
+Agents skip steps, accept weak evidence, summarize work as complete, and lose the thread after compaction. Flow is the small thing missing in the middle: a record of the required path, the evidence each gate expected, the evidence that was actually collected, and the exceptions that need explicit human trust. It does not run agents or replace CI. It does not replace the systems that run work. It explains why the work was allowed to advance.
 
-## Install
+## Quickstart
 
 ```sh
 npm install -D @kontourai/flow
+npx flow init
+npx flow start examples/agent-dev-flow.json --run-id dev-1847
+npx flow attach-evidence dev-1847 --gate verify-gate \
+  --file ./test-output.json --kind command
+npx flow report dev-1847
 ```
 
-## Quickstart
+## Status
+
+Flow v0.1 is local and file-backed.
+
+## First Wedge
+
+Agentic development workflows are the first wedge: plan, implementation, verification, publish, release, and learning gates with evidence that survives handoff and context compaction.
+
+## Example Summary
 
 ```sh
 npx flow init
@@ -76,6 +89,25 @@ The continuation contract is intentionally simple: `flow resume <run-id>` reads 
 
 Unknown kinds are accepted as `custom` and stored with the originally requested kind. The v0.1 CLI attaches evidence from files; richer adapters can write the same manifest shape.
 
+## Gate Expectations
+
+Flow Definitions describe what each gate expects before a run can advance. The typed form is `expects`, an array of expectation entries. Use `kind: "surface.claim"` when a gate needs rich evidence backed by a Surface claim instead of a simple evidence-kind string.
+
+A `surface.claim` expectation includes:
+
+- `id`
+- `kind: "surface.claim"`
+- `required`
+- `description`
+- `claim.type`
+- optional `claim.subject`
+- optional `claim.accepted_statuses`
+- optional `explore_hint`
+
+`claim.subject` is intentionally open so projects and kits can name their own process subjects. Common examples include `flow-run`, `flow-step`, `work-item`, `change`, `pull-request`, `release`, `decision`, and `artifact`.
+
+Project config owns trusted producer mappings and gate overrides. Flow Agents may author, adapt, or install that config as part of a kit or runtime adapter, but the authoritative source of truth is the Flow project config that Flow loads for the run.
+
 ## Gate Evaluation
 
 For the current step, `flow evaluate` applies the v0.1 rules:
@@ -109,4 +141,4 @@ Runtime code and tests reference the JSON Schemas in `schemas/`:
 
 ## Boundaries
 
-Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Kagents owns agent-facing workflow distribution.
+Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Flow Agents owns agent-facing workflow distribution.

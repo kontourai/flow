@@ -28,6 +28,22 @@ _Avoid_: Requirement, task as the only meaning, repo work area
 A decision point that determines whether a Flow Run may advance, stop, ask for a decision, or route back. Gates evaluate required evidence, missing evidence, exceptions, and transition rules.
 _Avoid_: Veritas requirement, generic approval, hidden prompt instruction
 
+**Gate Expectation**:
+A typed entry in a gate's `expects` array. A gate expectation states what evidence or claim must be present for the gate to pass, whether it is required, and how a human or agent should explore the missing evidence.
+_Avoid_: Unstructured checklist item, hidden prompt instruction, provider-specific rule
+
+**Surface Claim Expectation**:
+A gate expectation with `kind: "surface.claim"` for rich evidence backed by a Surface claim. It names an expectation `id`, `required`, `description`, `claim.type`, optional `claim.subject`, optional `claim.accepted_statuses`, and optional `explore_hint`.
+_Avoid_: Provider-specific evidence kind, hardcoded adapter behavior
+
+**Claim Subject**:
+An open vocabulary string that scopes what a claim is about. Common Flow and kit examples include `flow-run`, `flow-step`, `work-item`, `change`, `pull-request`, `release`, `decision`, and `artifact`, but Flow schema should allow other project-specific subject strings.
+_Avoid_: Closed enum unless a specific kit owns a narrower vocabulary
+
+**Project Config**:
+The Flow-owned project configuration that records trusted producer mappings and gate overrides for a project. Consumers may write or adapt this config, but Flow treats the project config as the authority source of truth during gate evaluation.
+_Avoid_: Flow Agents authority, adapter-owned policy, duplicated producer trust rules
+
 **Transition**:
 The movement from one step to another, including the reason it was allowed, blocked, skipped, or accepted by exception.
 _Avoid_: Implicit next step, uncontrolled agent continuation
@@ -56,8 +72,8 @@ _Avoid_: Surface as a required user-facing setup step
 The optional use of Veritas to supply repo readiness evidence for a Flow gate. Veritas owns repo standards and merge readiness; Flow records the Veritas readiness artifact as gate evidence.
 _Avoid_: Flow-owned repo standards, duplicating Veritas requirements
 
-**Kagents Consumer**:
-The first expected consumer of Flow. Kagents packages Flow-backed agent workflows, mode routing, skills, runtime adapters, hooks, provider settings, and Console views.
+**Flow Agents Consumer**:
+The first expected consumer of Flow. Flow Agents coordinates kits, runtime adapters, installs, control surfaces, skills, hooks, provider settings, and Console views. It can author, adapt, and install Flow project config, but it is not the authority source of truth for gate expectations, trusted producers, or project overrides.
 _Avoid_: Flow owning agent harness support directly
 
 ## Flagged Ambiguities
@@ -72,7 +88,7 @@ Use readiness carefully. Veritas owns Merge Readiness for repo changes. Flow may
 Workflow is acceptable in general prose, but Flow product language should prefer Flow Definition and Flow Run when precision matters.
 
 **Runtime**:
-Flow core should be agent- and runtime-agnostic. Runtime projection belongs in consumers such as Kagents unless a future Flow adapter package is deliberately created.
+Flow core should be agent- and runtime-agnostic. Runtime projection belongs in consumers such as Flow Agents unless a future Flow adapter package is deliberately created.
 
 ## Example Dialogue
 

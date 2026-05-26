@@ -42,12 +42,17 @@
     },
     "gate": {
       "type": "object",
-      "required": ["step", "requires"],
+      "required": ["step"],
       "additionalProperties": false,
       "properties": {
         "step": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "expects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/expectation" },
+          "uniqueItems": true
         },
         "requires": {
           "type": "array",
@@ -55,6 +60,49 @@
             "type": "string",
             "pattern": "^[a-z0-9][a-z0-9._-]*$"
           },
+          "uniqueItems": true
+        }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "required": ["id", "kind", "required", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "kind": { "type": "string", "const": "surface.claim" },
+        "required": { "type": "boolean" },
+        "description": { "type": "string", "minLength": 1 },
+        "explore_hint": { "type": "string", "minLength": 1 },
+        "claim": { "$ref": "#/$defs/surface_claim_expectation" }
+      },
+      "if": {
+        "properties": { "kind": { "const": "surface.claim" } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["claim"] }
+    },
+    "surface_claim_expectation": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "examples": ["builder.shape", "builder.plan", "builder.verify", "builder.merge-ready"]
+        },
+        "accepted_statuses": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
           "uniqueItems": true
         }
       }

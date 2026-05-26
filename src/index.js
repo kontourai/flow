@@ -10,6 +10,7 @@ export const BUILTIN_EVIDENCE_KINDS = new Set([
   "command",
   "file",
   "ci",
+  "surface.claim",
   "veritas-readiness",
   "human-attestation",
   "trace-link"
@@ -19,6 +20,10 @@ const STATUS_ORDER = ["pass", "block", "route-back", "wait"];
 
 export function flowRoot(cwd = process.cwd()) {
   return path.join(cwd, ".flow");
+}
+
+export function flowConfigPath(cwd = process.cwd()) {
+  return path.join(flowRoot(cwd), "config.json");
 }
 
 export function runDir(runId, cwd = process.cwd()) {
@@ -74,6 +79,25 @@ export function missingSummary(kind) {
     "veritas-readiness": "Veritas readiness missing"
   };
   return summaries[kind] ?? `${evidenceLabel(kind)} missing`;
+}
+
+export function expectationLabel(expectation) {
+  if (typeof expectation === "string") return evidenceLabel(expectation);
+  return expectation.description || expectation.id || expectation.claim?.type || expectation.kind;
+}
+
+export function defaultFlowConfig() {
+  return {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: {},
+    gate_overrides: {}
+  };
+}
+
+export async function loadFlowConfig(cwd = process.cwd()) {
+  const file = flowConfigPath(cwd);
+  if (!existsSync(file)) return defaultFlowConfig();
+  return { ...defaultFlowConfig(), ...(await readJson(file)) };
 }
 
 export function getStep(definition, stepId) {
@@ -140,7 +164,52 @@ export function attachedEvidenceFor(manifest, gateId) {
   return manifest.evidence.filter((entry) => entry.gate_id === gateId);
 }
 
-export function evaluateGate(definition, state, manifest, gateId) {
+export function expectationsForGate(gate, config = defaultFlowConfig()) {
+  const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
+  if (gate.expects?.length) {
+    return gate.expects.map((expectation) => ({
+      ...expectation,
+      claim: expectation.claim ? { ...expectation.claim } : undefined,
+      ...(overrides[expectation.id] ?? {}),
+      id: expectation.id
+    }));
+  }
+  return (gate.requires ?? []).map((requiredKind) => ({
+    id: requiredKind,
+    kind: "evidence.kind",
+    required: true,
+    description: evidenceLabel(requiredKind),
+    evidence_kind: requiredKind,
+    ...(overrides[requiredKind] ?? {})
+  }));
+}
+
+export function evidenceProducerTrusted(entry, expectation, config = defaultFlowConfig()) {
+  const claimType = expectation.claim?.type;
+  const override = config.gate_overrides?.[expectation.gate_id]?.expectations?.[expectation.id] ?? {};
+  const mapping = claimType ? config.trusted_producers?.[claimType] : null;
+  const trustedProducers = override.trusted_producers ?? mapping?.producers ?? [];
+  const trustedTraces = override.authority_traces ?? mapping?.authority_traces ?? [];
+  if (!trustedProducers.length && !trustedTraces.length) return true;
+  return trustedProducers.includes(entry.producer) || trustedTraces.includes(entry.authority_trace);
+}
+
+export function evidenceMatchesExpectation(entry, expectation, config = defaultFlowConfig()) {
+  if (expectation.kind === "evidence.kind") {
+    return evidenceMatchesRequirement(entry, expectation.evidence_kind) && entry.status !== "failed";
+  }
+  if (expectation.kind !== "surface.claim") return false;
+  if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return false;
+  if (entry.status === "failed") return false;
+  if (entry.claim?.type !== expectation.claim?.type) return false;
+  if (expectation.claim?.subject && entry.claim?.subject !== expectation.claim.subject) return false;
+  const accepted = expectation.accepted_statuses ?? expectation.claim?.accepted_statuses ?? ["trusted"];
+  const claimStatus = entry.claim?.status ?? entry.trust_status ?? entry.status;
+  if (!accepted.includes(claimStatus)) return false;
+  return evidenceProducerTrusted(entry, expectation, config);
+}
+
+export function evaluateGate(definition, state, manifest, gateId, config = defaultFlowConfig()) {
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 
@@ -167,7 +236,60 @@ export function evaluateGate(definition, state, manifest, gateId) {
     };
   }
 
-  const missing = gate.requires.filter((requiredKind) => {
+  const expectations = expectationsForGate(gate, config);
+  const matched = [];
+  const missingRequired = [];
+  const missingOptional = [];
+  for (const expectation of expectations) {
+    const expectationWithGate = { ...expectation, gate_id: gateId };
+    const match = evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config));
+    if (match) {
+      matched.push({ expectation_id: expectation.id, evidence_id: match.id });
+    } else if (expectation.required) {
+      missingRequired.push(expectation.id);
+    } else {
+      missingOptional.push(expectation.id);
+    }
+  }
+
+  if (missingRequired.length) {
+    const first = expectations.find((expectation) => expectation.id === missingRequired[0]);
+    return {
+      gate_id: gateId,
+      status: "block",
+      summary: `${expectationLabel(first)} missing`,
+      missing: missingRequired,
+      optional_missing: missingOptional,
+      matched_expectations: matched,
+      evidence_refs: evidence.map((entry) => entry.id)
+    };
+  }
+
+  if (!expectations.length) {
+    return {
+      gate_id: gateId,
+      status: "wait",
+      summary: `${slugLabel(gate.id)} waiting for evidence`,
+      evidence_refs: evidence.map((entry) => entry.id),
+      optional_missing: missingOptional,
+      matched_expectations: matched
+    };
+  }
+
+  return {
+    gate_id: gateId,
+    status: "pass",
+    summary: `${expectationLabel(expectations[0])} satisfied`,
+    evidence_refs: evidence.map((entry) => entry.id),
+    optional_missing: missingOptional,
+    matched_expectations: matched
+  };
+}
+
+export function legacyEvaluateGate(definition, state, manifest, gateId) {
+  const gate = findGate(definition, gateId);
+  const evidence = attachedEvidenceFor(manifest, gateId);
+  const missing = (gate.requires ?? []).filter((requiredKind) => {
     return !evidence.some((entry) => evidenceMatchesRequirement(entry, requiredKind) && entry.status !== "failed");
   });
 
@@ -254,13 +376,14 @@ export async function ensureFlowLayout(cwd = process.cwd()) {
   await mkdir(path.join(root, "definitions"), { recursive: true });
   await mkdir(path.join(root, "runs"), { recursive: true });
   await writeFile(path.join(root, "README.md"), flowReadme());
+  if (!existsSync(flowConfigPath(cwd))) await writeJson(flowConfigPath(cwd), defaultFlowConfig());
   const sample = await readJson(examplePath("agent-dev-flow.json"));
   await writeJson(path.join(root, "definitions", "agent-dev-flow.json"), sample);
   return root;
 }
 
 export function flowReadme() {
-  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains Flow Definition JSON files.\n- runs/<run-id>/ contains definition.json, state.json, evidence/, report.md, and report.json.\n- runs/<run-id>/evidence/manifest.json records attached evidence metadata.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
+  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- runs/<run-id>/ contains definition.json, state.json, evidence/, report.md, and report.json.\n- runs/<run-id>/evidence/manifest.json records attached evidence metadata.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
 }
 
 export function moduleRoot() {
@@ -290,11 +413,12 @@ export async function loadRun(runId, cwd = process.cwd()) {
   const dir = runDir(runId, cwd);
   const definition = await readJson(path.join(dir, "definition.json"));
   const state = await readJson(path.join(dir, "state.json"));
+  const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, "evidence", "manifest.json");
   const manifest = existsSync(manifestPath)
     ? await readJson(manifestPath)
     : { schema_version: FLOW_SCHEMA_VERSION, evidence: [] };
-  return { dir, definition, state, manifest };
+  return { dir, definition, state, manifest, config };
 }
 
 export async function saveRun(run) {
@@ -332,6 +456,17 @@ export async function attachEvidence(runId, options) {
     sha256: await sha256File(source),
     attached_at: new Date().toISOString()
   };
+  if (options.claimType) {
+    entry.kind = "surface.claim";
+    entry.requested_kind = "surface.claim";
+    entry.claim = {
+      type: options.claimType,
+      status: options.claimStatus ?? "trusted"
+    };
+    if (options.claimSubject) entry.claim.subject = options.claimSubject;
+  }
+  if (options.producer) entry.producer = options.producer;
+  if (options.authorityTrace) entry.authority_trace = options.authorityTrace;
   run.manifest.evidence.push(entry);
   await saveRun(run);
   return entry;
@@ -343,7 +478,7 @@ export async function evaluateRun(runId, options = {}) {
   if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
   const outcomes = [];
   for (const gate of gates) {
-    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id);
+    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
     applyEvaluation(run.definition, run.state, outcome);
     outcomes.push(outcome);
     if (outcome.status !== "pass") break;
@@ -414,7 +549,9 @@ export function reportJson(definition, state, manifest) {
         status: outcome?.status ?? "wait",
         summary: outcome?.summary ?? `${slugLabel(gateId)} waiting`,
         evidence_refs: evidence.map((entry) => entry.id),
-        missing: outcome?.missing ?? []
+        missing: outcome?.missing ?? [],
+        optional_missing: outcome?.optional_missing ?? [],
+        matched_expectations: outcome?.matched_expectations ?? []
       };
     })
   };
@@ -438,6 +575,7 @@ export function renderMarkdownReport(definition, state, manifest) {
   for (const gate of report.gate_summaries) {
     lines.push(`- ${gate.status.toUpperCase()} ${slugLabel(gate.gate_id)}: ${gate.summary}`);
     if (gate.missing?.length) lines.push(`  - Missing: ${gate.missing.map(evidenceLabel).join(", ")}`);
+    if (gate.optional_missing?.length) lines.push(`  - Optional missing: ${gate.optional_missing.map(evidenceLabel).join(", ")}`);
     if (gate.evidence_refs.length) lines.push(`  - Evidence: ${gate.evidence_refs.join(", ")}`);
   }
   lines.push("", "## Accepted Exceptions", "");
@@ -477,7 +615,7 @@ export function renderSummary(definition, state) {
     const statusLabel = status === "pass" ? "PASS" : status === "block" ? "BLOCK" : status === "route-back" ? "ROUTE-BACK" : "WAIT";
     lines.push(`${statusLabel.padEnd(5)} ${slugLabel(gateId)}: ${outcome?.summary ?? `${slugLabel(gateId)} waiting`}`);
     if (outcome?.missing?.length) {
-      lines.push(`      expected: ${gate.requires.map(evidenceLabel).join(", ")}`);
+      lines.push(`      expected: ${expectationsForGate(gate).filter((entry) => entry.required).map(expectationLabel).join(", ")}`);
     }
   }
   lines.push("", `next action: ${state.next_action}`);
