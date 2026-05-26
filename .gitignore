@@ -1,7 +1,6 @@
 node_modules/
 dist/
 .flow/
-.agents/
 *.tgz
 .surface/
 .veritas/
