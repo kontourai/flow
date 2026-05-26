@@ -1,0 +1,44 @@
+{
+  "schema_version": "0.1",
+  "evidence": [
+    {
+      "id": "ev.pass-trust-report",
+      "gate_id": "verify-gate",
+      "kind": "surface.claim",
+      "requested_kind": "surface.claim",
+      "status": "passed",
+      "claim": {
+        "type": "quality.tests",
+        "subject": "flow-step.verify",
+        "status": "trusted"
+      },
+      "producer": "surface-fixture/ci",
+      "authority_traces": [
+        "project-policy:main"
+      ],
+      "trust_artifact": {
+        "schema_version": "0.1",
+        "artifact_type": "trust-report",
+        "subject": "flow-step.verify",
+        "producer": "surface-fixture/ci",
+        "status": "trusted",
+        "issued_at": "2026-05-26T00:00:00.000Z",
+        "authority_traces": [
+          "project-policy:main"
+        ],
+        "claims": [
+          {
+            "type": "quality.tests",
+            "subject": "flow-step.verify",
+            "status": "trusted",
+            "issued_at": "2026-05-26T00:00:00.000Z"
+          }
+        ],
+        "integrity": {
+          "verified": true
+        }
+      },
+      "attached_at": "2026-05-26T00:00:00.000Z"
+    }
+  ]
+}
