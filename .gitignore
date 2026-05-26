@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.flow/
+*.tgz
 .surface/
 .veritas/
 .DS_Store

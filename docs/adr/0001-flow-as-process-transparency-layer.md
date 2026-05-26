@@ -8,9 +8,9 @@ Accepted
 
 ## Context
 
-Kagents needs portable workflow enforcement across agent harnesses. Veritas already provides repo and AI-agent governance for code changes, built with Surface. Surface already provides the foundation for claims, evidence, policies, trust snapshots, freshness, and transparency gaps.
+Flow Agents needs portable workflow enforcement across agent harnesses. Veritas already provides repo and AI-agent governance for code changes, built with Surface. Surface already provides the foundation for claims, evidence, policies, trust snapshots, freshness, and transparency gaps.
 
-If Kagents owns all workflow enforcement directly, it risks becoming an unfocused mix of agent distribution, process engine, governance system, dashboard, and orchestration platform. If Veritas owns all workflow enforcement, it risks expanding beyond repo/change governance into generic process semantics.
+If Flow Agents owns all workflow enforcement directly, it risks becoming an unfocused mix of agent distribution, process engine, governance system, dashboard, and orchestration platform. If Veritas owns all workflow enforcement, it risks expanding beyond repo/change governance into generic process semantics.
 
 We need a focused layer for process transparency that can be used by agent products without duplicating Veritas or Surface.
 
@@ -36,31 +36,31 @@ Flow does not own:
 - Veritas repo standards or merge readiness
 - agent runtime execution
 - multi-agent orchestration
-- Kagents modes, skills, provider settings, or runtime adapters
+- Flow Agents modes, skills, provider settings, or runtime adapters
 
-Kagents will be the first consumer of Flow. Veritas may be used as an optional evidence provider for Flow gates that involve repo readiness.
+Flow Agents will be the first consumer of Flow. It coordinates Flow Kits, runtime adapters, installs, and agent-facing control surfaces. Veritas may be used as an optional evidence provider for Flow gates that involve repo readiness.
 
 ## Consequences
 
 Positive:
 
-- Kagents can stay focused on agent-facing workflows and runtime portability.
+- Flow Agents can stay focused on agent-facing workflows and runtime portability.
 - Veritas stays focused on repo/change governance.
 - Flow can support non-development processes without importing Veritas concepts.
 - Surface remains the shared transparency foundation.
-- Agent harness support can live in Kagents instead of Flow core.
+- Agent harness support can live in Flow Agents instead of Flow core.
 
 Trade-offs:
 
 - There is one more product boundary to explain.
 - Early Flow schemas must avoid duplicating Veritas requirements or Surface policies.
-- Kagents will need an adapter layer from existing workflow sidecars to Flow runs.
+- Flow Agents will need an adapter layer from existing workflow sidecars to Flow runs.
 
 ## Alternatives Considered
 
-### Keep Flow Inside Kagents
+### Keep Flow Inside Flow Agents
 
-Rejected because workflow enforcement is useful beyond Kagents and would make Kagents responsible for both agent distribution and the generic enforcement kernel.
+Rejected because workflow enforcement is useful beyond Flow Agents and would make Flow Agents responsible for both agent distribution and the generic enforcement kernel.
 
 ### Put Generic Workflow Enforcement Inside Veritas
 
