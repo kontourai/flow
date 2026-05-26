@@ -15,7 +15,8 @@ import {
   renderResume,
   renderSummary,
   reportJson,
-  validateDefinition
+  validateDefinition,
+  validateDefinitionWithDiagnostics
 } from "../src/index.js";
 
 const execFile = promisify(execFileCallback);
@@ -154,6 +155,54 @@ test("legacy definitions without route-back fields remain valid", () => {
     }
   };
   assert.doesNotThrow(() => validateDefinition(legacyDefinition));
+});
+
+test("diagnostic validation preserves valid Builder Kit and legacy definitions", async () => {
+  const builderKitDefinition = await json("examples/builder-kit-flow.json");
+  const result = validateDefinitionWithDiagnostics(builderKitDefinition);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.doesNotThrow(() => validateDefinition(builderKitDefinition));
+
+  const legacyDefinition = {
+    id: "legacy-flow",
+    version: "1",
+    steps: [
+      { id: "plan", next: "verify" },
+      { id: "verify", next: null }
+    ],
+    gates: {
+      "verify-gate": { step: "verify", requires: ["tests", "lint"] }
+    }
+  };
+  assert.deepEqual(validateDefinitionWithDiagnostics(legacyDefinition), {
+    valid: true,
+    diagnostics: []
+  });
+  assert.doesNotThrow(() => validateDefinition(legacyDefinition));
+});
+
+test("diagnostic validation reports invalid claim expectations and route targets", async () => {
+  const definition = await json("examples/invalid-claim-expectation-flow.json");
+  const result = validateDefinitionWithDiagnostics(definition);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [
+    "definition.expectation.claim.required",
+    "definition.expectation.claim.type.required",
+    "definition.expectation.claim.accepted_statuses.invalid",
+    "definition.expectation.kind.unsupported",
+    "definition.gate.route_back.target.unknown",
+    "definition.gate.route_back_policy.on_exceeded.unknown"
+  ]);
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.path), [
+    "$.gates.verify-gate.expects[0].claim",
+    "$.gates.verify-gate.expects[1].claim.type",
+    "$.gates.verify-gate.expects[2].claim.accepted_statuses",
+    "$.gates.verify-gate.expects[3].kind",
+    "$.gates.verify-gate.on_route_back.implementation_defect",
+    "$.gates.verify-gate.route_back_policy.on_exceeded"
+  ]);
+  assert.throws(() => validateDefinition(definition), /surface\.claim expectations must include claim/);
 });
 
 test("route-back definitions accept block on_exceeded and open route reasons", () => {
@@ -550,4 +599,30 @@ test("CLI records route-back metadata and only route_reason selects the route", 
   assert.equal(gate.route_reason, "implementation_defect");
   assert.equal(gate.analytics_loop_key, "cli:flag-loop");
   assert.deepEqual(gate.diagnostics, { claimed_target: "plan" });
+});
+
+test("CLI validates arbitrary Flow Definition files with JSON diagnostics", async () => {
+  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/builder-kit-flow.json", "--json"], {
+    cwd: new URL("..", import.meta.url).pathname
+  });
+  const validPayload = JSON.parse(valid.stdout);
+  assert.equal(validPayload.valid, true);
+  assert.equal(validPayload.error_count, 0);
+  assert.deepEqual(validPayload.diagnostics, []);
+
+  await assert.rejects(
+    async () => execFile(process.execPath, [cli, "validate-definition", "examples/invalid-claim-expectation-flow.json", "--json"], {
+      cwd: new URL("..", import.meta.url).pathname
+    }),
+    (error) => {
+      const payload = JSON.parse(error.stdout);
+      assert.equal(error.code, 1);
+      assert.equal(payload.valid, false);
+      assert.equal(payload.error_count, 6);
+      assert.equal(payload.diagnostics[0].code, "definition.expectation.claim.required");
+      assert.equal(payload.diagnostics[0].path, "$.gates.verify-gate.expects[0].claim");
+      return true;
+    }
+  );
 });
