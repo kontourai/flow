@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -27,6 +27,14 @@ const execFile = promisify(execFileCallback);
 
 async function json(file) {
   return JSON.parse(await readFile(new URL(`../${file}`, import.meta.url), "utf8"));
+}
+
+async function surfaceClaimFixture(file) {
+  return json(`examples/fixtures/surface-claims/${file}`);
+}
+
+async function surfaceClaimEvidenceFixture(file) {
+  return surfaceClaimFixture(`evidence/${file}`);
 }
 
 function requireSchemaFields(schema, fields) {
@@ -466,6 +474,112 @@ test("runtime-generated run and report satisfy required schema fields", async ()
   assert.equal(state.definition_id, definition.id);
   assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(report.definition_id, definition.id);
+});
+
+function assertSurfaceClaimManifestShape(manifest, file) {
+  assert.equal(manifest.schema_version, FLOW_SCHEMA_VERSION, `${file} schema_version`);
+  assert.ok(Array.isArray(manifest.evidence), `${file} evidence must be an array`);
+  for (const entry of manifest.evidence) {
+    assert.equal(entry.gate_id, "verify-gate", `${file} gate_id`);
+    assert.equal(entry.kind, "surface.claim", `${file} kind`);
+    assert.equal(entry.requested_kind, "surface.claim", `${file} requested_kind`);
+    assert.ok(["passed", "failed", "unknown"].includes(entry.status), `${file} status`);
+    assert.match(entry.attached_at, /^\d{4}-\d{2}-\d{2}T/, `${file} attached_at`);
+    assert.equal(entry.claim?.type, "quality.tests", `${file} claim.type`);
+    assert.ok(entry.claim?.status, `${file} claim.status`);
+    assert.ok(entry.trust_artifact, `${file} trust_artifact`);
+    assert.equal(entry.trust_artifact.schema_version, FLOW_SCHEMA_VERSION, `${file} trust_artifact.schema_version`);
+    assert.ok(["trust-report", "trust-snapshot"].includes(entry.trust_artifact.artifact_type), `${file} artifact_type`);
+    assert.ok(Array.isArray(entry.trust_artifact.claims), `${file} trust_artifact.claims`);
+    assert.ok(entry.trust_artifact.claims.length > 0, `${file} trust_artifact.claims length`);
+    for (const claim of entry.trust_artifact.claims) {
+      assert.equal(claim.type, "quality.tests", `${file} trust_artifact claim.type`);
+      const allowed = new Set(["type", "subject", "status", "producer", "issued_at", "expires_at", "authority_traces"]);
+      assert.deepEqual(Object.keys(claim).filter((key) => !allowed.has(key)), [], `${file} trust_artifact claim has neutral fields`);
+    }
+  }
+}
+
+test("fixture-backed Surface claim manifests satisfy the neutral fixture shape", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  assert.doesNotThrow(() => validateDefinition(definition));
+  assert.equal(definition.gates["verify-gate"].expects[0].kind, "surface.claim");
+
+  const config = await surfaceClaimFixture("flow-config.json");
+  assert.equal(config.schema_version, FLOW_SCHEMA_VERSION);
+  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["surface-fixture/ci"]);
+  assert.deepEqual(config.trusted_producers["quality.tests"].authority_traces, ["project-policy:main"]);
+
+  const evidenceDir = new URL("../examples/fixtures/surface-claims/evidence/", import.meta.url);
+  const files = (await readdir(evidenceDir)).filter((file) => file.endsWith(".json")).sort();
+  assert.deepEqual(files, [
+    "fail-authority-gap.json",
+    "fail-integrity-mismatch.json",
+    "fail-missing-claim.json",
+    "fail-rejected-claim.json",
+    "fail-stale-claim.json",
+    "fail-subject-mismatch.json",
+    "fail-untrusted-producer.json",
+    "pass-trust-report.json",
+    "pass-trust-snapshot.json"
+  ]);
+
+  for (const file of files) {
+    assertSurfaceClaimManifestShape(await surfaceClaimEvidenceFixture(file), file);
+  }
+});
+
+test("fixture-backed Surface claim matching covers pass and diagnostic route-back cases", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const config = await surfaceClaimFixture("flow-config.json");
+
+  const passFiles = ["pass-trust-report.json", "pass-trust-snapshot.json"];
+  for (const file of passFiles) {
+    const state = initialState(definition, `fixture-${file}`);
+    state.current_step = "verify";
+    const outcome = evaluateGate(definition, state, await surfaceClaimEvidenceFixture(file), "verify-gate", config);
+    assert.equal(outcome.status, "pass", file);
+    assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: `ev.${file.replace(".json", "")}` }], file);
+    assert.equal(outcome.diagnostics, undefined, file);
+  }
+
+  const missingState = initialState(definition, "fixture-fail-missing-claim");
+  missingState.current_step = "verify";
+  const missing = evaluateGate(definition, missingState, await surfaceClaimEvidenceFixture("fail-missing-claim.json"), "verify-gate", config);
+  assert.equal(missing.status, "route-back");
+  assert.equal(missing.route_reason, "missing_evidence");
+  assert.deepEqual(missing.missing, ["tests-passed"]);
+  assert.deepEqual(missing.matched_expectations, []);
+  assert.equal(missing.diagnostics, undefined);
+
+  const failureCases = [
+    ["fail-stale-claim.json", "stale", config],
+    ["fail-rejected-claim.json", "rejected", config],
+    ["fail-untrusted-producer.json", "untrusted_producer", config],
+    ["fail-subject-mismatch.json", "subject_mismatch", config],
+    ["fail-integrity-mismatch.json", "integrity_mismatch", config],
+    ["fail-authority-gap.json", "authority_gap", {
+      ...config,
+      trusted_producers: {
+        "quality.tests": {
+          authority_traces: ["project-policy:main"]
+        }
+      }
+    }]
+  ];
+
+  for (const [file, reason, caseConfig] of failureCases) {
+    const state = initialState(definition, `fixture-${file}`);
+    state.current_step = "verify";
+    const outcome = evaluateGate(definition, state, await surfaceClaimEvidenceFixture(file), "verify-gate", caseConfig);
+    assert.equal(outcome.status, "route-back", file);
+    assert.equal(outcome.route_reason, "missing_evidence", file);
+    assert.deepEqual(outcome.missing, ["tests-passed"], file);
+    assert.deepEqual(outcome.matched_expectations, [], file);
+    assert.equal(outcome.diagnostics.claim_evaluation[0].expectation_id, "tests-passed", file);
+    assert.equal(outcome.diagnostics.claim_evaluation[0].evidence_id, `ev.${file.replace(".json", "")}`, file);
+    assert.equal(outcome.diagnostics.claim_evaluation[0].reason, reason, file);
+  }
 });
 
 test("surface claim expectations evaluate required, optional, trusted producer, and overrides", async () => {

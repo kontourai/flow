@@ -1,0 +1,46 @@
+{
+  "id": "surface-claim-fixture-flow",
+  "version": "1",
+  "steps": [
+    {
+      "id": "plan",
+      "next": "verify"
+    },
+    {
+      "id": "verify",
+      "next": "publish"
+    },
+    {
+      "id": "publish",
+      "next": null
+    }
+  ],
+  "gates": {
+    "verify-gate": {
+      "step": "verify",
+      "expects": [
+        {
+          "id": "tests-passed",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Tests passed for the verify step.",
+          "claim": {
+            "type": "quality.tests",
+            "subject": "flow-step.verify",
+            "accepted_statuses": [
+              "trusted"
+            ]
+          }
+        }
+      ],
+      "on_route_back": {
+        "missing_evidence": "verify",
+        "default": "plan"
+      },
+      "route_back_policy": {
+        "max_attempts": 2,
+        "on_exceeded": "block"
+      }
+    }
+  }
+}
