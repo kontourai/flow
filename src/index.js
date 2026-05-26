@@ -670,7 +670,34 @@ export function evidenceProducerTrusted(entry, expectation, config = defaultFlow
   const trustedProducers = override.trusted_producers ?? mapping?.producers ?? [];
   const trustedTraces = override.authority_traces ?? mapping?.authority_traces ?? [];
   if (!trustedProducers.length && !trustedTraces.length) return true;
-  return trustedProducers.includes(entry.producer) || trustedTraces.includes(entry.authority_trace);
+  return trustedProducers.includes(entry.producer) || trustedTraces.some((trace) => evidenceAuthorityTraces(entry).includes(trace));
+}
+
+function evidenceAuthorityTraces(entry) {
+  return [
+    entry.authority_trace,
+    ...(Array.isArray(entry.authority_traces) ? entry.authority_traces : []),
+    ...(Array.isArray(entry.trust_artifact?.authority_traces) ? entry.trust_artifact.authority_traces : [])
+  ].filter(Boolean);
+}
+
+function evidenceClaimDiagnostic(entry, expectation, config = defaultFlowConfig()) {
+  if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return null;
+  if (entry.status === "failed") return "rejected";
+  if (entry.trust_artifact?.integrity?.verified === false || entry.diagnostics?.trust_artifact?.reason === "integrity_mismatch") return "integrity_mismatch";
+  if (entry.claim?.type !== expectation.claim?.type) return null;
+  if (expectation.claim?.subject && entry.claim?.subject !== expectation.claim.subject) return "subject_mismatch";
+  const accepted = expectation.accepted_statuses ?? expectation.claim?.accepted_statuses ?? ["trusted"];
+  const claimStatus = entry.claim?.status ?? entry.trust_status ?? entry.status;
+  if (!accepted.includes(claimStatus)) return claimStatus === "stale" ? "stale" : "rejected";
+  const claimType = expectation.claim?.type;
+  const override = config.gate_overrides?.[expectation.gate_id]?.expectations?.[expectation.id] ?? {};
+  const mapping = claimType ? config.trusted_producers?.[claimType] : null;
+  const trustedProducers = override.trusted_producers ?? mapping?.producers ?? [];
+  const trustedTraces = override.authority_traces ?? mapping?.authority_traces ?? [];
+  if (trustedProducers.length && !trustedProducers.includes(entry.producer)) return "untrusted_producer";
+  if (trustedTraces.length && !trustedTraces.some((trace) => evidenceAuthorityTraces(entry).includes(trace))) return "authority_gap";
+  return null;
 }
 
 export function evidenceMatchesExpectation(entry, expectation, config = defaultFlowConfig()) {
@@ -686,6 +713,20 @@ export function evidenceMatchesExpectation(entry, expectation, config = defaultF
   const claimStatus = entry.claim?.status ?? entry.trust_status ?? entry.status;
   if (!accepted.includes(claimStatus)) return false;
   return evidenceProducerTrusted(entry, expectation, config);
+}
+
+function claimDiagnosticsForExpectation(evidence, expectation, config = defaultFlowConfig()) {
+  const diagnostics = [];
+  for (const entry of evidence) {
+    const reason = evidenceClaimDiagnostic(entry, expectation, config);
+    if (!reason) continue;
+    diagnostics.push({
+      expectation_id: expectation.id,
+      evidence_id: entry.id,
+      reason
+    });
+  }
+  return diagnostics;
 }
 
 export function evaluateGate(definition, state, manifest, gateId, config = defaultFlowConfig()) {
@@ -720,6 +761,7 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
   const matched = [];
   const missingRequired = [];
   const missingOptional = [];
+  const claimDiagnostics = [];
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
     const match = evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config));
@@ -727,10 +769,13 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
       matched.push({ expectation_id: expectation.id, evidence_id: match.id });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(evidence, expectationWithGate, config));
     } else {
       missingOptional.push(expectation.id);
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(evidence, expectationWithGate, config));
     }
   }
+  const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics } : undefined;
 
   if (missingRequired.length) {
     const first = expectations.find((expectation) => expectation.id === missingRequired[0]);
@@ -743,7 +788,8 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
         missing: missingRequired,
         optional_missing: missingOptional,
         matched_expectations: matched,
-        ...route
+        ...route,
+        ...(diagnosticPayload ? { diagnostics: { ...(route.diagnostics ?? {}), ...diagnosticPayload } } : {})
       };
     }
     return {
@@ -753,6 +799,7 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
       missing: missingRequired,
       optional_missing: missingOptional,
       matched_expectations: matched,
+      ...(diagnosticPayload ? { diagnostics: diagnosticPayload } : {}),
       evidence_refs: evidence.map((entry) => entry.id)
     };
   }
@@ -774,7 +821,8 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
     summary: `${expectationLabel(expectations[0])} satisfied`,
     evidence_refs: evidence.map((entry) => entry.id),
     optional_missing: missingOptional,
-    matched_expectations: matched
+    matched_expectations: matched,
+    ...(diagnosticPayload ? { diagnostics: diagnosticPayload } : {})
   };
 }
 
@@ -963,6 +1011,53 @@ export async function sha256File(file) {
   return createHash("sha256").update(data).digest("hex");
 }
 
+function firstArrayValue(value) {
+  return Array.isArray(value) ? value[0] : undefined;
+}
+
+export function normalizeTrustArtifact(artifact, fileSha256, now = new Date()) {
+  if (!isObject(artifact)) throw new Error("trust artifact must be a JSON object");
+  const artifactType = artifact.artifact_type ?? artifact.type;
+  if (!["trust-report", "trust-snapshot"].includes(artifactType)) throw new Error("trust artifact artifact_type must be trust-report or trust-snapshot");
+  const claim = firstArrayValue(artifact.claims) ?? artifact.claim;
+  if (!isObject(claim)) throw new Error("trust artifact must include a claim or claims[0]");
+  if (!isNonEmptyString(claim.type)) throw new Error("trust artifact claim.type is required");
+  const subject = claim.subject ?? artifact.subject;
+  if (subject !== undefined && !isNonEmptyString(subject)) throw new Error("trust artifact subject must be a non-empty string when present");
+  const expiresAt = artifact.expires_at ?? claim.expires_at;
+  const artifactStatus = claim.status ?? artifact.status ?? "trusted";
+  const stale = expiresAt ? Date.parse(expiresAt) <= now.getTime() : false;
+  const expectedSha256 = artifact.integrity?.sha256 ?? artifact.sha256;
+  const integrityVerified = !expectedSha256 || expectedSha256 === fileSha256;
+  const status = !integrityVerified ? "integrity_mismatch" : stale ? "stale" : artifactStatus;
+  const projection = {
+    schema_version: artifact.schema_version ?? FLOW_SCHEMA_VERSION,
+    artifact_type: artifactType,
+    subject,
+    producer: artifact.producer ?? claim.producer,
+    status: artifact.status ?? artifactStatus,
+    issued_at: artifact.issued_at ?? claim.issued_at,
+    expires_at: expiresAt,
+    authority_traces: artifact.authority_traces ?? claim.authority_traces ?? [],
+    claims: Array.isArray(artifact.claims) ? artifact.claims : [claim],
+    integrity: {
+      ...(isObject(artifact.integrity) ? artifact.integrity : {}),
+      verified: integrityVerified
+    }
+  };
+  return {
+    trust_artifact: projection,
+    claim: {
+      type: claim.type,
+      status,
+      ...(subject ? { subject } : {})
+    },
+    producer: projection.producer,
+    authority_traces: projection.authority_traces,
+    diagnostics: integrityVerified ? undefined : { trust_artifact: { reason: "integrity_mismatch", expected_sha256: expectedSha256, actual_sha256: fileSha256 } }
+  };
+}
+
 export async function attachEvidence(runId, options) {
   const run = await loadRun(runId, options.cwd);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
@@ -976,6 +1071,7 @@ export async function attachEvidence(runId, options) {
   const storedName = `${id}${ext}`;
   const storedPath = path.join(run.dir, "evidence", storedName);
   await copyFile(source, storedPath);
+  const sourceSha256 = await sha256File(source);
   const entry = {
     id,
     gate_id: options.gate,
@@ -984,15 +1080,30 @@ export async function attachEvidence(runId, options) {
     status: options.status ?? "passed",
     original_path: options.file,
     stored_path: path.join("evidence", storedName),
-    sha256: await sha256File(source),
+    sha256: sourceSha256,
     attached_at: new Date().toISOString()
   };
+  if (options.trustArtifact) {
+    const artifact = await readJson(source);
+    const normalized = normalizeTrustArtifact(artifact, sourceSha256);
+    entry.kind = "surface.claim";
+    entry.requested_kind = "surface.claim";
+    entry.claim = normalized.claim;
+    entry.trust_artifact = normalized.trust_artifact;
+    if (normalized.producer) entry.producer = normalized.producer;
+    if (normalized.authority_traces?.length) {
+      entry.authority_traces = normalized.authority_traces;
+      entry.authority_trace = normalized.authority_traces[0];
+    }
+    if (normalized.diagnostics) entry.diagnostics = normalized.diagnostics;
+  }
   if (options.claimType) {
     entry.kind = "surface.claim";
     entry.requested_kind = "surface.claim";
     entry.claim = {
+      ...(entry.claim ?? {}),
       type: options.claimType,
-      status: options.claimStatus ?? "trusted"
+      status: options.claimStatus ?? entry.claim?.status ?? "trusted"
     };
     if (options.claimSubject) entry.claim.subject = options.claimSubject;
   }
@@ -1129,6 +1240,9 @@ export function renderMarkdownReport(definition, state, manifest) {
     lines.push(`- ${gate.status.toUpperCase()} ${slugLabel(gate.gate_id)}: ${gate.summary}`);
     if (gate.missing?.length) lines.push(`  - Missing: ${gate.missing.map(evidenceLabel).join(", ")}`);
     if (gate.optional_missing?.length) lines.push(`  - Optional missing: ${gate.optional_missing.map(evidenceLabel).join(", ")}`);
+    if (gate.diagnostics?.claim_evaluation?.length) {
+      lines.push(`  - Claim diagnostics: ${gate.diagnostics.claim_evaluation.map((entry) => `${entry.expectation_id}/${entry.evidence_id}:${entry.reason}`).join(", ")}`);
+    }
     if (gate.evidence_refs.length) lines.push(`  - Evidence: ${gate.evidence_refs.join(", ")}`);
     if (gate.status === "route-back" || gate.limit_exceeded) {
       const attempt = gate.attempt ? `${gate.attempt}${gate.max_attempts ? `/${gate.max_attempts}` : ""}` : "n/a";
@@ -1178,6 +1292,9 @@ export function renderSummary(definition, state) {
     lines.push(`${statusLabel.padEnd(5)} ${slugLabel(gateId)}: ${outcome?.summary ?? `${slugLabel(gateId)} waiting`}`);
     if (outcome?.missing?.length) {
       lines.push(`      expected: ${expectationsForGate(gate).filter((entry) => entry.required).map(expectationLabel).join(", ")}`);
+    }
+    if (outcome?.diagnostics?.claim_evaluation?.length) {
+      lines.push(`      claim diagnostics: ${outcome.diagnostics.claim_evaluation.map((entry) => entry.reason).join(", ")}`);
     }
     if (outcome?.status === "route-back" || outcome?.limit_exceeded) {
       const attempt = outcome.attempt ? `${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "n/a";

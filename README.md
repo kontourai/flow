@@ -123,6 +123,41 @@ A `surface.claim` expectation includes:
 
 Project config owns trusted producer mappings and gate overrides. Flow Agents may author, adapt, or install that config as part of a kit or runtime adapter, but the authoritative source of truth is the Flow project config that Flow loads for the run.
 
+### Surface TrustReport Evidence
+
+A `surface.claim` evidence entry may be backed by a copied Surface TrustReport or Trust Snapshot JSON file:
+
+```sh
+npx flow attach-evidence <run-id> \
+  --gate verify-gate \
+  --file ./trust-report.json \
+  --trust-artifact
+```
+
+Flow consumes a neutral artifact shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "artifact_type": "trust-report",
+  "subject": "builder.verify",
+  "producer": "ci/main",
+  "status": "trusted",
+  "issued_at": "2026-05-26T00:00:00.000Z",
+  "expires_at": "2026-06-02T00:00:00.000Z",
+  "authority_traces": ["github:main"],
+  "claims": [
+    { "type": "quality.tests", "status": "trusted" }
+  ]
+}
+```
+
+`artifact_type` is `trust-report` or `trust-snapshot`. Flow projects the first claim into the normal `claim.type`, `claim.subject`, and `claim.status` matching fields. Explicit `--claim-*`, `--producer`, and `--authority-trace` flags still work and can override the parsed projection for local workflows.
+
+Gate evaluation accepts only claims whose type, optional subject, accepted status, freshness, trusted producer or authority trace, and local integrity metadata satisfy the Flow expectation and `.flow/config.json`. Unsatisfied artifacts are not hidden as generic missing evidence: reports include claim diagnostic reason codes such as `stale`, `rejected`, `untrusted_producer`, `authority_gap`, `integrity_mismatch`, and `subject_mismatch`.
+
+This is a Surface-shaped Flow contract. Flow does not import Veritas internals or use Veritas-specific schema fields as the runtime contract. Veritas may produce evidence, but Flow evaluates only the neutral artifact fields above plus the Flow Definition and project config.
+
 ## Project Config Merge
 
 Kits can propose Flow project config, but local `.flow/config.json` remains authoritative. Preview a proposal before applying it:

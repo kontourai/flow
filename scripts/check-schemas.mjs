@@ -12,6 +12,7 @@ import {
   evaluateGate,
   FLOW_SCHEMA_VERSION,
   initialState,
+  normalizeTrustArtifact,
   previewFlowConfigMerge,
   renderMarkdownReport,
   renderConfigMergeMarkdown,
@@ -113,6 +114,10 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
   assert.ok(evidenceSchema.$defs.evidence.properties.route_reason);
+  assert.ok(evidenceSchema.$defs.evidence.properties.trust_artifact);
+  assert.equal(evidenceSchema.$defs.evidence.properties.trust_artifact.additionalProperties, false);
+  assert.equal(evidenceSchema.$defs.evidence.properties.trust_artifact.properties.claims.items.additionalProperties, false);
+  assert.ok(evidenceSchema.$defs.evidence.properties.authority_traces);
   assert.ok(evidenceSchema.$defs.evidence.properties.classifier);
   assert.ok(runSchema.$defs.gate_outcome.properties.route_reason);
   assert.ok(runSchema.$defs.transition.properties.route_reason);
@@ -130,6 +135,43 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(configMergeReportSchema.$defs.change.properties.path);
   assert.ok(configMergeReportSchema.$defs.change.properties.section);
   assert.ok(configMergeReportSchema.$defs.change.properties.local_value);
+});
+
+test("neutral Surface trust artifacts normalize through Surface contract fields", () => {
+  const normalized = normalizeTrustArtifact({
+    schema_version: "0.1",
+    artifact_type: "trust-report",
+    subject: "builder.verify",
+    producer: "ci/main",
+    status: "trusted",
+    issued_at: "2026-05-26T00:00:00.000Z",
+    authority_traces: ["github:main"],
+    claims: [{ type: "quality.tests", status: "trusted" }]
+  }, "abc123", new Date("2026-05-26T00:00:00.000Z"));
+
+  assert.equal(normalized.claim.type, "quality.tests");
+  assert.equal(normalized.claim.subject, "builder.verify");
+  assert.equal(normalized.claim.status, "trusted");
+  assert.equal(normalized.producer, "ci/main");
+  assert.deepEqual(normalized.authority_traces, ["github:main"]);
+  assert.equal(normalized.trust_artifact.artifact_type, "trust-report");
+
+  const stale = normalizeTrustArtifact({
+    artifact_type: "trust-snapshot",
+    expires_at: "2026-05-25T00:00:00.000Z",
+    claims: [{ type: "quality.tests", subject: "builder.verify", status: "trusted" }]
+  }, "abc123", new Date("2026-05-26T00:00:00.000Z"));
+  assert.equal(stale.claim.status, "stale");
+
+  const mismatch = normalizeTrustArtifact({
+    artifact_type: "trust-report",
+    integrity: { sha256: "expected" },
+    claims: [{ type: "quality.tests", subject: "builder.verify", status: "trusted" }]
+  }, "actual", new Date("2026-05-26T00:00:00.000Z"));
+  assert.equal(mismatch.claim.status, "integrity_mismatch");
+  assert.equal(mismatch.diagnostics.trust_artifact.reason, "integrity_mismatch");
+
+  assert.throws(() => normalizeTrustArtifact({ artifact_type: "trust-report", claims: [{}] }, "abc123"), /claim.type/);
 });
 
 function localConfigFixture() {
@@ -459,6 +501,7 @@ test("surface claim expectations evaluate required, optional, trusted producer, 
   }, "verify-gate", trustedConfig);
   assert.equal(untrusted.status, "route-back");
   assert.equal(untrusted.route_reason, "missing_evidence");
+  assert.equal(untrusted.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
 
   const accepted = evaluateGate(definition, state, {
     schema_version: FLOW_SCHEMA_VERSION,
@@ -489,6 +532,45 @@ test("surface claim expectations evaluate required, optional, trusted producer, 
   const optionalOnly = evaluateGate(definition, state, emptyManifest, "verify-gate", overrideConfig);
   assert.equal(optionalOnly.status, "pass");
   assert.deepEqual(optionalOnly.optional_missing, ["tests-passed", "browser-evidence-reviewed"]);
+});
+
+test("trust artifact claim diagnostics cover stale rejected subject integrity and authority gaps", () => {
+  const definition = routeBackDefinition();
+  const state = initialState(definition, "trust-diagnostics");
+  state.current_step = "verify";
+  const base = {
+    gate_id: "verify-gate",
+    kind: "surface.claim",
+    requested_kind: "surface.claim",
+    status: "passed",
+    attached_at: "2026-05-26T00:00:00.000Z"
+  };
+  const cases = [
+    ["stale", { claim: { type: "quality.tests", subject: "builder.verify", status: "stale" } }, {}, "stale"],
+    ["rejected", { claim: { type: "quality.tests", subject: "builder.verify", status: "rejected" } }, {}, "rejected"],
+    ["subject", { claim: { type: "quality.tests", subject: "wrong.subject", status: "trusted" } }, {}, "subject_mismatch"],
+    ["integrity", {
+      claim: { type: "quality.tests", subject: "builder.verify", status: "integrity_mismatch" },
+      trust_artifact: { integrity: { verified: false } }
+    }, {}, "integrity_mismatch"],
+    ["authority", {
+      claim: { type: "quality.tests", subject: "builder.verify", status: "trusted" },
+      producer: "ci/main"
+    }, {
+      ...defaultFlowConfig(),
+      trusted_producers: { "quality.tests": { authority_traces: ["github:main"] } }
+    }, "authority_gap"]
+  ];
+
+  for (const [id, entry, config, reason] of cases) {
+    const outcome = evaluateGate(definition, state, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }]), "verify-gate", config);
+    assert.equal(outcome.status, "route-back");
+    assert.equal(outcome.missing[0], "tests-passed");
+    assert.equal(outcome.diagnostics.claim_evaluation[0].reason, reason);
+    const report = reportJson(definition, { ...state, gate_outcomes: [outcome] }, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }]));
+    assert.equal(report.gate_summaries[0].diagnostics.claim_evaluation[0].reason, reason);
+    assert.match(renderMarkdownReport(definition, { ...state, gate_outcomes: [outcome] }, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }])), new RegExp(reason));
+  }
 });
 
 test("failed evidence routes standard route reasons to mapped steps", () => {
@@ -787,6 +869,59 @@ test("CLI records route-back metadata and only route_reason selects the route", 
   assert.equal(gate.route_reason, "implementation_defect");
   assert.equal(gate.analytics_loop_key, "cli:flag-loop");
   assert.deepEqual(gate.diagnostics, { claimed_target: "plan" });
+});
+
+test("CLI attaches Surface trust artifact evidence and reports claim diagnostics", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-trust-"));
+  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, `${JSON.stringify(routeBackDefinition(), null, 2)}\n`);
+
+  const trustedArtifact = {
+    schema_version: "0.1",
+    artifact_type: "trust-report",
+    subject: "builder.verify",
+    producer: "ci/main",
+    status: "trusted",
+    issued_at: "2026-05-26T00:00:00.000Z",
+    authority_traces: ["github:main"],
+    claims: [{ type: "quality.tests", status: "trusted" }]
+  };
+  await writeFile(path.join(cwd, "trusted-report.json"), `${JSON.stringify(trustedArtifact, null, 2)}\n`);
+  await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-trust-pass", "--params", "subject=cli-trust"], { cwd });
+  await execFile(process.execPath, [
+    cli,
+    "attach-evidence",
+    "cli-trust-pass",
+    "--gate",
+    "verify-gate",
+    "--file",
+    "trusted-report.json",
+    "--trust-artifact"
+  ], { cwd });
+  await execFile(process.execPath, [cli, "evaluate", "cli-trust-pass", "--gate", "verify-gate"], { cwd });
+  const passReport = JSON.parse((await execFile(process.execPath, [cli, "report", "cli-trust-pass", "--format", "json"], { cwd })).stdout);
+  const passGate = passReport.gate_summaries.find((item) => item.gate_id === "verify-gate");
+  assert.equal(passGate.status, "pass");
+  assert.equal(passGate.matched_expectations[0].expectation_id, "tests-passed");
+  assert.equal(passGate.evidence_refs.length, 1);
+
+  const rejectedArtifact = { ...trustedArtifact, status: "rejected", claims: [{ type: "quality.tests", status: "rejected" }] };
+  await writeFile(path.join(cwd, "rejected-report.json"), `${JSON.stringify(rejectedArtifact, null, 2)}\n`);
+  await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-trust-rejected", "--params", "subject=cli-trust"], { cwd });
+  await execFile(process.execPath, [
+    cli,
+    "attach-evidence",
+    "cli-trust-rejected",
+    "--gate",
+    "verify-gate",
+    "--file",
+    "rejected-report.json",
+    "--trust-artifact"
+  ], { cwd });
+  await execFile(process.execPath, [cli, "evaluate", "cli-trust-rejected", "--gate", "verify-gate"], { cwd });
+  const rejectedMarkdown = (await execFile(process.execPath, [cli, "report", "cli-trust-rejected", "--format", "markdown"], { cwd })).stdout;
+  assert.match(rejectedMarkdown, /Claim diagnostics: tests-passed\/ev\.[0-9]+\.[0-9]+:rejected/);
 });
 
 test("CLI validates arbitrary Flow Definition files with JSON diagnostics", async () => {

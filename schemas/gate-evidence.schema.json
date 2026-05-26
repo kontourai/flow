@@ -29,14 +29,57 @@
         "claim": {
           "type": "object",
           "additionalProperties": true,
+          "required": ["type", "status"],
           "properties": {
             "type": { "type": "string" },
             "subject": { "type": "string" },
             "status": { "type": "string" }
           }
         },
+        "trust_artifact": {
+          "type": "object",
+          "required": ["schema_version", "artifact_type", "claims"],
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": { "type": "string" },
+            "artifact_type": { "type": "string", "enum": ["trust-report", "trust-snapshot"] },
+            "subject": { "type": "string" },
+            "producer": { "type": "string" },
+            "status": { "type": "string" },
+            "issued_at": { "type": "string", "format": "date-time" },
+            "expires_at": { "type": "string", "format": "date-time" },
+            "authority_traces": { "type": "array", "items": { "type": "string" } },
+            "claims": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["type"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string" },
+                  "subject": { "type": "string" },
+                  "status": { "type": "string" },
+                  "producer": { "type": "string" },
+                  "issued_at": { "type": "string", "format": "date-time" },
+                  "expires_at": { "type": "string", "format": "date-time" },
+                  "authority_traces": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
+            "integrity": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sha256": { "type": "string" },
+                "verified": { "type": "boolean" }
+              }
+            }
+          }
+        },
         "producer": { "type": "string" },
         "authority_trace": { "type": "string" },
+        "authority_traces": { "type": "array", "items": { "type": "string" } },
         "route_reason": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]*$"

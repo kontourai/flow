@@ -26,7 +26,7 @@ function usage() {
   flow validate-definition <path> [--json]
   flow start <definition> [--run-id <id>] [--params key=value ...]
   flow status <run-id> [--format summary|json|markdown]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
   flow evaluate <run-id> [--gate <gate>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
   flow config preview <proposal> [--format summary|markdown|json]
@@ -257,6 +257,7 @@ async function main() {
       gate: requireArg(flags.gate, "--gate is required"),
       file: requireArg(flags.file, "--file is required"),
       kind: flags.kind,
+      trustArtifact: Boolean(flags["trust-artifact"]),
       status: flags.status,
       claimType: flags["claim-type"],
       claimSubject: flags["claim-subject"],
