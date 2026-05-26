@@ -3,11 +3,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   acceptException,
+  applyFlowConfigMerge,
   attachEvidence,
   ensureFlowLayout,
   evaluateRun,
   listRuns,
   loadRun,
+  previewFlowConfigMergeFile,
+  renderConfigMergeMarkdown,
+  renderConfigMergeSummary,
   renderMarkdownReport,
   renderResume,
   renderSummary,
@@ -25,6 +29,8 @@ function usage() {
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
   flow evaluate <run-id> [--gate <gate>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
+  flow config preview <proposal> [--format summary|markdown|json]
+  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
   flow report <run-id> [--format summary|markdown|json]
   flow resume <run-id>
   flow list
@@ -48,10 +54,10 @@ function parseArgs(argv) {
       }
       continue;
     }
-    if (key === "expectation-id") {
+    if (key === "expectation-id" || key === "accept-conflict") {
       flags[key] ??= [];
       const next = argv[i + 1];
-      if (!next || next.startsWith("--")) throw new Error("--expectation-id requires a value");
+      if (!next || next.startsWith("--")) throw new Error(`--${key} requires a value`);
       flags[key].push(next);
       i += 1;
       continue;
@@ -128,6 +134,16 @@ async function printStatus(runId, format) {
   }
 }
 
+function printConfigMergeReport(report, format) {
+  if (format === "json") {
+    console.log(JSON.stringify(report, null, 2));
+  } else if (format === "markdown") {
+    process.stdout.write(renderConfigMergeMarkdown(report));
+  } else {
+    process.stdout.write(renderConfigMergeSummary(report));
+  }
+}
+
 async function readDefinitionForValidation(definitionPath) {
   const resolved = path.resolve(process.cwd(), definitionPath);
   try {
@@ -192,6 +208,28 @@ async function main() {
     printDefinitionValidation(definitionPath, payload, Boolean(flags.json));
     if (!payload.valid) process.exitCode = 1;
     return;
+  }
+
+  if (command === "config") {
+    const action = requireArg(args[0], "flow config requires preview or apply");
+    const proposal = requireArg(args[1], `flow config ${action} requires a proposal path`);
+    const format = flags.format ?? "summary";
+    if (action === "preview") {
+      const report = await previewFlowConfigMergeFile(proposal);
+      printConfigMergeReport(report, format);
+      return;
+    }
+    if (action === "apply") {
+      const report = await applyFlowConfigMerge(proposal, {
+        acceptConflicts: flags["accept-conflict"] ?? [],
+        exceptionReason: flags["exception-reason"],
+        authority: flags.authority
+      });
+      printConfigMergeReport(report, format);
+      if (report.status === "blocked") process.exitCode = 1;
+      return;
+    }
+    throw new Error(`unknown config action: ${action}`);
   }
 
   if (command === "start") {

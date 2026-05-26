@@ -60,6 +60,8 @@ flow status <run-id> [--format summary|json|markdown]
 flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>]
 flow evaluate <run-id> [--gate <gate>]
 flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
+flow config preview <proposal> [--format summary|markdown|json]
+flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
 flow report <run-id> [--format summary|markdown|json]
 flow resume <run-id>
 flow list
@@ -120,6 +122,36 @@ A `surface.claim` expectation includes:
 `claim.subject` is intentionally open so projects and kits can name their own process subjects. Common examples include `flow-run`, `flow-step`, `work-item`, `change`, `pull-request`, `release`, `decision`, and `artifact`.
 
 Project config owns trusted producer mappings and gate overrides. Flow Agents may author, adapt, or install that config as part of a kit or runtime adapter, but the authoritative source of truth is the Flow project config that Flow loads for the run.
+
+## Project Config Merge
+
+Kits can propose Flow project config, but local `.flow/config.json` remains authoritative. Preview a proposal before applying it:
+
+```sh
+npx flow config preview ./kit-flow-config.json --format json
+npx flow config preview ./kit-flow-config.json --format markdown
+```
+
+Preview is read-only. The JSON report includes stable buckets for `proposed_changes`, `accepted_changes`, `rejected_changes`, `conflicts`, `unchanged`, `exceptions`, `merged_config`, and `summary`. Each change records a machine-readable `path`, `section`, `operation`, `reason`, and source values when relevant.
+
+Apply is explicit:
+
+```sh
+npx flow config apply ./kit-flow-config.json --format json
+```
+
+Additive proposals under `trusted_producers` and `gate_overrides` are accepted when the local path is absent. Matching values are recorded as unchanged. Differing local trusted producer mappings or gate overrides are conflicts and are rejected by default, so Flow does not silently overwrite project authority.
+
+To accept a conflicting proposal, pass the exact conflict path or a parent path plus an exception reason and authority:
+
+```sh
+npx flow config apply ./kit-flow-config.json \
+  --accept-conflict '$.trusted_producers.quality.tests' \
+  --exception-reason 'project owner accepted kit producer update' \
+  --authority 'project-owner'
+```
+
+Flow Agents kit install or activation may consume the JSON report to show install logs, detect conflicts, and decide whether to ask for explicit exception acceptance. Flow Agents consumes this contract; it does not own the authority semantics. Flow core does not add UI Console behavior, remote trust or signature verification, hosted workflows, provider settings, or cross-repo Flow Agents implementation as part of config merge.
 
 ## Gate Evaluation
 
@@ -213,6 +245,19 @@ import {
 
 const result = validateDefinitionWithDiagnostics(definition);
 if (!result.valid) console.error(result.diagnostics);
+```
+
+Config merge helpers are exported for local installers and adapters:
+
+```js
+import {
+  previewFlowConfigMerge,
+  applyFlowConfigMerge,
+  renderConfigMergeMarkdown
+} from "@kontourai/flow";
+
+const report = previewFlowConfigMerge(localConfig, proposedConfig);
+console.log(renderConfigMergeMarkdown(report));
 ```
 
 ## Schemas
