@@ -643,6 +643,251 @@ export function routeBackDecision(state, gate, routeReason, evidence = [], optio
   return routeData.status ? routeData : { ...routeData, status };
 }
 
+function transitionDiagnostic(code, path, message, related = {}, severity = "error") {
+  return {
+    ...createDiagnostic(`transition.${code}`, path, message, related),
+    severity
+  };
+}
+
+function transitionGateOutcomeDiagnostic(outcome, path = "$.proposed_transition", severity = "error") {
+  return transitionDiagnostic(
+    `gate.${outcome.status}`,
+    path,
+    `gate ${outcome.gate_id} returned ${outcome.status}`,
+    {
+      gate_id: outcome.gate_id,
+      status: outcome.status,
+      ...(outcome.missing?.length ? { missing: outcome.missing } : {}),
+      ...(outcome.route_back_to ? { route_back_to: outcome.route_back_to } : {}),
+      ...(outcome.route_reason ? { route_reason: outcome.route_reason } : {}),
+      ...(outcome.attempt ? { attempt: outcome.attempt } : {}),
+      ...(outcome.max_attempts ? { max_attempts: outcome.max_attempts } : {}),
+      ...(outcome.limit_exceeded !== undefined ? { limit_exceeded: outcome.limit_exceeded } : {})
+    },
+    severity
+  );
+}
+
+function manifestFromTransitionRequest(request) {
+  if (isObject(request.manifest)) {
+    return {
+      ...request.manifest,
+      evidence: Array.isArray(request.manifest.evidence) ? request.manifest.evidence : []
+    };
+  }
+  return {
+    evidence: (request.evidence_refs ?? []).map((id) => ({ id, kind: "file", status: "attached" }))
+  };
+}
+
+function currentStateFromTransitionRequest(request) {
+  return request.current_state ?? request.state;
+}
+
+function proposedTransitionFromRequest(request, currentState) {
+  if (request.proposed_transition ?? request.transition) {
+    return cloneJson(request.proposed_transition ?? request.transition);
+  }
+  const proposedState = request.proposed_state;
+  if (!isObject(proposedState)) return null;
+  return {
+    from_step: currentState?.current_step,
+    to_step: proposedState.current_step ?? null,
+    status: proposedState.status === "completed" ? "completed" : "allowed",
+    proposed_status: proposedState.status
+  };
+}
+
+function routePolicyClosesReasons(gate) {
+  const policy = gate.route_back_policy ?? {};
+  return policy.route_reasons === "closed"
+    || policy.reasons === "closed"
+    || policy.closed_reasons === true
+    || policy.closed_route_reasons === true
+    || policy.allow_unknown_reasons === false;
+}
+
+function transitionEvidenceFor(manifest, evidenceRefs = []) {
+  const evidence = Array.isArray(manifest?.evidence) ? manifest.evidence : [];
+  if (!evidenceRefs.length) return evidence;
+  const requested = new Set(evidenceRefs);
+  return evidence.filter((entry) => requested.has(entry.id));
+}
+
+function normalizeTransitionPreview(transition, extras = {}) {
+  const limitExceeded = transition.limit_exceeded ?? extras.limit_exceeded;
+  return {
+    type: transition.type ?? extras.type ?? "step",
+    from_step: transition.from_step ?? extras.from_step ?? null,
+    to_step: transition.to_step ?? extras.to_step ?? null,
+    status: extras.status ?? transition.status ?? "allowed",
+    ...(transition.gate_id ?? extras.gate_id ? { gate_id: transition.gate_id ?? extras.gate_id } : {}),
+    ...(transition.reason ?? extras.reason ? { reason: transition.reason ?? extras.reason } : {}),
+    ...(transition.route_reason ?? extras.route_reason ? { route_reason: transition.route_reason ?? extras.route_reason } : {}),
+    ...(transition.selected_route ?? extras.selected_route ? { selected_route: transition.selected_route ?? extras.selected_route } : {}),
+    ...(transition.recovery_step ?? extras.recovery_step ? { recovery_step: transition.recovery_step ?? extras.recovery_step } : {}),
+    ...(transition.attempt ?? extras.attempt ? { attempt: transition.attempt ?? extras.attempt } : {}),
+    ...(transition.max_attempts ?? extras.max_attempts ? { max_attempts: transition.max_attempts ?? extras.max_attempts } : {}),
+    ...(limitExceeded !== undefined ? { limit_exceeded: limitExceeded } : {}),
+    ...(transition.evidence_refs ?? extras.evidence_refs ? { evidence_refs: cloneJson(transition.evidence_refs ?? extras.evidence_refs) } : {}),
+    ...(transition.expectation_ids ?? extras.expectation_ids ? { expectation_ids: cloneJson(transition.expectation_ids ?? extras.expectation_ids) } : {}),
+    ...(transition.classifier ?? extras.classifier ? { classifier: cloneJson(transition.classifier ?? extras.classifier) } : {}),
+    ...(transition.diagnostics ?? extras.diagnostics ? { diagnostics: cloneJson(transition.diagnostics ?? extras.diagnostics) } : {}),
+    ...(transition.analytics ?? extras.analytics ? { analytics: cloneJson(transition.analytics ?? extras.analytics) } : {}),
+    ...(transition.analytics_loop_key ?? extras.analytics_loop_key ? { analytics_loop_key: transition.analytics_loop_key ?? extras.analytics_loop_key } : {}),
+    ...(transition.at ?? extras.at ? { at: transition.at ?? extras.at } : {})
+  };
+}
+
+export function validateRunTransition(request = {}) {
+  const diagnostics = [];
+  if (!isObject(request)) {
+    return {
+      valid: false,
+      status: "invalid",
+      diagnostics: [transitionDiagnostic("request.invalid", "$", "transition request must be an object")],
+      transition: null
+    };
+  }
+
+  const definition = request.definition;
+  const currentState = currentStateFromTransitionRequest(request);
+  const config = request.config ?? defaultFlowConfig();
+  const manifest = manifestFromTransitionRequest(request);
+  const transition = proposedTransitionFromRequest(request, currentState);
+
+  const definitionResult = validateDefinitionWithDiagnostics(definition);
+  diagnostics.push(...definitionResult.diagnostics);
+
+  if (!isObject(currentState)) {
+    diagnostics.push(transitionDiagnostic("current_state.invalid", "$.current_state", "current_state must be an object"));
+  }
+  if (!isObject(transition)) {
+    diagnostics.push(transitionDiagnostic("proposed_transition.required", "$.proposed_transition", "proposed_transition or proposed_state is required"));
+  }
+  if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    return {
+      valid: false,
+      status: "invalid",
+      diagnostics,
+      transition: transition ? normalizeTransitionPreview(transition) : null
+    };
+  }
+
+  const currentStepId = currentState.current_step;
+  const currentStep = getStep(definition, currentStepId);
+  const fromStep = transition.from_step ?? currentStepId;
+  const toStep = transition.to_step ?? null;
+  const isRouteBack = transition.type === "route_back" || transition.type === "route-back" || transition.status === "route-back";
+
+  if (!isNonEmptyString(currentStepId) || !currentStep) {
+    diagnostics.push(transitionDiagnostic("current_step.unknown", "$.current_state.current_step", `current step is unknown: ${currentStepId}`, { step: currentStepId }));
+  }
+  if (transition.from_step !== undefined && transition.from_step !== currentStepId) {
+    diagnostics.push(transitionDiagnostic("current_state.stale", "$.proposed_transition.from_step", `proposed transition starts from ${transition.from_step}, but current state is ${currentStepId}`, { proposed_from_step: transition.from_step, current_step: currentStepId }));
+  }
+  if (fromStep !== currentStepId) {
+    diagnostics.push(transitionDiagnostic("from_step.mismatch", "$.proposed_transition.from_step", `transition from_step must match current step ${currentStepId}`, { from_step: fromStep, current_step: currentStepId }));
+  }
+  if (toStep !== null && !getStep(definition, toStep)) {
+    diagnostics.push(transitionDiagnostic("to_step.unknown", "$.proposed_transition.to_step", `transition target is unknown: ${toStep}`, { step: toStep }));
+  }
+  if (transition.gate_id !== undefined && !findGate(definition, transition.gate_id)) {
+    diagnostics.push(transitionDiagnostic("gate.unknown", "$.proposed_transition.gate_id", `transition gate is unknown: ${transition.gate_id}`, { gate_id: transition.gate_id }));
+  }
+  if (diagnostics.length) {
+    return {
+      valid: false,
+      status: "invalid",
+      diagnostics,
+      transition: normalizeTransitionPreview(transition, { from_step: fromStep, to_step: toStep })
+    };
+  }
+
+  const gates = transition.gate_id ? [findGate(definition, transition.gate_id)] : openGates(definition, currentState);
+
+  if (isRouteBack) {
+    const gate = gates[0];
+    if (!gate) {
+      diagnostics.push(transitionDiagnostic("route_back.gate.required", "$.proposed_transition.gate_id", "route-back transition requires an open gate"));
+      return { valid: false, status: "invalid", diagnostics, transition: normalizeTransitionPreview(transition, { type: "route_back", from_step: fromStep, to_step: toStep }) };
+    }
+
+    const routeReason = transition.route_reason ?? (transition.reason === "default" ? undefined : transition.reason);
+    if (routeReason && routePolicyClosesReasons(gate) && !(gate.on_route_back ?? {})[routeReason]) {
+      diagnostics.push(transitionDiagnostic("route_back.reason.undeclared", "$.proposed_transition.route_reason", `route reason is not declared for gate ${gate.id}: ${routeReason}`, { gate_id: gate.id, route_reason: routeReason }));
+    }
+
+    const evidence = transitionEvidenceFor(manifest, transition.evidence_refs ?? []);
+    const route = routeBackDecision(currentState, gate, routeReason, evidence, { expectationIds: transition.expectation_ids });
+    if (toStep !== route.route_back_to) {
+      diagnostics.push(transitionDiagnostic("route_back.target.mismatch", "$.proposed_transition.to_step", `route-back target must be ${route.route_back_to}`, { gate_id: gate.id, route_reason: routeReason ?? "default", proposed_to_step: toStep, route_back_to: route.route_back_to }));
+    }
+    if (transition.attempt !== undefined && transition.attempt !== route.attempt) {
+      diagnostics.push(transitionDiagnostic("route_back.attempt.mismatch", "$.proposed_transition.attempt", `route-back attempt must be ${route.attempt}`, { proposed_attempt: transition.attempt, attempt: route.attempt }));
+    }
+
+    if (diagnostics.length === 0) {
+      diagnostics.push(transitionGateOutcomeDiagnostic(
+        { ...route, gate_id: gate.id, status: route.status },
+        "$.proposed_transition",
+        "info"
+      ));
+    }
+
+    const errorDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    const preview = normalizeTransitionPreview(transition, {
+      type: "route_back",
+      from_step: gate.step,
+      to_step: route.route_back_to,
+      gate_id: gate.id,
+      ...route,
+      status: route.status === "block" ? "blocked" : "route-back",
+      at: transition.at ?? request.now
+    });
+    return {
+      valid: errorDiagnostics.length === 0 && route.status !== "block",
+      status: errorDiagnostics.length ? "invalid" : route.status === "block" ? "blocked" : route.status,
+      diagnostics,
+      transition: preview
+    };
+  }
+
+  const expectedNext = currentStep.next ?? null;
+  const completesCurrentStep = toStep === expectedNext;
+  const proposedCompleted = transition.status === "completed" || transition.proposed_status === "completed";
+  if (!completesCurrentStep) {
+    diagnostics.push(transitionDiagnostic("jump.invalid", "$.proposed_transition.to_step", `transition target must be the current step next edge: ${expectedNext ?? "completed"}`, { current_step: currentStepId, proposed_to_step: toStep, expected_to_step: expectedNext }));
+  }
+  if (proposedCompleted && expectedNext !== null) {
+    diagnostics.push(transitionDiagnostic("completion.premature", "$.proposed_state.status", "run cannot complete before the current step reaches a terminal edge", { current_step: currentStepId, expected_to_step: expectedNext }));
+  }
+
+  const outcomes = gates.map((gate) => evaluateGate(definition, currentState, manifest, gate.id, config));
+  const blocking = outcomes.filter((outcome) => outcome.status !== "pass");
+  diagnostics.push(...blocking.map((outcome) => transitionGateOutcomeDiagnostic(outcome)));
+
+  const status = diagnostics.length
+    ? (blocking[0]?.status === "route-back" ? "route-back" : blocking[0]?.status === "wait" ? "wait" : blocking[0]?.status === "block" ? "blocked" : "invalid")
+    : "allowed";
+  return {
+    valid: diagnostics.length === 0,
+    status,
+    diagnostics,
+    transition: normalizeTransitionPreview(transition, {
+      from_step: currentStepId,
+      to_step: expectedNext,
+      status: diagnostics.length ? "blocked" : "allowed",
+      gate_id: outcomes[0]?.gate_id,
+      reason: diagnostics.length ? blocking[0]?.summary : "required gates passed",
+      at: transition.at ?? request.now
+    })
+  };
+}
+
+export const validateTransitionRequest = validateRunTransition;
+
 export function expectationsForGate(gate, config = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
   if (gate.expects?.length) {
@@ -863,6 +1108,78 @@ export function legacyEvaluateGate(definition, state, manifest, gateId) {
 export function mergeGateOutcome(state, outcome) {
   const without = state.gate_outcomes.filter((entry) => entry.gate_id !== outcome.gate_id);
   state.gate_outcomes = [...without, outcome];
+}
+
+function proposedTransitionForOutcome(definition, gate, outcome, now = new Date().toISOString()) {
+  const step = getStep(definition, gate.step);
+  const nextStep = step?.next ?? null;
+  if (outcome.status === "pass") {
+    return {
+      from_step: gate.step,
+      to_step: nextStep,
+      status: nextStep ? "allowed" : "completed",
+      reason: outcome.accepted_exception_id ? "accepted exception" : "required evidence present",
+      gate_id: outcome.gate_id,
+      at: now
+    };
+  }
+  if (outcome.status === "route-back" || outcome.limit_exceeded) {
+    return {
+      type: "route_back",
+      from_step: gate.step,
+      to_step: outcome.route_back_to,
+      status: "route-back",
+      reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,
+      route_reason: outcome.route_reason,
+      selected_route: outcome.selected_route,
+      recovery_step: outcome.recovery_step,
+      attempt: outcome.attempt,
+      max_attempts: outcome.max_attempts,
+      limit_exceeded: outcome.limit_exceeded,
+      evidence_refs: outcome.evidence_refs,
+      expectation_ids: outcome.expectation_ids,
+      classifier: outcome.classifier,
+      diagnostics: outcome.diagnostics,
+      analytics: outcome.analytics,
+      analytics_loop_key: outcome.analytics_loop_key,
+      gate_id: outcome.gate_id,
+      at: now
+    };
+  }
+  if (outcome.status === "block") {
+    return {
+      from_step: gate.step,
+      to_step: nextStep,
+      status: "blocked",
+      reason: outcome.summary,
+      gate_id: outcome.gate_id,
+      evidence_refs: outcome.evidence_refs,
+      at: now
+    };
+  }
+  return null;
+}
+
+export function validateEvaluationTransition(definition, state, manifest, outcome, config = defaultFlowConfig(), now = new Date().toISOString()) {
+  const gate = findGate(definition, outcome.gate_id);
+  if (!gate) throw new Error(`unknown gate: ${outcome.gate_id}`);
+  const transition = proposedTransitionForOutcome(definition, gate, outcome, now);
+  if (!transition) {
+    return {
+      valid: true,
+      status: "allowed",
+      diagnostics: [],
+      transition: null
+    };
+  }
+  return validateRunTransition({
+    definition,
+    current_state: state,
+    proposed_transition: transition,
+    manifest,
+    config,
+    now
+  });
 }
 
 export function applyEvaluation(definition, state, outcome) {
@@ -1126,6 +1443,15 @@ export async function evaluateRun(runId, options = {}) {
   const outcomes = [];
   for (const gate of gates) {
     const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+    const validationState = options.gate && gate.step !== run.state.current_step
+      ? { ...run.state, current_step: gate.step }
+      : run.state;
+    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config);
+    if (transitionValidation.status === "invalid") {
+      const first = transitionValidation.diagnostics[0];
+      throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
+    }
+    outcome.transition_validation = transitionValidation;
     applyEvaluation(run.definition, run.state, outcome);
     outcomes.push(outcome);
     if (outcome.status !== "pass") break;
@@ -1212,7 +1538,8 @@ export function reportJson(definition, state, manifest) {
         "classifier",
         "diagnostics",
         "analytics",
-        "analytics_loop_key"
+        "analytics_loop_key",
+        "transition_validation"
       ]) {
         if (outcome?.[field] !== undefined) summary[field] = outcome[field];
       }
@@ -1252,6 +1579,9 @@ export function renderMarkdownReport(definition, state, manifest) {
       if (gate.expectation_ids?.length) lines.push(`  - Expectations: ${gate.expectation_ids.join(", ")}`);
       if (gate.classifier?.kind) lines.push(`  - Classifier: ${gate.classifier.kind}${gate.classifier.source ? ` from ${gate.classifier.source}` : ""}`);
       if (gate.analytics_loop_key) lines.push(`  - Analytics loop: ${gate.analytics_loop_key}`);
+    }
+    if (gate.transition_validation?.diagnostics?.length) {
+      lines.push(`  - Transition diagnostics: ${gate.transition_validation.diagnostics.map((entry) => `${entry.code}:${entry.message}`).join(", ")}`);
     }
   }
   lines.push("", "## Accepted Exceptions", "");
@@ -1301,6 +1631,9 @@ export function renderSummary(definition, state) {
       lines.push(`      route: ${outcome.route_reason ?? outcome.reason ?? "default"} -> ${outcome.route_back_to}; attempt ${attempt}; limit exceeded: ${outcome.limit_exceeded ? "yes" : "no"}`);
       if (outcome.recovery_step) lines.push(`      recovery: ${outcome.recovery_step}`);
       if (outcome.analytics_loop_key) lines.push(`      analytics loop: ${outcome.analytics_loop_key}`);
+    }
+    if (outcome?.transition_validation?.diagnostics?.length) {
+      lines.push(`      transition diagnostics: ${outcome.transition_validation.diagnostics.map((entry) => entry.code).join(", ")}`);
     }
   }
   lines.push("", `next action: ${state.next_action}`);

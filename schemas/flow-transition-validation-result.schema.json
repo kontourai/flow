@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-transition-validation-result.schema.json",
+  "title": "Flow Transition Validation Result",
+  "type": "object",
+  "required": ["valid", "status", "diagnostics", "transition"],
+  "additionalProperties": false,
+  "properties": {
+    "valid": { "type": "boolean" },
+    "status": {
+      "type": "string",
+      "enum": ["allowed", "blocked", "invalid", "route-back", "route_back", "wait"]
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "transition": {
+      "anyOf": [
+        { "$ref": "#/$defs/transition_preview" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "path", "message"],
+      "additionalProperties": true,
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+        "path": { "type": "string", "pattern": "^\\$" },
+        "message": { "type": "string", "minLength": 1 },
+        "details": { "type": "object", "additionalProperties": true },
+        "related": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "transition_preview": {
+      "type": "object",
+      "required": ["from_step", "to_step", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string" },
+        "from_step": { "type": ["string", "null"] },
+        "to_step": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["allowed", "blocked", "invalid", "route-back", "route_back", "wait", "completed"]
+        },
+        "reason": { "type": "string" },
+        "gate_id": { "type": "string" },
+        "route_reason": { "type": "string" },
+        "selected_route": { "type": "string" },
+        "recovery_step": { "type": "string" },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "limit_exceeded": { "type": "boolean" },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "expectation_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "classifier": { "type": "object", "additionalProperties": true },
+        "diagnostics": { "type": "object", "additionalProperties": true },
+        "analytics": { "type": "object", "additionalProperties": true },
+        "analytics_loop_key": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

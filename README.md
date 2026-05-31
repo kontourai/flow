@@ -55,6 +55,7 @@ report: .flow/runs/dev-1847/report.md
 ```text
 flow init
 flow validate-definition <path> [--json]
+flow validate-transition <request-json>
 flow start <definition> [--run-id <id>] [--params key=value ...]
 flow status <run-id> [--format summary|json|markdown]
 flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>]
@@ -200,6 +201,59 @@ For the current step, `flow evaluate` applies the v0.1 rules:
 
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory.
 
+## Transition Validation
+
+Flow core owns provider-neutral transition legality. A runtime, adapter, or agent workflow can propose a transition, but Flow decides whether that transition matches the authored Flow Definition, current state, gate outcomes, route-back policy, and persisted transition history.
+
+Validate a proposed transition from a file:
+
+```sh
+npx flow validate-transition ./transition-request.json
+```
+
+The request shape is intentionally small and stable:
+
+```json
+{
+  "definition": { "id": "agent-dev-flow", "version": "0.1", "steps": [], "gates": {} },
+  "current_state": { "status": "active", "current_step": "verify", "transitions": [] },
+  "proposed_transition": {
+    "from_step": "verify",
+    "to_step": "publish",
+    "status": "allowed",
+    "gate_id": "verify-gate"
+  },
+  "manifest": { "schema_version": "0.1", "evidence": [] }
+}
+```
+
+The result is machine-readable:
+
+```json
+{
+  "valid": false,
+  "status": "route-back",
+  "diagnostics": [
+    {
+      "code": "transition.gate.route-back",
+      "severity": "error",
+      "path": "$.proposed_transition",
+      "message": "gate verify-gate returned route-back"
+    }
+  ],
+  "transition": {
+    "from_step": "verify",
+    "to_step": "implement",
+    "status": "blocked",
+    "gate_id": "verify-gate"
+  }
+}
+```
+
+Definitions that do not declare stricter route or gate policy keep the permissive v0.1 behavior. Route reason ids remain open unless a gate declares a closed route policy such as `route_back_policy.allow_unknown_reasons: false`. Attempt counting is deterministic: Flow derives attempts from persisted `state.transitions`, not caller-supplied counters.
+
+Flow Agents consumes this contract downstream when writing its own workflow state, but Flow does not know about Flow Agents sidecars, GitHub pull requests, boards, or any other provider. A Builder Kit-like path such as `verify -> evidence -> publish-change -> release-readiness -> merge` is just a Flow Definition with steps and gates; Flow rejects jumps across required gates because the proposed transition does not match the definition and evidence state, not because those names are special.
+
 ## Route Back
 
 A gate can route failed evidence back to a specific step by adding `on_route_back` to the gate definition:
@@ -275,11 +329,20 @@ import {
   attachEvidence,
   evaluateRun,
   loadRun,
+  validateRunTransition,
   validateDefinitionWithDiagnostics
 } from "@kontourai/flow";
 
 const result = validateDefinitionWithDiagnostics(definition);
 if (!result.valid) console.error(result.diagnostics);
+
+const transitionResult = validateRunTransition({
+  definition,
+  current_state: state,
+  proposed_transition: { from_step: "verify", to_step: "publish", gate_id: "verify-gate" },
+  manifest
+});
+if (!transitionResult.valid) console.error(transitionResult.diagnostics);
 ```
 
 Config merge helpers are exported for local installers and adapters:
@@ -303,6 +366,8 @@ Runtime code and tests reference the JSON Schemas in `schemas/`:
 - `flow-run.schema.json`
 - `gate-evidence.schema.json`
 - `flow-report.schema.json`
+- `flow-transition-validation-request.schema.json`
+- `flow-transition-validation-result.schema.json`
 
 `npm test` and `npm pack` fail if the checked schemas drift from the v0.1 runtime contract.
 

@@ -17,6 +17,7 @@ import {
   renderSummary,
   reportJson,
   startRun,
+  validateRunTransition,
   validateDefinitionWithDiagnostics
 } from "./index.js";
 
@@ -24,6 +25,7 @@ function usage() {
   return `Usage:
   flow init
   flow validate-definition <path> [--json]
+  flow validate-transition <request-json>
   flow start <definition> [--run-id <id>] [--params key=value ...]
   flow status <run-id> [--format summary|json|markdown]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
@@ -207,6 +209,15 @@ async function main() {
     const payload = validationPayload(definitionPath, result);
     printDefinitionValidation(definitionPath, payload, Boolean(flags.json));
     if (!payload.valid) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "validate-transition") {
+    const requestPath = requireArg(args[0], "flow validate-transition requires a request JSON path");
+    const request = JSON.parse(await readFile(path.resolve(process.cwd(), requestPath), "utf8"));
+    const result = validateRunTransition(request);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.valid && result.status === "invalid") process.exitCode = 1;
     return;
   }
 
