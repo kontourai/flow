@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-transition-validation-request.schema.json",
+  "title": "Flow Transition Validation Request",
+  "type": "object",
+  "required": ["definition"],
+  "additionalProperties": false,
+  "properties": {
+    "definition": { "$ref": "flow-definition.schema.json" },
+    "current_state": { "$ref": "#/$defs/state" },
+    "state": { "$ref": "#/$defs/state" },
+    "proposed_transition": { "$ref": "#/$defs/transition" },
+    "transition": { "$ref": "#/$defs/transition" },
+    "proposed_state": { "$ref": "#/$defs/state" },
+    "manifest": { "$ref": "gate-evidence.schema.json" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "config": { "$ref": "flow-config.schema.json" },
+    "now": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        { "required": ["current_state"] },
+        { "required": ["state"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "required": ["proposed_transition"] },
+        { "required": ["transition"] },
+        { "required": ["proposed_state"] }
+      ]
+    }
+  ],
+  "$defs": {
+    "state": {
+      "type": "object",
+      "required": ["current_step", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "schema_version": { "type": "string" },
+        "run_id": { "type": "string" },
+        "definition_id": { "type": "string" },
+        "definition_version": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
+        },
+        "current_step": { "type": "string", "minLength": 1 },
+        "gate_outcomes": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "transitions": { "type": "array", "items": { "$ref": "#/$defs/transition" } },
+        "exceptions": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from_step"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string" },
+        "from_step": { "type": "string", "minLength": 1 },
+        "to_step": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["allowed", "blocked", "skipped", "accepted_by_exception", "completed", "route-back", "route_back"]
+        },
+        "proposed_status": {
+          "type": "string",
+          "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
+        },
+        "reason": { "type": "string" },
+        "gate_id": { "type": "string" },
+        "route_reason": { "type": "string" },
+        "selected_route": { "type": "string" },
+        "recovery_step": { "type": "string" },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "limit_exceeded": { "type": "boolean" },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "expectation_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "classifier": { "type": "object", "additionalProperties": true },
+        "diagnostics": { "type": "object", "additionalProperties": true },
+        "analytics": { "type": "object", "additionalProperties": true },
+        "analytics_loop_key": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
