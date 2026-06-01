@@ -11,7 +11,11 @@ Surface
 
 Flow
   Process transparency and gate enforcement built with Surface.
-  Steps, gates, transitions, runs, exceptions, Flow Reports.
+  Steps, gates, transitions, runs, exceptions, Flow Reports, Run Control API, Flow Console contracts.
+
+Survey
+  Fact-review record contracts built with Surface and Flow.
+  Sources, observations, extractions, candidates, review records, claim publication.
 
 Veritas
   Repo/change governance vertical built with Surface.
@@ -19,7 +23,11 @@ Veritas
 
 Flow Agents
   Agent-facing workflow distribution built with Flow.
-  Modes, skills, runtime adapters, provider settings, hooks, Console.
+  Modes, skills, runtime adapters, provider settings, hooks, agent-specific console extensions.
+
+Kontour Console
+  Suite-level management and visibility product built over the primitives.
+  Cross-product claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
 ```
 
 ## Surface Boundary
@@ -68,6 +76,45 @@ Flow Agents may author, adapt, install, or update Flow project config while coor
 
 Builder behavior should be distributed as a normal Flow Kit coordinated by Flow Agents, not as special behavior inside Flow core.
 
+## Survey Boundary
+
+Survey owns the producer-side fact-review record contract:
+
+- Sources
+- Observations
+- Extractions
+- Candidates
+- Review records
+- Claim publication into Surface
+
+Survey may provide Flow Definitions, Review Item payloads, and Flow Product Extensions for managed `ingest -> curate -> verify -> publish` processes. Survey should not become the generic workflow authority, review queue manager, run-control surface, or hosted console. Those generic process-management contracts belong to Flow.
+
+## Flow Console Boundary
+
+Flow owns the generic Flow Console contract: run visibility, Run Control API, review queues, Review Items, gate/evidence panels, decisions, exceptions, route-back state, pause/resume/progress controls, and next actions.
+
+Product-specific experiences should customize Flow Console through Flow Product Extensions. A vertical app such as Campfit can supply labels, field renderers, queue grouping, proof panels, suggested actions, and branding. Flow Agents can supply agent-runtime adapters and agent-specific views. Those extensions must not redefine Flow gate semantics, transition authority, route-back rules, or project config authority.
+
+Flow Console should follow the same architectural pattern as Surface Console: a local-first shell over a product-owned projection/read model, schema-shaped extension points, domain vocabulary and branding as presentation inputs, and core semantics that remain independent from extension code. Surface Console and Flow Console should be interoperable enough that a future Kontour Console can bridge claim status, process status, proof, queues, and next actions without rewriting either product's core model.
+
+The shared foundation for that future Kontour Console should be contracts first: projection shape, identity links, queue/action vocabulary, extension metadata, route conventions, and refresh semantics. A shared UI package should come after Surface Console and Flow Console prove which pieces are truly common.
+
+The console boundary is product direction, not a claim that the v0.1 package already ships a hosted web UI.
+
+## Kontour Console Boundary
+
+Kontour Console is the suite-level product that brings the Kontour primitives together into one management plane. It is the comprehensive view operators and producers use to understand what is true, what is in progress, what is stale, what is blocked, what proof exists, what decisions were made, and what should happen next across products.
+
+The primitives remain valuable without Kontour Console:
+
+- Surface trust state remains portable, schema-first, and inspectable without a hosted service.
+- Flow Runs and Flow Reports remain local, file-backed, and useful without a hosted service.
+- Survey fact-review records remain producer-side contracts.
+- Veritas readiness and evidence checks remain repo/change governance.
+- Flow Agents runtime adapters and kits remain usable outside a suite-level console.
+
+Kontour Console should sell the integrated operating experience, not become a hidden dependency required to use the primitives. It may host, aggregate, correlate, and manage cross-product state, but it must preserve each product's authority boundary.
+
 ## Non-Goals
 
 Flow should not become:
@@ -78,6 +125,7 @@ Flow should not become:
 - a repo standards engine
 - a CRM/work management product
 - a replacement for Surface or Veritas
+- the full suite-level Kontour Console
 
 Flow should become the small process transparency kernel those products can use when work must follow a required path.
 
@@ -85,4 +133,4 @@ Flow should become the small process transparency kernel those products can use 
 
 Flow v0.1 ships as `@kontourai/flow`, a local file-backed CLI and library. It owns `.flow/definitions/`, `.flow/runs/<run-id>/`, gate evaluation, evidence manifests, accepted exceptions, and Flow Reports.
 
-The v0.1 package deliberately does not include distributed execution, hosted auth, Surface projection, agent runtime hooks, multi-agent dispatch, Veritas policy semantics, or a web UI.
+The v0.1 package deliberately does not include distributed execution, hosted auth, Surface projection, agent runtime hooks, multi-agent dispatch, Veritas policy semantics, or a hosted web UI.

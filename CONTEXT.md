@@ -76,6 +76,30 @@ _Avoid_: Silent bypass, skipped gate, waiver without trace
 The human- and agent-facing report for a Flow Run. A Flow Report explains current step, gate outcomes, evidence, exceptions, blocked transitions, and next action.
 _Avoid_: Surface trust report, Veritas readiness report, raw log dump
 
+**Run Control API**:
+The generic Flow interface for inspecting and managing Flow Runs, including current step, open gates, progress, pause or resume state, evidence attachment, transition requests, exceptions, route-back details, and continuation. Consumers such as Flow Agents may build agent-specific adapters or consoles on top of it, but Flow owns the generic workflow authority.
+_Avoid_: Flow Agents-only control surface, runtime-specific orchestration API
+
+**Flow Console**:
+The optional visual and control surface for inspecting and managing Flow Runs, gates, review queues, evidence, decisions, exceptions, and next actions. Flow Console owns generic process visibility and management; product extensions make it native for vertical products or runtimes.
+_Avoid_: Flow Agents-only console, Survey review UI, task board
+
+**Review Queue**:
+A Flow-managed queue of Review Items waiting for an actor, producer, agent, or authority to decide, supply evidence, or resolve a gap before a Flow Run can advance.
+_Avoid_: Survey-only candidate queue, product-specific inbox, task board
+
+**Review Item**:
+A generic decision object surfaced by a Flow gate or step, such as a proposed field change, candidate value, evidence gap, exception request, or approval request. The Review Item records status, subject, evidence references, available actions, and extension payload without owning product-specific field semantics.
+_Avoid_: Survey Candidate as the only meaning, Veritas Requirement, raw UI row
+
+**Flow Product Extension**:
+A product-supplied customization layer for Flow Console labels, field renderers, actions, queue grouping, suggested next actions, and branding. Extensions must not redefine Flow gate, transition, route-back, exception, or run-control semantics.
+_Avoid_: Custom workflow authority, Flow fork
+
+**Kontour Console**:
+The suite-level management and visibility product that brings Kontour primitives together across Surface, Flow, Survey, Veritas, Flow Agents, and vertical products. The primitives remain portable and useful on their own; Kontour Console is the comprehensive cross-product workspace for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
+_Avoid_: Shared component library only, hosted requirement for primitives, product-specific admin screen
+
 **Continuation**:
 The ability to resume a Flow Run from recorded state rather than chat memory. Continuation should use current step, next action, open gates, evidence state, and exceptions.
 _Avoid_: Agent memory only, best-effort prompt recall
