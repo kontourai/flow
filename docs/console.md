@@ -36,13 +36,13 @@ Flow Console should lay that foundation early by aligning with Surface Console o
 
 The first abstraction should be the console contract and composition model, not only a shared component package. A shared `kontour-console` shell can emerge once Surface Console and Flow Console prove which layout, routing, projection, and extension primitives are actually common.
 
-## Campfit Extension First
+## Reference Extension First
 
-The first Flow Console implementation should be Flow-focused, with Campfit as the reference Flow Product Extension. Campfit should supply product-native labels, field renderers, proof panels, queue grouping, proposed-field-change views, and branding while Flow owns the generic Review Queue, Review Item, Run Control API, decision history, and gate semantics.
+The first Flow Console implementation should be Flow-focused, with a reference vertical product treated as a Flow Product Extension. The extension should supply product-native labels, field renderers, proof panels, queue grouping, proposed-field-change views, and branding while Flow owns the generic Review Queue, Review Item, Run Control API, decision history, and gate semantics.
 
-Campfit review concepts should map into Flow rather than become Flow:
+Vertical review concepts should map into Flow rather than become Flow:
 
-- proposed provider or camp field change -> Review Item
+- proposed field change -> Review Item
 - source excerpt and URL -> evidence reference or proof panel payload
 - approve, reject, apply next -> Review Item actions backed by Flow transition/control semantics
 - required-field coverage -> gate expectation or Surface claim status, depending on whether the question is process progress or trust state

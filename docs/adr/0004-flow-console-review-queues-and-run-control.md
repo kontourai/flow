@@ -8,9 +8,9 @@ Accepted
 
 ## Context
 
-Campfit is proving a reusable review surface: producers collect sources, propose field changes, reviewers inspect evidence and excerpts, approve or reject proposed values, and the product records field-level provenance and verification status.
+A reference vertical review surface is proving the reusable shape: producers collect sources, propose field changes, reviewers inspect evidence and excerpts, approve or reject proposed values, and the product records field-level provenance and verification status.
 
-That shape is broader than Campfit, but it crosses several Kontour products:
+That shape is broader than any one vertical, and it crosses several Kontour products:
 
 - Surface owns claim trust state, evidence, freshness, gaps, and current claim status.
 - Survey owns producer-side fact-review records such as sources, observations, extractions, candidates, review records, and claim publication.
@@ -38,7 +38,7 @@ Flow Console includes:
 
 Survey supplies fact-review record shapes and can provide Survey-specific Flow Definitions, Review Item payloads, and Flow Product Extensions for `ingest -> curate -> verify -> publish` processes.
 
-Products supply Flow Product Extensions for labels, field renderers, queue grouping, suggested actions, proof panels, and branding. Campfit should be treated as the reference vertical app for this pattern. Flow Agents should be treated as an implementation and consumer on top of Flow, with agent-specific adapters and console views rather than ownership of the generic console contract.
+Products supply Flow Product Extensions for labels, field renderers, queue grouping, suggested actions, proof panels, and branding. A reference vertical app should prove this pattern without becoming part of the generic contract. Flow Agents should be treated as an implementation and consumer on top of Flow, with agent-specific adapters and console views rather than ownership of the generic console contract.
 
 Surface remains the place to inspect current claim status without starting from a run. Flow Runs and Review Items may explain how that status was reached or what process is actively changing it, but Surface owns claim/trust state.
 
@@ -54,7 +54,7 @@ Kontour Console should be treated as the suite-level management and visibility p
 
 The early shared abstraction should be contracts and composition model: projection boundaries, identity links, queue and action vocabulary, route conventions, refresh semantics, and extension metadata. A shared console UI package should wait until Surface Console and Flow Console prove which components and shell behavior are actually common.
 
-The first implementation focus should be Flow-owned, with Campfit as the reference extension sourced from the Campfit repo. A throwaway prototype is not required unless the Flow/Campfit boundary becomes unclear during implementation.
+The first implementation focus should be Flow-owned, with a reference vertical extension maintained outside the Flow repo. A throwaway prototype is not required unless the Flow/product-extension boundary becomes unclear during implementation.
 
 ## Consequences
 
@@ -64,7 +64,7 @@ Positive:
 - Survey stays focused on fact-review contracts instead of becoming a workflow platform.
 - Flow Agents can expose agent work, decisions, proof, and pause/resume controls without forking Flow semantics.
 - Vertical products can get a reusable console layer while still feeling native through extensions.
-- Campfit can guide the first concrete console experience without becoming the generic contract.
+- A reference vertical extension can guide the first concrete console experience without becoming the generic contract.
 - Surface Console and Flow Console can converge on a common console architecture before a unified Kontour Console exists.
 - The eventual Kontour Console has stable integration points from the start instead of requiring a retrofit across products.
 - Kontour Console can become the suite-level product without making the underlying primitives proprietary or hosted-only.

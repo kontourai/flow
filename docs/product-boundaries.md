@@ -93,7 +93,7 @@ Survey may provide Flow Definitions, Review Item payloads, and Flow Product Exte
 
 Flow owns the generic Flow Console contract: run visibility, Run Control API, review queues, Review Items, gate/evidence panels, decisions, exceptions, route-back state, pause/resume/progress controls, and next actions.
 
-Product-specific experiences should customize Flow Console through Flow Product Extensions. A vertical app such as Campfit can supply labels, field renderers, queue grouping, proof panels, suggested actions, and branding. Flow Agents can supply agent-runtime adapters and agent-specific views. Those extensions must not redefine Flow gate semantics, transition authority, route-back rules, or project config authority.
+Product-specific experiences should customize Flow Console through Flow Product Extensions. A vertical app can supply labels, field renderers, queue grouping, proof panels, suggested actions, and branding. Flow Agents can supply agent-runtime adapters and agent-specific views. Those extensions must not redefine Flow gate semantics, transition authority, route-back rules, or project config authority.
 
 Flow Console should follow the same architectural pattern as Surface Console: a local-first shell over a product-owned projection/read model, schema-shaped extension points, domain vocabulary and branding as presentation inputs, and core semantics that remain independent from extension code. Surface Console and Flow Console should be interoperable enough that a future Kontour Console can bridge claim status, process status, proof, queues, and next actions without rewriting either product's core model.
 
