@@ -18,9 +18,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test scripts/check-schemas.mjs",
+    "test": "node scripts/check-content-boundary.cjs && node --test scripts/check-schemas.mjs",
     "check:schemas": "node scripts/check-schemas.mjs",
-    "prepack": "npm test && npm run check:schemas"
+    "prepack": "npm test && npm run check:schemas",
+    "check:content-boundary": "node scripts/check-content-boundary.cjs"
   },
   "keywords": [
     "agents",
