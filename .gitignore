@@ -4,4 +4,5 @@ dist/
 *.tgz
 .surface/
 .veritas/
+.agents/
 .DS_Store
