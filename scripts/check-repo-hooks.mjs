@@ -1,0 +1,103 @@
+import assert from "node:assert/strict";
+import { access, constants, readFile, stat } from "node:fs/promises";
+import { test } from "node:test";
+
+const hookPath = new URL("../.githooks/pre-push", import.meta.url);
+const packagePath = new URL("../package.json", import.meta.url);
+const readmePath = new URL("../README.md", import.meta.url);
+const setupPath = new URL("./setup-repo-hooks.mjs", import.meta.url);
+const validatePath = new URL("./validate-repo-hooks.mjs", import.meta.url);
+
+const downstreamNamePatterns = [
+  ["Camp", "fit"],
+  ["T", "axes"],
+  [".", "kontour"],
+  ["downstream", " app"],
+  ["private", " product"]
+];
+
+async function text(url) {
+  return readFile(url, "utf8");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function meaningfulShellLines(content) {
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+}
+
+test("repo hook package scripts stay wired", async () => {
+  const packageJson = JSON.parse(await text(packagePath));
+
+  assert.equal(packageJson.scripts["setup:repo-hooks"], "node scripts/setup-repo-hooks.mjs");
+  assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
+  assert.equal(packageJson.scripts["check:repo-hooks"], "node --test scripts/check-repo-hooks.mjs");
+  assert.match(packageJson.scripts.test, /scripts\/check-schemas\.mjs/);
+  assert.match(packageJson.scripts.test, /scripts\/check-repo-hooks\.mjs/);
+});
+
+test("pre-push hook is executable and runs the bounded local lane", async () => {
+  const hook = await text(hookPath);
+  const hookStat = await stat(hookPath);
+  const expectedLines = [
+    "set -eu",
+    "repo_root=$(git rev-parse --show-toplevel)",
+    'cd "$repo_root"',
+    'echo "pre-push: npm test"',
+    "npm test",
+    'echo "pre-push: npm run check:schemas"',
+    "npm run check:schemas"
+  ];
+
+  await access(hookPath, constants.X_OK);
+  assert.ok(hookStat.isFile(), ".githooks/pre-push must be a file");
+  assert.match(hook, /^#!\/bin\/sh\n/);
+  assert.deepEqual(meaningfulShellLines(hook), expectedLines);
+});
+
+test("setup and validation scripts use repo-local hooks path", async () => {
+  const setup = await text(setupPath);
+  const validate = await text(validatePath);
+
+  assert.match(setup, /"config", "--local", "core\.hooksPath", "\.githooks"/);
+  assert.doesNotMatch(setup, /--global|--system/);
+  assert.match(validate, /"config", "--local", "--get", "core\.hooksPath"/);
+  assert.match(validate, /\.githooks/);
+  assert.match(validate, /pre-push/);
+});
+
+test("README documents contributor hook setup and product boundary", async () => {
+  const readme = await text(readmePath);
+
+  assert.match(readme, /## Contributor Git Hooks/);
+  assert.match(readme, /npm run setup:repo-hooks/);
+  assert.match(readme, /npm run validate:repo-hooks/);
+  assert.match(readme, /contributor tooling/);
+  assert.match(readme, /not Flow Definition semantics/);
+  assert.match(readme, /not Flow Run state/);
+  assert.match(readme, /not gate evaluation/);
+  assert.match(readme, /not Flow Console behavior/);
+  assert.match(readme, /not CI or merge authority/);
+});
+
+test("repo hook files do not mention downstream or private product names", async () => {
+  const files = [
+    ["package.json", await text(packagePath)],
+    ["README.md", await text(readmePath)],
+    [".githooks/pre-push", await text(hookPath)],
+    ["scripts/setup-repo-hooks.mjs", await text(setupPath)],
+    ["scripts/validate-repo-hooks.mjs", await text(validatePath)]
+  ];
+
+  for (const [file, contents] of files) {
+    for (const parts of downstreamNamePatterns) {
+      const name = parts.join("");
+      assert.doesNotMatch(contents, new RegExp(escapeRegExp(name), "i"), `${file} must not mention ${name}`);
+    }
+  }
+});

@@ -16,6 +16,19 @@ npx flow attach-evidence dev-1847 --gate verify-gate \
 npx flow report dev-1847
 ```
 
+## Contributor Git Hooks
+
+Flow includes optional repo-local Git hooks for contributors:
+
+```sh
+npm run setup:repo-hooks
+npm run validate:repo-hooks
+```
+
+Setup is idempotent and writes only this repository's local Git config: `core.hooksPath=.githooks`. The tracked `pre-push` hook runs the bounded local lane, `npm test` and `npm run check:schemas`.
+
+These hooks are contributor tooling. They are not Flow Definition semantics, not Flow Run state, not gate evaluation, not Flow Console behavior, and not CI or merge authority.
+
 ## Status
 
 Flow v0.1 is local and file-backed.
