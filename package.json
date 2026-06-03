@@ -18,8 +18,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test scripts/check-schemas.mjs",
+    "test": "node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs",
     "check:schemas": "node scripts/check-schemas.mjs",
+    "check:repo-hooks": "node --test scripts/check-repo-hooks.mjs",
+    "setup:repo-hooks": "node scripts/setup-repo-hooks.mjs",
+    "validate:repo-hooks": "node scripts/validate-repo-hooks.mjs",
     "prepack": "npm test && npm run check:schemas"
   },
   "keywords": [

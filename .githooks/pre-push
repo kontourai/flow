@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+echo "pre-push: npm test"
+npm test
+
+echo "pre-push: npm run check:schemas"
+npm run check:schemas
