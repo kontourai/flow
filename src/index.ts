@@ -155,8 +155,20 @@ export function flowConfigPath(cwd = process.cwd()) {
   return path.join(flowRoot(cwd), "config.json");
 }
 
+export function assertSafeRunId(runId: string): string {
+  if (
+    !runId ||
+    path.isAbsolute(runId) ||
+    runId.includes("\0") ||
+    runId.split(/[\\/]/).some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error(`invalid run id: ${runId}`);
+  }
+  return runId;
+}
+
 export function runDir(runId, cwd = process.cwd()) {
-  return path.join(flowRoot(cwd), "runs", runId);
+  return path.join(flowRoot(cwd), "runs", assertSafeRunId(runId));
 }
 
 export async function readJson(file) {

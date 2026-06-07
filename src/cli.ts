@@ -16,10 +16,12 @@ import {
   renderResume,
   renderSummary,
   reportJson,
+  runDir,
   startRun,
   validateRunTransition,
   validateDefinitionWithDiagnostics
 } from "./index.js";
+import { startFlowConsoleServer } from "./console-server.js";
 
 type CliFlags = Record<string, any>;
 
@@ -36,6 +38,7 @@ function usage() {
   flow config preview <proposal> [--format summary|markdown|json]
   flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
   flow report <run-id> [--format summary|markdown|json]
+  flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
   flow resume <run-id>
   flow list
 `;
@@ -314,15 +317,40 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
+    const dir = runDir(runId);
     if (format === "summary") {
-      const report = JSON.parse(await readFile(path.join(".flow", "runs", runId, "report.json"), "utf8"));
+      const report = JSON.parse(await readFile(path.join(dir, "report.json"), "utf8"));
       console.log(`${report.status} ${report.summary}`);
       console.log(`report: .flow/runs/${runId}/report.md`);
     } else if (format === "json") {
-      process.stdout.write(await readFile(path.join(".flow", "runs", runId, "report.json"), "utf8"));
+      process.stdout.write(await readFile(path.join(dir, "report.json"), "utf8"));
     } else {
-      process.stdout.write(await readFile(path.join(".flow", "runs", runId, "report.md"), "utf8"));
+      process.stdout.write(await readFile(path.join(dir, "report.md"), "utf8"));
     }
+    return;
+  }
+
+  if (command === "console") {
+    const runId = requireArg(flags.run ?? args[0], "flow console requires --run <run-id>");
+    const port = flags.port === undefined ? 0 : Number(flags.port);
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port must be an integer from 0 to 65535");
+    const server = await startFlowConsoleServer({
+      runId,
+      cwd: flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd(),
+      host: flags.host ?? "127.0.0.1",
+      port
+    });
+    console.log(`Flow Console: ${server.url}`);
+    console.log(`run: ${server.runId}`);
+    console.log("Press Ctrl+C to stop.");
+    await new Promise<void>((resolve) => {
+      const stop = async () => {
+        await server.close();
+        resolve();
+      };
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+    });
     return;
   }
 

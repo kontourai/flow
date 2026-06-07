@@ -83,6 +83,7 @@ flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <auth
 flow config preview <proposal> [--format summary|markdown|json]
 flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
 flow report <run-id> [--format summary|markdown|json]
+flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
 flow resume <run-id>
 flow list
 ```
@@ -120,6 +121,19 @@ The root package also exports `projectFlowRun` and `projectFlowRunFromFiles` fro
 `projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
 
 This API is the Flow boundary for console consumers. Browser UI, hosted behavior, companion console startup, and `kontour-console` integration are outside this Flow issue.
+
+## Local Flow Console
+
+`flow console --run <id>` starts a loopback-only local operator console for a run stored under `.flow/runs/<run-id>/`. The server reads the run through `projectFlowRunFromFiles`, serves static compiled UI assets, and exposes the projection at `/api/projection`.
+
+```sh
+npm run build
+node dist/cli.js console --run console-projection-fixture --cwd examples/fixtures/console-projection --port 0
+```
+
+The console shows the process graph, transition timeline, current run status, gate details, evidence, and links from the local projection. It does not start hosted services, authenticate users, collaborate across machines, or discover remote Surface/Veritas systems.
+
+Surface and Veritas refs keep normal HTTP(S) URLs when provided. Companion-scheme refs are mapped to deterministic local companion URLs: `surface://...` becomes `http://127.0.0.1:51231/...`, and `veritas://...` becomes `http://127.0.0.1:51232/...`. When a ref only has a local artifact path, the console links it through `/artifacts/<relative-path>` if the path stays inside the selected run directory; unsafe absolute or parent-traversal paths are displayed as fallback text instead of being served.
 
 ## Evidence Kinds
 

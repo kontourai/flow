@@ -18,6 +18,11 @@
       "types": "./dist/console-projection.d.ts",
       "import": "./dist/console-projection.js",
       "default": "./dist/console-projection.js"
+    },
+    "./console-server": {
+      "types": "./dist/console-server.d.ts",
+      "import": "./dist/console-server.js",
+      "default": "./dist/console-server.js"
     }
   },
   "files": [
@@ -28,9 +33,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs scripts/check-console-projection.mjs",
+    "build": "tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
+    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs scripts/check-console-projection.mjs && node scripts/check-console-smoke.mjs",
     "typecheck": "tsc --noEmit",
+    "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
+    "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
     "check:schemas": "npm run build && node scripts/check-schemas.mjs",
     "check:repo-hooks": "node --test scripts/check-repo-hooks.mjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.mjs",
@@ -52,6 +59,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
+    "playwright": "^1.54.0",
     "typescript": "^6.0.3"
   }
 }
