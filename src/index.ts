@@ -171,6 +171,52 @@ export interface ReleaseReadinessResult extends MutableRecord {
   report_data: MutableRecord;
 }
 
+export type VersionReleaseReportDecision = "ready" | "hold";
+export type VersionReleaseReportGapKind = "verification_evidence" | "release_lane";
+
+export interface VersionReleaseReportGap extends MutableRecord {
+  id: string;
+  kind: VersionReleaseReportGapKind;
+  summary: string;
+}
+
+export interface VersionReleaseReportInput extends MutableRecord {
+  version: {
+    id: string;
+    name?: string;
+    released_at?: string;
+    [key: string]: any;
+  };
+  subject: string;
+  changeset: MutableRecord[];
+  verification_evidence: FlowEvidenceEntry[];
+  release_readiness: ReleaseReadinessResult;
+  required_verification_evidence?: string[];
+  exceptions?: MutableRecord[];
+  accepted_risks?: MutableRecord[];
+  external_links?: ReleaseExternalLink[];
+  native_refs?: ReleaseNativeRef[];
+  summary?: string;
+}
+
+export interface VersionReleaseReport extends MutableRecord {
+  schema_version: string;
+  version: MutableRecord;
+  subject: string;
+  decision: VersionReleaseReportDecision;
+  status: VersionReleaseReportDecision;
+  summary: string;
+  changeset: MutableRecord[];
+  verification_evidence: FlowEvidenceEntry[];
+  release_evidence: ReleaseReadinessResult;
+  exceptions: MutableRecord[];
+  accepted_risks: MutableRecord[];
+  gaps: VersionReleaseReportGap[];
+  external_links: ReleaseExternalLink[];
+  native_refs: ReleaseNativeRef[];
+  report_data: MutableRecord;
+}
+
 export interface TransitionValidationResult extends MutableRecord {
   valid: boolean;
   status: string;
@@ -1423,6 +1469,147 @@ export function evaluateReleaseReadiness(policy: ReleaseReadinessPolicy, options
       native_refs: allRefs.native_refs
     }
   };
+}
+
+export function projectVersionReleaseReport(input: VersionReleaseReportInput): VersionReleaseReport {
+  const verificationEvidence = input.verification_evidence ?? [];
+  const releaseReadiness = input.release_readiness;
+  if (!releaseReadiness) throw new Error("version release report requires release_readiness");
+  const requiredVerification = releaseStringArray(input.required_verification_evidence);
+  const requiredLaneIds = releaseStringArray(releaseReadiness.required_lanes);
+  const laneIds = new Set((releaseReadiness.lanes ?? []).map((lane) => lane.lane_id));
+  const verificationSatisfied = (entry: FlowEvidenceEntry | undefined) => {
+    const claimStatus = entry?.claim?.status ?? entry?.trust_status ?? entry?.status;
+    return Boolean(entry) && ["trusted", "passed"].includes(String(claimStatus));
+  };
+  const gaps: VersionReleaseReportGap[] = [];
+
+  for (const evidenceId of requiredVerification) {
+    const entry = verificationEvidence.find((candidate) => candidate.id === evidenceId);
+    const claimStatus = entry?.claim?.status ?? entry?.trust_status ?? entry?.status;
+    if (!verificationSatisfied(entry)) {
+      gaps.push({
+        id: evidenceId,
+        kind: "verification_evidence",
+        summary: entry ? `required verification evidence ${evidenceId} is ${claimStatus}` : `required verification evidence ${evidenceId} is missing`
+      });
+    }
+  }
+
+  for (const laneId of requiredLaneIds) {
+    if (!laneIds.has(laneId)) {
+      gaps.push({
+        id: laneId,
+        kind: "release_lane",
+        summary: `required release lane ${laneId} is absent`
+      });
+    }
+  }
+
+  for (const lane of releaseReadiness.lanes ?? []) {
+    if (lane.required && lane.status !== "pass") {
+      gaps.push({
+        id: lane.lane_id,
+        kind: "release_lane",
+        summary: `required release lane ${lane.lane_id} is ${lane.status}`
+      });
+    }
+  }
+
+  const externalLinks = [
+    ...releaseLinks(input.external_links),
+    ...releaseLinks(verificationEvidence.flatMap((entry) => Array.isArray(entry.external_links) ? entry.external_links : [])),
+    ...releaseLinks(releaseReadiness.report_data?.external_links),
+    ...releaseLinks((releaseReadiness.lanes ?? []).flatMap((lane) => Array.isArray(lane.external_links) ? lane.external_links : []))
+  ];
+  const nativeRefs = [
+    ...releaseNativeRefs(input.native_refs),
+    ...releaseNativeRefs(verificationEvidence.flatMap((entry) => Array.isArray(entry.native_refs) ? entry.native_refs : [])),
+    ...releaseNativeRefs(releaseReadiness.report_data?.native_refs),
+    ...releaseNativeRefs((releaseReadiness.lanes ?? []).flatMap((lane) => Array.isArray(lane.native_refs) ? lane.native_refs : []))
+  ];
+  const decision: VersionReleaseReportDecision = gaps.length || releaseReadiness.decision !== "pass" ? "hold" : "ready";
+  const summary = input.summary ?? `${input.version?.id ?? "version"} release ${decision}`;
+
+  return {
+    schema_version: FLOW_SCHEMA_VERSION,
+    version: cloneJson(input.version ?? {}),
+    subject: input.subject ?? releaseReadiness.subject,
+    decision,
+    status: decision,
+    summary,
+    changeset: cloneJson(input.changeset ?? []),
+    verification_evidence: cloneJson(verificationEvidence),
+    release_evidence: cloneJson(releaseReadiness),
+    exceptions: cloneJson(input.exceptions ?? []),
+    accepted_risks: cloneJson(input.accepted_risks ?? []),
+    gaps,
+    external_links: externalLinks,
+    native_refs: nativeRefs,
+    report_data: {
+      decision,
+      status: decision,
+      verification_evidence_count: verificationEvidence.length,
+      release_decision: releaseReadiness.decision,
+      release_required_lanes: cloneJson(requiredLaneIds),
+      release_lane_statuses: Object.fromEntries((releaseReadiness.lanes ?? []).map((lane) => [lane.lane_id, lane.status])),
+      required_verification_evidence: requiredVerification,
+      satisfied_required_verification_evidence: requiredVerification.filter((id) => verificationSatisfied(verificationEvidence.find((entry) => entry.id === id))),
+      gap_count: gaps.length,
+      external_links: externalLinks,
+      native_refs: nativeRefs
+    }
+  };
+}
+
+function markdownText(value: any) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/`/g, "\\`")
+    .replace(/\*/g, "\\*")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function safeMarkdownUrl(value: any) {
+  const url = String(value ?? "");
+  if (!url) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !/^(https?|file):/i.test(url)) return "[blocked-url]";
+  return markdownText(url);
+}
+
+function renderVersionReleaseBucket(title: string, entries: MutableRecord[], renderEntry: (entry: MutableRecord) => string) {
+  const lines = [`## ${markdownText(title)}`, ""];
+  if (!entries.length) return [...lines, "- none", ""].join("\n");
+  for (const entry of entries) lines.push(renderEntry(entry));
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function renderVersionReleaseReportMarkdown(report: VersionReleaseReport) {
+  return [
+    `# Version Release Report: ${markdownText(report.version.id ?? report.subject)}`,
+    "",
+    `- Subject: ${markdownText(report.subject)}`,
+    `- Version: ${markdownText(report.version.id ?? "unknown")}`,
+    `- Decision: ${markdownText(report.decision)}`,
+    `- Status: ${markdownText(report.status)}`,
+    `- Summary: ${markdownText(report.summary)}`,
+    "",
+    renderVersionReleaseBucket("Changeset", report.changeset, (entry) => `- ${markdownText(entry.id ?? entry.path ?? "change")}: ${markdownText(entry.summary ?? entry.description ?? entry.title ?? "changed")}`),
+    renderVersionReleaseBucket("Verification Evidence", report.verification_evidence, (entry) => `- ${markdownText(entry.id)}: ${markdownText(entry.kind)}${entry.claim?.type ? ` ${markdownText(entry.claim.type)}` : ""}${entry.claim?.status ? ` (${markdownText(entry.claim.status)})` : entry.status ? ` (${markdownText(entry.status)})` : ""}`),
+    renderVersionReleaseBucket("Release Evidence", report.release_evidence.lanes ?? [], (lane) => `- ${markdownText(lane.lane_id)}: ${markdownText(lane.status)}${lane.required ? " required" : " optional"} - ${markdownText(lane.summary)}`),
+    renderVersionReleaseBucket("Gaps", report.gaps, (gap) => `- ${markdownText(gap.kind)} ${markdownText(gap.id)}: ${markdownText(gap.summary)}`),
+    renderVersionReleaseBucket("Accepted Exceptions", report.exceptions, (entry) => `- ${markdownText(entry.id ?? entry.gate_id ?? "exception")}: ${markdownText(entry.reason ?? entry.summary ?? "accepted")}${entry.authority ? ` (${markdownText(entry.authority)})` : ""}`),
+    renderVersionReleaseBucket("Accepted Risks", report.accepted_risks, (entry) => `- ${markdownText(entry.id ?? "risk")}: ${markdownText(entry.summary ?? entry.reason ?? "accepted")}${entry.owner ? ` (${markdownText(entry.owner)})` : ""}`),
+    renderVersionReleaseBucket("Native Refs", report.native_refs, (entry) => `- ${markdownText(entry.system)}:${markdownText(entry.id)}${entry.url ? ` ${safeMarkdownUrl(entry.url)}` : ""}`),
+    renderVersionReleaseBucket("External Links", report.external_links, (entry) => `- ${markdownText(entry.label)}: ${safeMarkdownUrl(entry.url)}`)
+  ].join("\n");
 }
 
 function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig()) {

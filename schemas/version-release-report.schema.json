@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/version-release-report.schema.json",
+  "title": "Version Release Report",
+  "type": "object",
+  "required": ["schema_version", "version", "subject", "decision", "status", "summary", "changeset", "verification_evidence", "release_evidence", "exceptions", "accepted_risks", "gaps", "external_links", "native_refs", "report_data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "version": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "released_at": { "type": "string" }
+      }
+    },
+    "subject": { "type": "string" },
+    "decision": { "type": "string", "enum": ["ready", "hold"] },
+    "status": { "type": "string", "enum": ["ready", "hold"] },
+    "summary": { "type": "string" },
+    "changeset": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/changeset_entry" }
+    },
+    "verification_evidence": {
+      "type": "array",
+      "items": { "$ref": "gate-evidence.schema.json#/$defs/evidence" }
+    },
+    "release_evidence": { "$ref": "release-readiness-result.schema.json" },
+    "exceptions": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "accepted_risks": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "gaps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gap" }
+    },
+    "external_links": {
+      "type": "array",
+      "items": { "$ref": "release-readiness-result.schema.json#/$defs/external_link" }
+    },
+    "native_refs": {
+      "type": "array",
+      "items": { "$ref": "release-readiness-result.schema.json#/$defs/native_ref" }
+    },
+    "report_data": {
+      "type": "object",
+      "required": ["decision", "status", "verification_evidence_count", "release_decision", "release_required_lanes", "release_lane_statuses", "required_verification_evidence", "satisfied_required_verification_evidence", "gap_count", "external_links", "native_refs"],
+      "additionalProperties": true,
+      "properties": {
+        "decision": { "type": "string", "enum": ["ready", "hold"] },
+        "status": { "type": "string", "enum": ["ready", "hold"] },
+        "verification_evidence_count": { "type": "number" },
+        "release_decision": { "type": "string", "enum": ["pass", "hold"] },
+        "release_required_lanes": { "type": "array", "items": { "type": "string" } },
+        "release_lane_statuses": { "type": "object", "additionalProperties": { "type": "string" } },
+        "required_verification_evidence": { "type": "array", "items": { "type": "string" } },
+        "satisfied_required_verification_evidence": { "type": "array", "items": { "type": "string" } },
+        "gap_count": { "type": "number" },
+        "external_links": { "type": "array", "items": { "$ref": "release-readiness-result.schema.json#/$defs/external_link" } },
+        "native_refs": { "type": "array", "items": { "$ref": "release-readiness-result.schema.json#/$defs/native_ref" } }
+      }
+    }
+  },
+  "$defs": {
+    "changeset_entry": {
+      "type": "object",
+      "required": ["id", "summary"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "summary": { "type": "string" }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "required": ["id", "kind", "summary"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["verification_evidence", "release_lane"] },
+        "summary": { "type": "string" }
+      }
+    }
+  }
+}

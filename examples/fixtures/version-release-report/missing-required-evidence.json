@@ -1,0 +1,82 @@
+{
+  "version": {
+    "id": "kai-2026.06",
+    "name": "Kai June 2026"
+  },
+  "subject": "kai-2026.06",
+  "summary": "kai-2026.06 release held for missing evidence",
+  "changeset": [
+    {
+      "id": "change.api-1847",
+      "summary": "Add release lane evidence projection"
+    }
+  ],
+  "required_verification_evidence": ["ev.verify.tests", "ev.verify.schemas"],
+  "verification_evidence": [
+    {
+      "id": "ev.verify.tests",
+      "gate_id": "verify-gate",
+      "kind": "surface.claim",
+      "requested_kind": "surface.claim",
+      "status": "passed",
+      "attached_at": "2026-06-07T20:00:00.000Z",
+      "claim": {
+        "type": "quality.tests",
+        "subject": "release:kai-2026.06",
+        "status": "trusted"
+      },
+      "producer": "fixture/test-runner",
+      "authority_traces": ["fixture:local-tests"]
+    }
+  ],
+  "release_readiness": {
+    "schema_version": "0.1",
+    "policy_id": "fixture-release-policy",
+    "decision": "hold",
+    "risk_class": "high",
+    "subject": "kai-2026.06",
+    "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+    "lanes": [
+      {
+        "lane_id": "change-approval",
+        "status": "pass",
+        "summary": "Required change record approval satisfied",
+        "required": true,
+        "evidence_refs": ["ev.release.change.CHG-1847"],
+        "external_links": [],
+        "native_refs": []
+      },
+      {
+        "lane_id": "deployment-window",
+        "status": "not_verified",
+        "summary": "Deployment window is open not satisfied",
+        "required": true,
+        "evidence_refs": [],
+        "external_links": [],
+        "native_refs": []
+      },
+      {
+        "lane_id": "freeze-state",
+        "status": "pass",
+        "summary": "Release freeze is clear satisfied",
+        "required": true,
+        "evidence_refs": ["ev.release.freeze.freeze-2026-06"],
+        "external_links": [],
+        "native_refs": []
+      }
+    ],
+    "evidence": [],
+    "report_data": {
+      "decision": "hold",
+      "risk_class": "high",
+      "subject": "kai-2026.06",
+      "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+      "external_links": [],
+      "native_refs": []
+    }
+  },
+  "exceptions": [],
+  "accepted_risks": [],
+  "external_links": [],
+  "native_refs": []
+}

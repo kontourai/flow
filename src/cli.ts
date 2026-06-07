@@ -10,11 +10,13 @@ import {
   listRuns,
   loadRun,
   previewFlowConfigMergeFile,
+  projectVersionReleaseReport,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary,
   renderMarkdownReport,
   renderResume,
   renderSummary,
+  renderVersionReleaseReportMarkdown,
   reportJson,
   runDir,
   startRun,
@@ -38,6 +40,7 @@ function usage() {
   flow config preview <proposal> [--format summary|markdown|json]
   flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
   flow report <run-id> [--format summary|markdown|json]
+  flow version-release-report <fixture-json> [--format json|markdown]
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
   flow resume <run-id>
   flow list
@@ -326,6 +329,21 @@ async function main() {
       process.stdout.write(await readFile(path.join(dir, "report.json"), "utf8"));
     } else {
       process.stdout.write(await readFile(path.join(dir, "report.md"), "utf8"));
+    }
+    return;
+  }
+
+  if (command === "version-release-report") {
+    const fixturePath = requireArg(args[0], "flow version-release-report requires a fixture JSON path");
+    const fixture = JSON.parse(await readFile(path.resolve(process.cwd(), fixturePath), "utf8"));
+    const report = projectVersionReleaseReport(fixture);
+    const format = flags.format ?? "markdown";
+    if (format === "json") {
+      console.log(JSON.stringify(report, null, 2));
+    } else if (format === "markdown") {
+      process.stdout.write(renderVersionReleaseReportMarkdown(report));
+    } else {
+      throw new Error("flow version-release-report --format must be json or markdown");
     }
     return;
   }

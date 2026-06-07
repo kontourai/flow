@@ -1,0 +1,204 @@
+{
+  "version": {
+    "id": "kai-2026.06",
+    "name": "Kai June 2026",
+    "released_at": "2026-06-07T20:30:00.000Z"
+  },
+  "subject": "kai-2026.06",
+  "summary": "kai-2026.06 release ready",
+  "changeset": [
+    {
+      "id": "change.api-1847",
+      "summary": "Add release lane evidence projection",
+      "files": ["src/index.ts", "src/cli.ts"]
+    },
+    {
+      "id": "change.docs-1847",
+      "summary": "Document local Version Release Report generation",
+      "files": ["README.md"]
+    }
+  ],
+  "required_verification_evidence": ["ev.verify.tests", "ev.verify.schemas"],
+  "verification_evidence": [
+    {
+      "id": "ev.verify.tests",
+      "gate_id": "verify-gate",
+      "kind": "surface.claim",
+      "requested_kind": "surface.claim",
+      "status": "passed",
+      "attached_at": "2026-06-07T20:00:00.000Z",
+      "claim": {
+        "type": "quality.tests",
+        "subject": "release:kai-2026.06",
+        "status": "trusted"
+      },
+      "producer": "fixture/test-runner",
+      "authority_traces": ["fixture:local-tests"],
+      "external_links": [
+        {
+          "label": "test log",
+          "url": "file://fixtures/version-release-report/test-log.txt",
+          "provider": "local-file"
+        }
+      ],
+      "native_refs": [
+        {
+          "system": "local-artifact",
+          "id": "test-log",
+          "native_type": "file",
+          "url": "file://fixtures/version-release-report/test-log.txt"
+        }
+      ]
+    },
+    {
+      "id": "ev.verify.schemas",
+      "gate_id": "verify-gate",
+      "kind": "surface.claim",
+      "requested_kind": "surface.claim",
+      "status": "passed",
+      "attached_at": "2026-06-07T20:01:00.000Z",
+      "claim": {
+        "type": "quality.schemas",
+        "subject": "release:kai-2026.06",
+        "status": "trusted"
+      },
+      "producer": "fixture/schema-check",
+      "authority_traces": ["fixture:schema-check"]
+    }
+  ],
+  "release_readiness": {
+    "schema_version": "0.1",
+    "policy_id": "fixture-release-policy",
+    "decision": "pass",
+    "risk_class": "high",
+    "subject": "kai-2026.06",
+    "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+    "lanes": [
+      {
+        "lane_id": "change-approval",
+        "status": "pass",
+        "summary": "Required change record approval satisfied",
+        "required": true,
+        "evidence_refs": ["ev.release.change.CHG-1847"],
+        "external_links": [
+          {
+            "label": "change record",
+            "url": "https://change.example.test/changes/CHG-1847",
+            "provider": "change-fixture"
+          }
+        ],
+        "native_refs": [
+          {
+            "system": "change-management-fixture",
+            "id": "CHG-1847",
+            "native_type": "change_record"
+          }
+        ]
+      },
+      {
+        "lane_id": "deployment-window",
+        "status": "pass",
+        "summary": "Deployment window is open satisfied",
+        "required": true,
+        "evidence_refs": ["ev.release.deployment.production"],
+        "external_links": [
+          {
+            "label": "deployment window",
+            "url": "https://deploy.example.test/windows/production"
+          }
+        ],
+        "native_refs": [
+          {
+            "system": "deployment-fixture",
+            "id": "production",
+            "native_type": "deployment_window"
+          }
+        ]
+      },
+      {
+        "lane_id": "freeze-state",
+        "status": "pass",
+        "summary": "Release freeze is clear satisfied",
+        "required": true,
+        "evidence_refs": ["ev.release.freeze.freeze-2026-06"],
+        "external_links": [
+          {
+            "label": "freeze state",
+            "url": "https://freeze.example.test/windows/freeze-2026-06"
+          }
+        ],
+        "native_refs": [
+          {
+            "system": "freeze-fixture",
+            "id": "freeze-2026-06",
+            "native_type": "freeze_window"
+          }
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "id": "ev.release.change.CHG-1847",
+        "kind": "surface.claim",
+        "requested_kind": "surface.claim",
+        "status": "passed",
+        "attached_at": "2026-06-07T20:02:00.000Z",
+        "claim": {
+          "type": "release.change.approved",
+          "subject": "release:kai-2026.06",
+          "status": "trusted"
+        },
+        "producer": "release-fixture/change-management",
+        "authority_traces": ["fixture:change-management"]
+      }
+    ],
+    "report_data": {
+      "decision": "pass",
+      "risk_class": "high",
+      "subject": "kai-2026.06",
+      "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+      "external_links": [
+        {
+          "label": "change record",
+          "url": "https://change.example.test/changes/CHG-1847",
+          "provider": "change-fixture"
+        }
+      ],
+      "native_refs": [
+        {
+          "system": "change-management-fixture",
+          "id": "CHG-1847",
+          "native_type": "change_record"
+        }
+      ]
+    }
+  },
+  "exceptions": [
+    {
+      "id": "ex.release.docs-late",
+      "reason": "Release owner accepted final docs after evidence capture",
+      "authority": "release-owner"
+    }
+  ],
+  "accepted_risks": [
+    {
+      "id": "risk.telemetry-delay",
+      "summary": "Telemetry freshness may lag by one hour",
+      "owner": "release-owner"
+    }
+  ],
+  "external_links": [
+    {
+      "label": "release notes",
+      "url": "file://fixtures/version-release-report/release-notes.md"
+    }
+  ],
+  "native_refs": [
+    {
+      "system": "local-artifact",
+      "id": "release-notes",
+      "native_type": "file",
+      "url": "file://fixtures/version-release-report/release-notes.md"
+    }
+  ]
+}
