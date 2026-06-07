@@ -83,6 +83,7 @@ flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <auth
 flow config preview <proposal> [--format summary|markdown|json]
 flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
 flow report <run-id> [--format summary|markdown|json]
+flow version-release-report <fixture-json> [--format json|markdown]
 flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
 flow resume <run-id>
 flow list
@@ -250,6 +251,32 @@ const result = evaluateReleaseReadiness(policy, {
 ```
 
 Required lanes pass only when their Surface-shaped claim satisfies the policy. Missing, pending, rejected, stale, untrusted, or authority-gap evidence returns `decision: "hold"`. See `examples/fixtures/release-readiness/` for the fixture policy, adapter records, and equivalent Flow Definition expectation.
+
+## Version Release Report
+
+The Version Release Report is a local-file-first artifact projection for a versioned release. It combines a changeset, Flow-shaped verification evidence, a `ReleaseReadinessResult`, accepted exceptions, accepted risks, `native_refs`, and `external_links` into deterministic JSON or Markdown.
+
+Generate from an explicit local fixture file:
+
+```sh
+npm run build
+node dist/cli.js version-release-report examples/fixtures/version-release-report/complete.json --format json
+node dist/cli.js version-release-report examples/fixtures/version-release-report/missing-required-evidence.json --format markdown
+```
+
+Use the library API when embedding the projection:
+
+```js
+import {
+  projectVersionReleaseReport,
+  renderVersionReleaseReportMarkdown
+} from "@kontourai/flow";
+
+const report = projectVersionReleaseReport(fixtureJson);
+console.log(renderVersionReleaseReportMarkdown(report));
+```
+
+`schemas/version-release-report.schema.json` describes the projected report. Missing required verification evidence or required release lanes become explicit `gaps` and set `decision: "hold"`; they are never summarized as ready. Provider-native ids and URLs are preserved as data in `native_refs` and `external_links`; Flow does not call hosted release portals, replace release managers, or invent provider-specific semantics for this artifact. See `examples/fixtures/version-release-report/` for complete and missing-evidence inputs.
 
 ## Project Config Merge
 

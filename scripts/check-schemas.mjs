@@ -17,9 +17,11 @@ import {
   FLOW_SCHEMA_VERSION,
   initialState,
   normalizeTrustArtifact,
+  projectVersionReleaseReport,
   previewFlowConfigMerge,
   renderMarkdownReport,
   renderConfigMergeMarkdown,
+  renderVersionReleaseReportMarkdown,
   renderResume,
   renderSummary,
   reportJson,
@@ -45,6 +47,14 @@ async function surfaceClaimEvidenceFixture(file) {
 
 async function releaseReadinessFixture(file) {
   return json(`examples/fixtures/release-readiness/${file}`);
+}
+
+async function versionReleaseReportFixture(file) {
+  return json(`examples/fixtures/version-release-report/${file}`);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function requireSchemaFields(schema, fields) {
@@ -77,6 +87,7 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   const help = await execFile(process.execPath, [cli, "--help"]);
   assert.match(help.stdout, /flow validate-definition <path> \[--json\]/);
+  assert.match(help.stdout, /flow version-release-report <fixture-json> \[--format json\|markdown\]/);
 
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/agent-dev-flow.json", "--json"], {
     cwd: new URL("..", import.meta.url)
@@ -86,6 +97,38 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   const runtime = await import("../dist/index.js");
   assert.equal(typeof runtime.validateDefinition, "function");
   assert.equal(typeof runtime.validateRunTransition, "function");
+  assert.equal(typeof runtime.projectVersionReleaseReport, "function");
+  assert.equal(typeof runtime.renderVersionReleaseReportMarkdown, "function");
+});
+
+test("CLI version-release-report renders deterministic JSON and Markdown from local fixtures", async () => {
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const cwd = new URL("..", import.meta.url);
+
+  const complete = await execFile(process.execPath, [
+    cli,
+    "version-release-report",
+    "examples/fixtures/version-release-report/complete.json",
+    "--format",
+    "json"
+  ], { cwd });
+  const report = JSON.parse(complete.stdout);
+  assert.equal(report.decision, "ready");
+  assert.equal(report.release_evidence.lanes.find((lane) => lane.lane_id === "change-approval").status, "pass");
+  assert.ok(report.native_refs.some((ref) => ref.id === "CHG-1847"));
+  assert.ok(report.external_links.some((link) => link.url === "https://change.example.test/changes/CHG-1847"));
+
+  const missing = await execFile(process.execPath, [
+    cli,
+    "version-release-report",
+    "examples/fixtures/version-release-report/missing-required-evidence.json",
+    "--format",
+    "markdown"
+  ], { cwd });
+  assert.match(missing.stdout, /# Version Release Report: kai-2026\.06/);
+  assert.match(missing.stdout, /Decision: hold/);
+  assert.match(missing.stdout, /verification_evidence ev\.verify\.schemas/);
+  assert.match(missing.stdout, /release_lane deployment-window/);
 });
 
 function routeBackDefinition(overrides = {}) {
@@ -159,6 +202,7 @@ test("schemas describe the runtime contract", async () => {
   const transitionValidationResultSchema = await json("schemas/flow-transition-validation-result.schema.json");
   const releaseReadinessPolicySchema = await json("schemas/release-readiness-policy.schema.json");
   const releaseReadinessResultSchema = await json("schemas/release-readiness-result.schema.json");
+  const versionReleaseReportSchema = await json("schemas/version-release-report.schema.json");
 
   assert.equal(definitionSchema.properties.version.type, "string");
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
@@ -170,6 +214,7 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(transitionValidationResultSchema.title, "Flow Transition Validation Result");
   assert.equal(releaseReadinessPolicySchema.title, "Release Readiness Policy");
   assert.equal(releaseReadinessResultSchema.title, "Release Readiness Result");
+  assert.equal(versionReleaseReportSchema.title, "Version Release Report");
 
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
@@ -217,6 +262,7 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaFields(transitionValidationResultSchema, ["valid", "status", "diagnostics", "transition"]);
   requireSchemaFields(releaseReadinessPolicySchema, ["schema_version", "id", "lanes", "risk_classes"]);
   requireSchemaFields(releaseReadinessResultSchema, ["schema_version", "policy_id", "decision", "risk_class", "subject", "required_lanes", "lanes", "evidence", "report_data"]);
+  requireSchemaFields(versionReleaseReportSchema, ["schema_version", "version", "subject", "decision", "status", "summary", "changeset", "verification_evidence", "release_evidence", "exceptions", "accepted_risks", "gaps", "external_links", "native_refs", "report_data"]);
   assert.ok(configMergeReportSchema.$defs.change.properties.path);
   assert.ok(configMergeReportSchema.$defs.change.properties.section);
   assert.ok(configMergeReportSchema.$defs.change.properties.local_value);
@@ -224,6 +270,118 @@ test("schemas describe the runtime contract", async () => {
   assert.deepEqual(releaseReadinessResultSchema.$defs.lane_outcome.properties.status.enum, ["pass", "hold", "not_required", "not_verified"]);
   assert.ok(releaseReadinessResultSchema.$defs.lane_outcome.properties.external_links);
   assert.ok(releaseReadinessResultSchema.$defs.lane_outcome.properties.native_refs);
+  assert.deepEqual(versionReleaseReportSchema.properties.decision.enum, ["ready", "hold"]);
+  assert.equal(versionReleaseReportSchema.properties.release_evidence.$ref, "release-readiness-result.schema.json");
+  assert.deepEqual(versionReleaseReportSchema.$defs.gap.properties.kind.enum, ["verification_evidence", "release_lane"]);
+});
+
+test("version release report projects complete local fixtures and preserves refs", async () => {
+  const input = await versionReleaseReportFixture("complete.json");
+  const report = projectVersionReleaseReport(input);
+
+  assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
+  assert.equal(report.decision, "ready");
+  assert.equal(report.status, "ready");
+  assert.equal(report.gaps.length, 0);
+  assert.equal(report.changeset.length, 2);
+  assert.equal(report.verification_evidence[0].kind, "surface.claim");
+  assert.equal(report.verification_evidence[0].claim.type, "quality.tests");
+  assert.equal(report.release_evidence.decision, "pass");
+  assert.deepEqual(report.release_evidence.required_lanes, ["change-approval", "deployment-window", "freeze-state"]);
+  assert.deepEqual(report.release_evidence.lanes.filter((lane) => lane.required).map((lane) => lane.status), ["pass", "pass", "pass"]);
+  assert.equal(report.exceptions[0].id, "ex.release.docs-late");
+  assert.equal(report.accepted_risks[0].id, "risk.telemetry-delay");
+  assert.ok(report.external_links.some((link) => link.url === "file://fixtures/version-release-report/release-notes.md"));
+  assert.ok(report.external_links.some((link) => link.url === "https://change.example.test/changes/CHG-1847"));
+  assert.ok(report.external_links.some((link) => link.url === "https://deploy.example.test/windows/production"));
+  assert.ok(report.external_links.some((link) => link.url === "https://freeze.example.test/windows/freeze-2026-06"));
+  assert.ok(report.native_refs.some((ref) => ref.system === "local-artifact" && ref.id === "release-notes"));
+  assert.ok(report.native_refs.some((ref) => ref.system === "change-management-fixture" && ref.id === "CHG-1847"));
+  assert.ok(report.native_refs.some((ref) => ref.system === "deployment-fixture" && ref.id === "production"));
+  assert.ok(report.native_refs.some((ref) => ref.system === "freeze-fixture" && ref.id === "freeze-2026-06"));
+  assert.equal(report.report_data.release_lane_statuses["change-approval"], "pass");
+});
+
+test("version release report holds when a required release lane is absent from lane outcomes", async () => {
+  const input = await versionReleaseReportFixture("complete.json");
+  input.release_readiness.lanes = input.release_readiness.lanes.filter((lane) => lane.lane_id !== "deployment-window");
+  input.release_readiness.decision = "pass";
+
+  const report = projectVersionReleaseReport(input);
+
+  assert.equal(report.decision, "hold");
+  assert.ok(report.gaps.some((gap) => gap.kind === "release_lane" && gap.id === "deployment-window" && /absent/.test(gap.summary)));
+});
+
+test("version release report requires positive verification evidence claim status", async () => {
+  const base = await versionReleaseReportFixture("complete.json");
+  const rejectedStatuses = [
+    { name: "pending", patch: { claim: { status: "pending" }, status: "passed" } },
+    { name: "unknown", patch: { claim: {}, status: "unknown" } },
+    { name: "untrusted", patch: { claim: { status: "untrusted" }, status: "passed" } },
+    { name: "authority_gap", patch: { claim: { status: "authority_gap" }, status: "passed" } },
+    { name: "omitted", patch: { claim: {}, status: undefined } }
+  ];
+
+  for (const { name, patch } of rejectedStatuses) {
+    const input = clone(base);
+    const entry = input.verification_evidence.find((candidate) => candidate.id === "ev.verify.tests");
+    entry.claim = { type: "quality.tests", subject: "release:kai-2026.06", ...patch.claim };
+    if (patch.status === undefined) delete entry.status;
+    else entry.status = patch.status;
+
+    const report = projectVersionReleaseReport(input);
+    assert.equal(report.decision, "hold", name);
+    assert.ok(report.gaps.some((gap) => gap.kind === "verification_evidence" && gap.id === "ev.verify.tests"), name);
+    assert.ok(!report.report_data.satisfied_required_verification_evidence.includes("ev.verify.tests"), name);
+  }
+});
+
+test("version release report fixtures include required gate evidence timestamps", async () => {
+  const input = await versionReleaseReportFixture("complete.json");
+  const projected = projectVersionReleaseReport(input);
+
+  assert.ok(projected.verification_evidence.every((entry) => typeof entry.attached_at === "string"));
+  assert.ok(projected.release_evidence.evidence.every((entry) => typeof entry.attached_at === "string"));
+});
+
+test("version release report gap semantics hold for missing verification and release lanes", async () => {
+  const input = await versionReleaseReportFixture("missing-required-evidence.json");
+  const report = projectVersionReleaseReport(input);
+  const markdown = renderVersionReleaseReportMarkdown(report);
+
+  assert.equal(report.decision, "hold");
+  assert.equal(report.status, "hold");
+  assert.ok(report.gaps.some((gap) => gap.kind === "verification_evidence" && gap.id === "ev.verify.schemas"));
+  assert.ok(report.gaps.some((gap) => gap.kind === "release_lane" && gap.id === "deployment-window"));
+  assert.equal(report.report_data.release_lane_statuses["deployment-window"], "not_verified");
+  assert.match(markdown, /## Gaps/);
+  assert.match(markdown, /ev\.verify\.schemas/);
+  assert.match(markdown, /deployment-window/);
+});
+
+test("version release report Markdown escapes controlled text and blocks unsafe link schemes", async () => {
+  const input = await versionReleaseReportFixture("complete.json");
+  input.version.id = "kai<script>";
+  input.subject = "release[bad](javascript:alert(1))";
+  input.summary = "**owned** <img src=x onerror=alert(1)>";
+  input.changeset[0].summary = "[click](javascript:alert(1)) <b>raw</b>";
+  input.external_links = [
+    { label: "unsafe link", url: "javascript:alert(1)" },
+    { label: "safe", url: "https://example.test/release" }
+  ];
+  input.native_refs = [
+    { system: "tracker", id: "ISSUE-17", url: "data:text/html,<script>alert(1)</script>" }
+  ];
+
+  const markdown = renderVersionReleaseReportMarkdown(projectVersionReleaseReport(input));
+
+  assert.doesNotMatch(markdown, /<script>|<img|<b>raw<\/b>/);
+  assert.doesNotMatch(markdown, /\[click\]\(javascript:alert\(1\)\)/);
+  assert.doesNotMatch(markdown, /data:text\/html/);
+  assert.match(markdown, /&lt;script&gt;/);
+  assert.match(markdown, /\[blocked-url\]/);
+  assert.match(markdown, /https:\/\/example\.test\/release/);
 });
 
 test("release readiness fixture adapters emit Surface-shaped evidence and preserve refs", async () => {
