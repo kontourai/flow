@@ -1,0 +1,21 @@
+{
+  "system": "freeze-fixture",
+  "id": "freeze-2026-06",
+  "freeze_state": "clear",
+  "updated_at": "2026-06-07T18:45:00.000Z",
+  "producer": "release-fixture/freeze-state",
+  "authority_traces": ["fixture:freeze-state"],
+  "external_links": [
+    {
+      "label": "freeze calendar",
+      "url": "https://freeze.example.test/windows/freeze-2026-06"
+    }
+  ],
+  "native_refs": [
+    {
+      "system": "freeze-fixture",
+      "id": "freeze-2026-06",
+      "url": "https://freeze.example.test/windows/freeze-2026-06"
+    }
+  ]
+}

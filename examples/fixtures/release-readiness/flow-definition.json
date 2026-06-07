@@ -1,0 +1,26 @@
+{
+  "id": "release-readiness-fixture-flow",
+  "version": "1",
+  "steps": [
+    { "id": "release-readiness", "next": "release" },
+    { "id": "release", "next": null }
+  ],
+  "gates": {
+    "release-readiness-gate": {
+      "step": "release-readiness",
+      "expects": [
+        {
+          "id": "change-approval",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Required change record approval",
+          "claim": {
+            "type": "release.change.approved",
+            "subject": "release:kai-2026.06",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ]
+    }
+  }
+}

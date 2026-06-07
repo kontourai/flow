@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.1",
+  "id": "fixture-release-policy",
+  "description": "Local fixture policy for release-readiness lanes.",
+  "lanes": [
+    {
+      "id": "change-approval",
+      "description": "Required change record approval",
+      "adapter_ids": ["fixture/change-management"],
+      "claim": {
+        "type": "release.change.approved",
+        "subject": "release:kai-2026.06",
+        "accepted_statuses": ["trusted"]
+      }
+    },
+    {
+      "id": "deployment-window",
+      "description": "Deployment window is open",
+      "adapter_ids": ["fixture/deployment-window"],
+      "claim": {
+        "type": "release.deployment.window.allowed",
+        "subject": "release:kai-2026.06",
+        "accepted_statuses": ["trusted"]
+      }
+    },
+    {
+      "id": "freeze-state",
+      "description": "Release freeze is clear",
+      "adapter_ids": ["fixture/freeze-state"],
+      "claim": {
+        "type": "release.freeze.clear",
+        "subject": "release:kai-2026.06",
+        "accepted_statuses": ["trusted"]
+      }
+    }
+  ],
+  "risk_classes": {
+    "medium": {
+      "required_lanes": ["change-approval"]
+    },
+    "high": {
+      "required_lanes": ["change-approval", "deployment-window", "freeze-state"]
+    }
+  }
+}

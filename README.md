@@ -213,6 +213,44 @@ Gate evaluation accepts only claims whose type, optional subject, accepted statu
 
 This is a Surface-shaped Flow contract. Flow does not import Veritas internals or use Veritas-specific schema fields as the runtime contract. Veritas may produce evidence, but Flow evaluates only the neutral artifact fields above plus the Flow Definition and project config.
 
+## Release Readiness Lanes
+
+Release readiness is a local-file-first Flow contract for deciding whether a release should proceed or hold. It defines lane policy and adapter output shape; it does not replace ServiceNow, Jira, PagerDuty, deployment systems, freeze calendars, or approval systems.
+
+`schemas/release-readiness-policy.schema.json` describes:
+
+- open lane ids such as `change-approval`, `deployment-window`, and `freeze-state`
+- the `surface.claim` each lane requires
+- open risk classes such as `medium` or `high`
+- the required lanes for each risk class
+
+`schemas/release-readiness-result.schema.json` describes normalized output for later report rendering: `decision`, `risk_class`, `required_lanes`, lane outcomes, evidence refs, `external_links`, and `native_refs`.
+
+Fixture adapters map provider-shaped local JSON into Flow evidence, not opaque approval booleans. Each adapter emits `kind: "surface.claim"` with `claim.type`, `claim.subject`, `claim.status`, `producer`, `authority_traces`, copied `external_links`, and copied `native_refs`.
+
+```js
+import {
+  changeManagementFixtureAdapter,
+  deploymentWindowFixtureAdapter,
+  evaluateReleaseReadiness,
+  freezeStateFixtureAdapter
+} from "@kontourai/flow";
+
+const evidence = [
+  ...changeManagementFixtureAdapter(changeRecord, { subject: "kai-2026.06" }),
+  ...deploymentWindowFixtureAdapter(deploymentState, { subject: "kai-2026.06" }),
+  ...freezeStateFixtureAdapter(freezeState, { subject: "kai-2026.06" })
+];
+
+const result = evaluateReleaseReadiness(policy, {
+  subject: "kai-2026.06",
+  riskClass: "high",
+  evidence
+});
+```
+
+Required lanes pass only when their Surface-shaped claim satisfies the policy. Missing, pending, rejected, stale, untrusted, or authority-gap evidence returns `decision: "hold"`. See `examples/fixtures/release-readiness/` for the fixture policy, adapter records, and equivalent Flow Definition expectation.
+
 ## Project Config Merge
 
 Kits can propose Flow project config, but local `.flow/config.json` remains authoritative. Preview a proposal before applying it:
