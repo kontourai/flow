@@ -1,0 +1,21 @@
+{
+  "system": "change-management-fixture",
+  "id": "CHG-1848",
+  "approval_state": "pending",
+  "updated_at": "2026-06-07T19:00:00.000Z",
+  "producer": "release-fixture/change-management",
+  "authority_traces": ["fixture:change-management"],
+  "external_links": [
+    {
+      "label": "change record",
+      "url": "https://change.example.test/changes/CHG-1848"
+    }
+  ],
+  "native_refs": [
+    {
+      "system": "change-management-fixture",
+      "id": "CHG-1848",
+      "url": "https://change.example.test/changes/CHG-1848"
+    }
+  ]
+}

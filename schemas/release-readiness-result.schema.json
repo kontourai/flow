@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/release-readiness-result.schema.json",
+  "title": "Release Readiness Result",
+  "type": "object",
+  "required": ["schema_version", "policy_id", "decision", "risk_class", "subject", "required_lanes", "lanes", "evidence", "report_data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "policy_id": { "type": "string" },
+    "decision": { "type": "string", "enum": ["pass", "hold"] },
+    "risk_class": { "type": "string" },
+    "subject": { "type": "string" },
+    "required_lanes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "lanes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lane_outcome" }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "gate-evidence.schema.json#/$defs/evidence" }
+    },
+    "report_data": {
+      "type": "object",
+      "required": ["decision", "risk_class", "subject", "required_lanes", "external_links", "native_refs"],
+      "additionalProperties": true,
+      "properties": {
+        "decision": { "type": "string", "enum": ["pass", "hold"] },
+        "risk_class": { "type": "string" },
+        "subject": { "type": "string" },
+        "required_lanes": { "type": "array", "items": { "type": "string" } },
+        "external_links": { "type": "array", "items": { "$ref": "#/$defs/external_link" } },
+        "native_refs": { "type": "array", "items": { "$ref": "#/$defs/native_ref" } }
+      }
+    }
+  },
+  "$defs": {
+    "lane_outcome": {
+      "type": "object",
+      "required": ["lane_id", "status", "summary", "required", "evidence_refs", "external_links", "native_refs"],
+      "additionalProperties": true,
+      "properties": {
+        "lane_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pass", "hold", "not_required", "not_verified"] },
+        "summary": { "type": "string" },
+        "required": { "type": "boolean" },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "external_links": { "type": "array", "items": { "$ref": "#/$defs/external_link" } },
+        "native_refs": { "type": "array", "items": { "$ref": "#/$defs/native_ref" } }
+      }
+    },
+    "external_link": {
+      "type": "object",
+      "required": ["label", "url"],
+      "additionalProperties": true,
+      "properties": {
+        "label": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "native_ref": {
+      "type": "object",
+      "required": ["system", "id"],
+      "additionalProperties": true,
+      "properties": {
+        "system": { "type": "string" },
+        "id": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    }
+  }
+}

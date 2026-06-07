@@ -1,0 +1,38 @@
+{
+  "system": "change-management-fixture",
+  "id": "CHG-1847",
+  "approval_state": "approved",
+  "approved_at": "2026-06-07T18:00:00.000Z",
+  "updated_at": "2026-06-07T18:00:00.000Z",
+  "producer": "release-fixture/change-management",
+  "authority_traces": ["fixture:change-management"],
+  "external_links": [
+    {
+      "label": "change record",
+      "url": "https://change.example.test/changes/CHG-1847",
+      "provider": "change-fixture",
+      "native_type": "change_record"
+    },
+    {
+      "label": "provider details",
+      "href": "https://change.example.test/provider/CHG-1847",
+      "provider": "change-fixture",
+      "native_type": "provider_view"
+    }
+  ],
+  "native_refs": [
+    {
+      "system": "change-management-fixture",
+      "id": "CHG-1847",
+      "url": "https://change.example.test/changes/CHG-1847",
+      "environment": "production",
+      "native_type": "change_record"
+    },
+    {
+      "system": "change-management-fixture",
+      "key": "CHG-1847-provider-view",
+      "environment": "production",
+      "native_type": "provider_view"
+    }
+  ]
+}

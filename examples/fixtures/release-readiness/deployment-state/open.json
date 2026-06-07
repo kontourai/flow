@@ -1,0 +1,22 @@
+{
+  "system": "deployment-fixture",
+  "id": "prod-window-2026-06-07",
+  "environment": "production",
+  "window_state": "open",
+  "updated_at": "2026-06-07T18:30:00.000Z",
+  "producer": "release-fixture/deployment-window",
+  "authority_traces": ["fixture:deployment-window"],
+  "external_links": [
+    {
+      "label": "deployment window",
+      "url": "https://deploy.example.test/windows/prod-window-2026-06-07"
+    }
+  ],
+  "native_refs": [
+    {
+      "system": "deployment-fixture",
+      "id": "prod-window-2026-06-07",
+      "url": "https://deploy.example.test/windows/prod-window-2026-06-07"
+    }
+  ]
+}

@@ -8,8 +8,12 @@ import { promisify } from "node:util";
 import {
   applyEvaluation,
   applyFlowConfigMerge,
+  changeManagementFixtureAdapter,
   defaultFlowConfig,
+  deploymentWindowFixtureAdapter,
   evaluateGate,
+  evaluateReleaseReadiness,
+  freezeStateFixtureAdapter,
   FLOW_SCHEMA_VERSION,
   initialState,
   normalizeTrustArtifact,
@@ -37,6 +41,10 @@ async function surfaceClaimFixture(file) {
 
 async function surfaceClaimEvidenceFixture(file) {
   return surfaceClaimFixture(`evidence/${file}`);
+}
+
+async function releaseReadinessFixture(file) {
+  return json(`examples/fixtures/release-readiness/${file}`);
 }
 
 function requireSchemaFields(schema, fields) {
@@ -149,6 +157,8 @@ test("schemas describe the runtime contract", async () => {
   const configMergeReportSchema = await json("schemas/flow-config-merge-report.schema.json");
   const transitionValidationRequestSchema = await json("schemas/flow-transition-validation-request.schema.json");
   const transitionValidationResultSchema = await json("schemas/flow-transition-validation-result.schema.json");
+  const releaseReadinessPolicySchema = await json("schemas/release-readiness-policy.schema.json");
+  const releaseReadinessResultSchema = await json("schemas/release-readiness-result.schema.json");
 
   assert.equal(definitionSchema.properties.version.type, "string");
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
@@ -158,6 +168,8 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(configMergeReportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(transitionValidationRequestSchema.title, "Flow Transition Validation Request");
   assert.equal(transitionValidationResultSchema.title, "Flow Transition Validation Result");
+  assert.equal(releaseReadinessPolicySchema.title, "Release Readiness Policy");
+  assert.equal(releaseReadinessResultSchema.title, "Release Readiness Result");
 
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
@@ -203,9 +215,116 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaFields(configMergeReportSchema, ["schema_version", "mode", "status", "local_config_path", "proposal_path", "proposed_changes", "accepted_changes", "rejected_changes", "conflicts", "unchanged", "exceptions", "merged_config", "summary"]);
   requireSchemaFields(transitionValidationRequestSchema, ["definition"]);
   requireSchemaFields(transitionValidationResultSchema, ["valid", "status", "diagnostics", "transition"]);
+  requireSchemaFields(releaseReadinessPolicySchema, ["schema_version", "id", "lanes", "risk_classes"]);
+  requireSchemaFields(releaseReadinessResultSchema, ["schema_version", "policy_id", "decision", "risk_class", "subject", "required_lanes", "lanes", "evidence", "report_data"]);
   assert.ok(configMergeReportSchema.$defs.change.properties.path);
   assert.ok(configMergeReportSchema.$defs.change.properties.section);
   assert.ok(configMergeReportSchema.$defs.change.properties.local_value);
+  assert.ok(releaseReadinessPolicySchema.$defs.lane.properties.claim.properties.accepted_statuses);
+  assert.deepEqual(releaseReadinessResultSchema.$defs.lane_outcome.properties.status.enum, ["pass", "hold", "not_required", "not_verified"]);
+  assert.ok(releaseReadinessResultSchema.$defs.lane_outcome.properties.external_links);
+  assert.ok(releaseReadinessResultSchema.$defs.lane_outcome.properties.native_refs);
+});
+
+test("release readiness fixture adapters emit Surface-shaped evidence and preserve refs", async () => {
+  const changeRecord = await releaseReadinessFixture("change-records/approved.json");
+  const evidence = changeManagementFixtureAdapter(changeRecord, { subject: "kai-2026.06", gate_id: "release-readiness-gate", attached_at: "2026-06-07T20:00:00.000Z" });
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].kind, "surface.claim");
+  assert.equal(evidence[0].requested_kind, "surface.claim");
+  assert.deepEqual(evidence[0].claim, {
+    type: "release.change.approved",
+    subject: "release:kai-2026.06",
+    status: "trusted"
+  });
+  assert.equal(evidence[0].producer, "release-fixture/change-management");
+  assert.deepEqual(evidence[0].authority_traces, ["fixture:change-management"]);
+  assert.equal(evidence[0].trust_artifact.claims[0].type, "release.change.approved");
+  assert.equal(evidence[0].external_links[0].url, "https://change.example.test/changes/CHG-1847");
+  assert.equal(evidence[0].external_links[0].provider, "change-fixture");
+  assert.equal(evidence[0].external_links[1].href, "https://change.example.test/provider/CHG-1847");
+  assert.equal(evidence[0].external_links[1].url, "https://change.example.test/provider/CHG-1847");
+  assert.equal(evidence[0].native_refs[0].id, "CHG-1847");
+  assert.equal(evidence[0].native_refs[0].native_type, "change_record");
+  assert.equal(evidence[0].native_refs[1].key, "CHG-1847-provider-view");
+  assert.equal(evidence[0].native_refs[1].id, "CHG-1847-provider-view");
+  assert.equal(evidence[0].native_refs.length, 2);
+});
+
+test("release readiness holds for pending or missing required approval and passes when risk lanes are satisfied", async () => {
+  const policy = await releaseReadinessFixture("release-policy.json");
+  const approvedChange = await releaseReadinessFixture("change-records/approved.json");
+  const pendingChange = await releaseReadinessFixture("change-records/pending.json");
+  const deploymentOpen = await releaseReadinessFixture("deployment-state/open.json");
+  const freezeClear = await releaseReadinessFixture("freeze-state/clear.json");
+
+  const pendingEvidence = changeManagementFixtureAdapter(pendingChange, { subject: "kai-2026.06" });
+  const pending = evaluateReleaseReadiness(policy, {
+    subject: "kai-2026.06",
+    riskClass: "medium",
+    evidence: pendingEvidence
+  });
+  assert.equal(pending.decision, "hold");
+  assert.equal(pending.lanes.find((lane) => lane.lane_id === "change-approval").status, "hold");
+
+  const missing = evaluateReleaseReadiness(policy, {
+    subject: "kai-2026.06",
+    riskClass: "medium",
+    evidence: []
+  });
+  assert.equal(missing.decision, "hold");
+  assert.equal(missing.lanes.find((lane) => lane.lane_id === "change-approval").status, "not_verified");
+
+  const wrongAdapterEvidence = changeManagementFixtureAdapter(approvedChange, { subject: "kai-2026.06" }).map((entry) => ({
+    ...entry,
+    source_adapter_id: "fixture/not-change-management"
+  }));
+  const wrongAdapter = evaluateReleaseReadiness(policy, {
+    subject: "kai-2026.06",
+    riskClass: "medium",
+    evidence: wrongAdapterEvidence
+  });
+  assert.equal(wrongAdapter.decision, "hold");
+  assert.equal(wrongAdapter.lanes.find((lane) => lane.lane_id === "change-approval").status, "not_verified");
+
+  const satisfiedEvidence = [
+    ...changeManagementFixtureAdapter(approvedChange, { subject: "kai-2026.06" }),
+    ...deploymentWindowFixtureAdapter(deploymentOpen, { subject: "kai-2026.06" }),
+    ...freezeStateFixtureAdapter(freezeClear, { subject: "kai-2026.06" })
+  ];
+  const passed = evaluateReleaseReadiness(policy, {
+    subject: "kai-2026.06",
+    riskClass: "high",
+    evidence: satisfiedEvidence
+  });
+  assert.equal(passed.decision, "pass");
+  assert.deepEqual(passed.required_lanes, ["change-approval", "deployment-window", "freeze-state"]);
+  assert.deepEqual(passed.lanes.filter((lane) => lane.required).map((lane) => lane.status), ["pass", "pass", "pass"]);
+});
+
+test("release readiness report data preserves external links and native refs", async () => {
+  const policy = await releaseReadinessFixture("release-policy.json");
+  const changeRecord = await releaseReadinessFixture("change-records/approved.json");
+  const evidence = changeManagementFixtureAdapter(changeRecord, { subject: "kai-2026.06" });
+  const result = evaluateReleaseReadiness(policy, {
+    subject: "kai-2026.06",
+    riskClass: "medium",
+    evidence
+  });
+
+  assert.equal(result.decision, "pass");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").external_links[0].url, "https://change.example.test/changes/CHG-1847");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").external_links[0].provider, "change-fixture");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").external_links[1].href, "https://change.example.test/provider/CHG-1847");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").native_refs[0].id, "CHG-1847");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").native_refs[0].native_type, "change_record");
+  assert.equal(result.lanes.find((lane) => lane.lane_id === "change-approval").native_refs[1].key, "CHG-1847-provider-view");
+  assert.equal(result.report_data.external_links[0].url, "https://change.example.test/changes/CHG-1847");
+  assert.equal(result.report_data.external_links[0].provider, "change-fixture");
+  assert.equal(result.report_data.external_links[1].href, "https://change.example.test/provider/CHG-1847");
+  assert.equal(result.report_data.native_refs[0].id, "CHG-1847");
+  assert.equal(result.report_data.native_refs[0].native_type, "change_record");
+  assert.equal(result.report_data.native_refs[1].key, "CHG-1847-provider-view");
 });
 
 test("neutral Surface trust artifacts normalize through Surface contract fields", () => {
