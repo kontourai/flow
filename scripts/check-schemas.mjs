@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -23,7 +23,7 @@ import {
   validateDefinition,
   validateDefinitionWithDiagnostics,
   validateRunTransition
-} from "../src/index.js";
+} from "../dist/index.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -45,6 +45,40 @@ function requireSchemaFields(schema, fields) {
     assert.ok(schema.properties[field], `${schema.title} must define ${field}`);
   }
 }
+
+test("package runtime points at emitted TypeScript output", async () => {
+  const packageJson = await json("package.json");
+  const cli = new URL("../dist/cli.js", import.meta.url);
+  const declaration = new URL("../dist/index.d.ts", import.meta.url);
+
+  assert.equal(packageJson.bin.flow, "dist/cli.js");
+  assert.equal(packageJson.types, "./dist/index.d.ts");
+  assert.deepEqual(packageJson.exports["."], {
+    types: "./dist/index.d.ts",
+    import: "./dist/index.js",
+    default: "./dist/index.js"
+  });
+  assert.ok(packageJson.files.includes("dist/"));
+  assert.ok(!packageJson.files.includes("src/"));
+
+  assert.match(await readFile(cli, "utf8"), /^#!\/usr\/bin\/env node\n/);
+  await access(declaration, constants.R_OK);
+});
+
+test("emitted package CLI and library entrypoints smoke test", async () => {
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const help = await execFile(process.execPath, [cli, "--help"]);
+  assert.match(help.stdout, /flow validate-definition <path> \[--json\]/);
+
+  const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/agent-dev-flow.json", "--json"], {
+    cwd: new URL("..", import.meta.url)
+  });
+  assert.equal(JSON.parse(valid.stdout).valid, true);
+
+  const runtime = await import("../dist/index.js");
+  assert.equal(typeof runtime.validateDefinition, "function");
+  assert.equal(typeof runtime.validateRunTransition, "function");
+});
 
 function routeBackDefinition(overrides = {}) {
   return {
@@ -354,7 +388,7 @@ test("config merge apply writes only accepted changes unless conflicts are expli
 
 test("CLI config preview and apply support JSON and Markdown reports", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-config-merge-"));
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
   await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
   await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`);
@@ -1211,7 +1245,7 @@ test("CLI records route-back metadata and only route_reason selects the route", 
     analytics: { loop_key: "cli:implementation_defect" }
   }, null, 2)}\n`);
 
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-route", "--params", "subject=cli-route"], { cwd });
   await execFile(process.execPath, [
     cli,
@@ -1260,7 +1294,7 @@ test("CLI records route-back metadata and only route_reason selects the route", 
 
 test("CLI attaches Surface trust artifact evidence and reports claim diagnostics", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-trust-"));
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   const definitionPath = path.join(cwd, "definition.json");
   await writeFile(definitionPath, `${JSON.stringify(routeBackDefinition(), null, 2)}\n`);
 
@@ -1312,7 +1346,7 @@ test("CLI attaches Surface trust artifact evidence and reports claim diagnostics
 });
 
 test("CLI validates arbitrary Flow Definition files with JSON diagnostics", async () => {
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/builder-kit-flow.json", "--json"], {
     cwd: new URL("..", import.meta.url).pathname
   });
@@ -1339,7 +1373,7 @@ test("CLI validates arbitrary Flow Definition files with JSON diagnostics", asyn
 
 test("CLI validates provider-neutral transition request files", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-transition-"));
-  const cli = new URL("../src/cli.js", import.meta.url).pathname;
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   const requestPath = path.join(cwd, "transition-request.json");
   const definition = routeBackDefinition();
   const state = initialState(definition, "cli-transition");

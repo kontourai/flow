@@ -4,6 +4,135 @@ import { mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/pro
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
+type MutableRecord = Record<string, any>;
+
+export interface FlowStep extends MutableRecord {
+  id: string;
+  next?: string;
+}
+
+export interface FlowExpectation extends MutableRecord {
+  id: string;
+  kind: "surface.claim" | "evidence.kind" | string;
+  required: boolean;
+  description: string;
+  claim?: {
+    type?: string;
+    subject?: string;
+    accepted_statuses?: string[];
+    [key: string]: any;
+  };
+}
+
+export interface FlowGate extends MutableRecord {
+  id?: string;
+  step: string;
+  requires?: string[];
+  expects?: FlowExpectation[];
+  on_route_back?: Record<string, string>;
+  route_back_policy?: {
+    max_attempts?: number;
+    on_exceeded?: "block" | string;
+    route_reasons?: "closed" | string;
+    reasons?: "closed" | string;
+    closed_reasons?: boolean;
+    closed_route_reasons?: boolean;
+    allow_unknown_reasons?: boolean;
+    [key: string]: any;
+  };
+}
+
+export interface FlowDefinition extends MutableRecord {
+  id: string;
+  version: string;
+  steps: FlowStep[];
+  gates: Record<string, FlowGate>;
+}
+
+export interface FlowDiagnostic extends MutableRecord {
+  code: string;
+  severity: "error" | "warning" | "info" | string;
+  path: string;
+  message: string;
+  related?: MutableRecord;
+}
+
+export interface FlowEvidenceEntry extends MutableRecord {
+  id: string;
+  gate_id?: string;
+  kind: string;
+  requested_kind?: string;
+  status?: string;
+  claim?: MutableRecord;
+  producer?: string;
+  authority_trace?: string;
+  authority_traces?: string[];
+  route_reason?: string;
+  expectation_ids?: string[];
+}
+
+export interface FlowEvidenceManifest extends MutableRecord {
+  schema_version?: string;
+  evidence: FlowEvidenceEntry[];
+}
+
+export interface FlowRunState extends MutableRecord {
+  schema_version?: string;
+  run_id: string;
+  definition_id: string;
+  definition_version: string;
+  subject: string;
+  status: string;
+  current_step: string;
+  params?: MutableRecord;
+  gate_outcomes: GateOutcome[];
+  transitions: MutableRecord[];
+  exceptions: MutableRecord[];
+  next_action: string;
+  updated_at: string;
+}
+
+export interface FlowConfig extends MutableRecord {
+  schema_version: string;
+  trusted_producers: Record<string, MutableRecord>;
+  gate_overrides: Record<string, MutableRecord>;
+}
+
+export interface GateOutcome extends MutableRecord {
+  gate_id: string;
+  status: "pass" | "block" | "route-back" | "wait" | string;
+  summary: string;
+  evidence_refs?: string[];
+  missing?: string[];
+  optional_missing?: string[];
+  matched_expectations?: Array<{ expectation_id: string; evidence_id: string }>;
+}
+
+export interface TransitionValidationResult extends MutableRecord {
+  valid: boolean;
+  status: string;
+  diagnostics: FlowDiagnostic[];
+  transition: MutableRecord | null;
+}
+
+export interface ConfigMergeReport extends MutableRecord {
+  schema_version: string;
+  mode: string;
+  status: string;
+  local_config_path: string;
+  proposal_path: string | null;
+  proposed_changes: MutableRecord[];
+  accepted_changes: MutableRecord[];
+  rejected_changes: MutableRecord[];
+  conflicts: MutableRecord[];
+  unchanged: MutableRecord[];
+  exceptions: MutableRecord[];
+  merged_config: FlowConfig;
+  summary: MutableRecord;
+}
+
 export const FLOW_SCHEMA_VERSION = "0.1";
 
 export const BUILTIN_EVIDENCE_KINDS = new Set([
@@ -86,7 +215,7 @@ export function expectationLabel(expectation) {
   return expectation.description || expectation.id || expectation.claim?.type || expectation.kind;
 }
 
-export function defaultFlowConfig() {
+export function defaultFlowConfig(): FlowConfig {
   return {
     schema_version: FLOW_SCHEMA_VERSION,
     trusted_producers: {},
@@ -127,7 +256,7 @@ function setPathValue(root, segments, value) {
   target[segments.at(-1)] = cloneJson(value);
 }
 
-function collectMergePaths(value, segments = []) {
+function collectMergePaths(value: any, segments: string[] = []): string[][] {
   if (!isObject(value) || Object.keys(value).length === 0) return [segments];
   return Object.entries(value).flatMap(([key, entry]) => collectMergePaths(entry, [...segments, key]));
 }
@@ -136,7 +265,7 @@ function proposedConfigFromEnvelope(proposal) {
   return proposal?.flow_config ?? proposal?.config ?? proposal;
 }
 
-function normalizeAcceptedConflictPaths(values = []) {
+function normalizeAcceptedConflictPaths(values: any[] | any = []) {
   const paths = Array.isArray(values) ? values : [values];
   return new Set(paths.filter(Boolean));
 }
@@ -145,7 +274,7 @@ function conflictAccepted(pathValue, acceptedPaths) {
   return acceptedPaths.has(pathValue) || [...acceptedPaths].some((acceptedPath) => pathValue.startsWith(`${acceptedPath}.`));
 }
 
-function configMergeSummary(report) {
+function configMergeSummary(report: ConfigMergeReport) {
   return {
     proposed: report.proposed_changes.length,
     accepted: report.accepted_changes.length,
@@ -156,7 +285,7 @@ function configMergeSummary(report) {
   };
 }
 
-function configChange({ path: pathValue, operation, reason, localValue, proposedValue, acceptedValue }) {
+function configChange({ path: pathValue, operation, reason, localValue, proposedValue, acceptedValue }: MutableRecord) {
   return {
     path: pathValue,
     section: mergeSectionForPath(pathValue),
@@ -168,7 +297,7 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
   };
 }
 
-export function previewFlowConfigMerge(localConfig = defaultFlowConfig(), kitProposal = defaultFlowConfig(), options = {}) {
+export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeReport {
   const local = { ...defaultFlowConfig(), ...(localConfig ?? {}) };
   const proposed = { ...defaultFlowConfig(), ...(proposedConfigFromEnvelope(kitProposal) ?? {}) };
   const merged = cloneJson(local);
@@ -179,7 +308,7 @@ export function previewFlowConfigMerge(localConfig = defaultFlowConfig(), kitPro
     throw new Error("accepting config merge conflicts requires exception reason and authority");
   }
 
-  const report = {
+  const report: ConfigMergeReport = {
     schema_version: FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION,
     mode: options.mode ?? "preview",
     status: "ready",
@@ -270,7 +399,7 @@ export function previewFlowConfigMerge(localConfig = defaultFlowConfig(), kitPro
   return report;
 }
 
-export async function previewFlowConfigMergeFile(proposalPath, options = {}) {
+export async function previewFlowConfigMergeFile(proposalPath: string, options: MutableRecord = {}) {
   const cwd = options.cwd ?? process.cwd();
   const resolvedProposalPath = path.resolve(cwd, proposalPath);
   const localConfigPath = flowConfigPath(cwd);
@@ -286,7 +415,7 @@ export async function previewFlowConfigMergeFile(proposalPath, options = {}) {
   });
 }
 
-export async function applyFlowConfigMerge(cwdOrProposalPath, proposalPathOrOptions, maybeOptions = {}) {
+export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPathOrOptions?: string | MutableRecord, maybeOptions: MutableRecord = {}) {
   const cwd = typeof proposalPathOrOptions === "string" ? cwdOrProposalPath : (maybeOptions.cwd ?? process.cwd());
   const proposalPath = typeof proposalPathOrOptions === "string" ? proposalPathOrOptions : cwdOrProposalPath;
   const options = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
@@ -376,7 +505,7 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
 }
 
-function validateExpectation(expectation, path, diagnostics) {
+function validateExpectation(expectation: any, path: string, diagnostics: FlowDiagnostic[]) {
   if (!isObject(expectation)) {
     diagnostics.push(createDiagnostic("definition.expectation.invalid", path, "expectation must be an object"));
     return;
@@ -417,8 +546,8 @@ function validateExpectation(expectation, path, diagnostics) {
   }
 }
 
-export function definitionDiagnostics(definition) {
-  const diagnostics = [];
+export function definitionDiagnostics(definition: any): FlowDiagnostic[] {
+  const diagnostics: FlowDiagnostic[] = [];
   if (!isObject(definition)) {
     return [createDiagnostic("definition.invalid", "$", "definition must be an object")];
   }
@@ -454,7 +583,7 @@ export function definitionDiagnostics(definition) {
   }
 
   if (isObject(definition.gates)) {
-    for (const [gateId, gate] of Object.entries(definition.gates)) {
+    for (const [gateId, gate] of Object.entries(definition.gates) as Array<[string, any]>) {
       const gatePath = `$.gates.${gateId}`;
       if (!isObject(gate)) {
         diagnostics.push(createDiagnostic("definition.gate.invalid", gatePath, `gate ${gateId} must be an object`));
@@ -497,7 +626,7 @@ export function definitionDiagnostics(definition) {
   return diagnostics;
 }
 
-export function validateDefinitionWithDiagnostics(definition) {
+export function validateDefinitionWithDiagnostics(definition: any) {
   const diagnostics = definitionDiagnostics(definition);
   return {
     valid: diagnostics.every((diagnostic) => diagnostic.severity !== "error"),
@@ -505,11 +634,11 @@ export function validateDefinitionWithDiagnostics(definition) {
   };
 }
 
-export function validateDefinition(definition) {
+export function validateDefinition(definition: any) {
   const diagnostic = validateDefinitionWithDiagnostics(definition).diagnostics[0];
   if (diagnostic) throw new Error(diagnostic.message);
   const stepIds = new Set((definition.steps ?? []).map((step) => step.id));
-  for (const [gateId, gate] of Object.entries(definition.gates ?? {})) {
+  for (const [gateId, gate] of Object.entries(definition.gates ?? {}) as Array<[string, any]>) {
     if (gate.step && !stepIds.has(gate.step)) {
       throw new Error(`gate ${gateId} references unknown step: ${gate.step}`);
     }
@@ -526,18 +655,18 @@ export function validateDefinition(definition) {
   return definition;
 }
 
-export function gatesForStep(definition, stepId) {
-  return Object.entries(definition.gates)
+export function gatesForStep(definition: any, stepId: string) {
+  return (Object.entries(definition.gates) as Array<[string, any]>)
     .map(([id, gate]) => ({ id, ...gate }))
     .filter((gate) => gate.step === stepId);
 }
 
-export function findGate(definition, gateId) {
+export function findGate(definition: any, gateId: string) {
   const gate = definition.gates[gateId];
   return gate ? { id: gateId, ...gate } : null;
 }
 
-export function initialState(definition, runId, params = {}) {
+export function initialState(definition: any, runId: string, params: MutableRecord = {}) {
   const firstStep = definition.steps[0];
   const subject = params.subject ?? params.feature ?? params.task ?? params.name ?? runId;
   return {
@@ -557,7 +686,7 @@ export function initialState(definition, runId, params = {}) {
   };
 }
 
-export function nextActionForStep(definition, stepId, outcome = null) {
+export function nextActionForStep(definition: any, stepId: string, outcome: any = null) {
   if (outcome?.status === "block" && outcome.missing?.length) {
     if (outcome.missing.includes("browser-evidence")) return "run browser check before publish";
     return `attach ${outcome.missing.map(evidenceLabel).join(", ")} before continuing`;
@@ -610,7 +739,7 @@ export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep 
   return priorMatches.length + 1;
 }
 
-export function routeBackDecision(state, gate, routeReason, evidence = [], options = {}) {
+export function routeBackDecision(state: any, gate: any, routeReason: string | null | undefined, evidence: any[] = [], options: MutableRecord = {}) {
   const selectedTarget = routeTargetForReason(gate, routeReason);
   const maxAttempts = gate.route_back_policy?.max_attempts;
   const attempt = routeBackAttempt(state, {
@@ -623,7 +752,7 @@ export function routeBackDecision(state, gate, routeReason, evidence = [], optio
   const exceededTarget = gate.route_back_policy?.on_exceeded;
   const toStep = limitExceeded && exceededTarget && exceededTarget !== "block" ? exceededTarget : selectedTarget;
   const status = limitExceeded && exceededTarget === "block" ? "block" : "route-back";
-  const routeData = {
+  const routeData: MutableRecord = {
     route_back_to: toStep,
     selected_route: selectedTarget,
     recovery_step: limitExceeded && exceededTarget && exceededTarget !== "block" ? exceededTarget : undefined,
@@ -643,14 +772,14 @@ export function routeBackDecision(state, gate, routeReason, evidence = [], optio
   return routeData.status ? routeData : { ...routeData, status };
 }
 
-function transitionDiagnostic(code, path, message, related = {}, severity = "error") {
+function transitionDiagnostic(code: string, path: string, message: string, related: MutableRecord = {}, severity = "error") {
   return {
     ...createDiagnostic(`transition.${code}`, path, message, related),
     severity
   };
 }
 
-function transitionGateOutcomeDiagnostic(outcome, path = "$.proposed_transition", severity = "error") {
+function transitionGateOutcomeDiagnostic(outcome: any, path = "$.proposed_transition", severity = "error") {
   return transitionDiagnostic(
     `gate.${outcome.status}`,
     path,
@@ -715,7 +844,7 @@ function transitionEvidenceFor(manifest, evidenceRefs = []) {
   return evidence.filter((entry) => requested.has(entry.id));
 }
 
-function normalizeTransitionPreview(transition, extras = {}) {
+function normalizeTransitionPreview(transition: MutableRecord, extras: MutableRecord = {}) {
   const limitExceeded = transition.limit_exceeded ?? extras.limit_exceeded;
   return {
     type: transition.type ?? extras.type ?? "step",
@@ -740,8 +869,8 @@ function normalizeTransitionPreview(transition, extras = {}) {
   };
 }
 
-export function validateRunTransition(request = {}) {
-  const diagnostics = [];
+export function validateRunTransition(request: MutableRecord = {}): TransitionValidationResult {
+  const diagnostics: FlowDiagnostic[] = [];
   if (!isObject(request)) {
     return {
       valid: false,
@@ -888,7 +1017,7 @@ export function validateRunTransition(request = {}) {
 
 export const validateTransitionRequest = validateRunTransition;
 
-export function expectationsForGate(gate, config = defaultFlowConfig()) {
+export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
   if (gate.expects?.length) {
     return gate.expects.map((expectation) => ({
@@ -908,7 +1037,7 @@ export function expectationsForGate(gate, config = defaultFlowConfig()) {
   }));
 }
 
-export function evidenceProducerTrusted(entry, expectation, config = defaultFlowConfig()) {
+export function evidenceProducerTrusted(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
   const claimType = expectation.claim?.type;
   const override = config.gate_overrides?.[expectation.gate_id]?.expectations?.[expectation.id] ?? {};
   const mapping = claimType ? config.trusted_producers?.[claimType] : null;
@@ -926,7 +1055,7 @@ function evidenceAuthorityTraces(entry) {
   ].filter(Boolean);
 }
 
-function evidenceClaimDiagnostic(entry, expectation, config = defaultFlowConfig()) {
+function evidenceClaimDiagnostic(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
   if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return null;
   if (entry.status === "failed") return "rejected";
   if (entry.trust_artifact?.integrity?.verified === false || entry.diagnostics?.trust_artifact?.reason === "integrity_mismatch") return "integrity_mismatch";
@@ -945,7 +1074,7 @@ function evidenceClaimDiagnostic(entry, expectation, config = defaultFlowConfig(
   return null;
 }
 
-export function evidenceMatchesExpectation(entry, expectation, config = defaultFlowConfig()) {
+export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
   if (expectation.kind === "evidence.kind") {
     return evidenceMatchesRequirement(entry, expectation.evidence_kind) && entry.status !== "failed";
   }
@@ -960,8 +1089,8 @@ export function evidenceMatchesExpectation(entry, expectation, config = defaultF
   return evidenceProducerTrusted(entry, expectation, config);
 }
 
-function claimDiagnosticsForExpectation(evidence, expectation, config = defaultFlowConfig()) {
-  const diagnostics = [];
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig()) {
+  const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
     const reason = evidenceClaimDiagnostic(entry, expectation, config);
     if (!reason) continue;
@@ -974,7 +1103,7 @@ function claimDiagnosticsForExpectation(evidence, expectation, config = defaultF
   return diagnostics;
 }
 
-export function evaluateGate(definition, state, manifest, gateId, config = defaultFlowConfig()) {
+export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig()): GateOutcome {
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 
@@ -1003,10 +1132,10 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
   }
 
   const expectations = expectationsForGate(gate, config);
-  const matched = [];
-  const missingRequired = [];
-  const missingOptional = [];
-  const claimDiagnostics = [];
+  const matched: Array<{ expectation_id: string; evidence_id: string }> = [];
+  const missingRequired: string[] = [];
+  const missingOptional: string[] = [];
+  const claimDiagnostics: MutableRecord[] = [];
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
     const match = evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config));
@@ -1071,7 +1200,7 @@ export function evaluateGate(definition, state, manifest, gateId, config = defau
   };
 }
 
-export function legacyEvaluateGate(definition, state, manifest, gateId) {
+export function legacyEvaluateGate(definition: any, state: any, manifest: any, gateId: string): GateOutcome {
   const gate = findGate(definition, gateId);
   const evidence = attachedEvidenceFor(manifest, gateId);
   const missing = (gate.requires ?? []).filter((requiredKind) => {
@@ -1288,7 +1417,7 @@ export function examplePath(file) {
   return path.join(moduleRoot(), "examples", file);
 }
 
-export async function startRun(definitionPath, options = {}) {
+export async function startRun(definitionPath: string, options: MutableRecord = {}) {
   const cwd = options.cwd ?? process.cwd();
   const definition = await readJson(path.resolve(cwd, definitionPath));
   validateDefinition(definition);
@@ -1375,7 +1504,7 @@ export function normalizeTrustArtifact(artifact, fileSha256, now = new Date()) {
   };
 }
 
-export async function attachEvidence(runId, options) {
+export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
   await stat(source);
@@ -1389,7 +1518,7 @@ export async function attachEvidence(runId, options) {
   const storedPath = path.join(run.dir, "evidence", storedName);
   await copyFile(source, storedPath);
   const sourceSha256 = await sha256File(source);
-  const entry = {
+  const entry: FlowEvidenceEntry = {
     id,
     gate_id: options.gate,
     kind,
@@ -1436,11 +1565,11 @@ export async function attachEvidence(runId, options) {
   return entry;
 }
 
-export async function evaluateRun(runId, options = {}) {
+export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
   const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
   if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
-  const outcomes = [];
+  const outcomes: GateOutcome[] = [];
   for (const gate of gates) {
     const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
     const validationState = options.gate && gate.step !== run.state.current_step
@@ -1481,7 +1610,7 @@ export async function listRuns(cwd = process.cwd()) {
   const dir = path.join(flowRoot(cwd), "runs");
   if (!existsSync(dir)) return [];
   const ids = await readdir(dir);
-  const runs = [];
+  const runs: MutableRecord[] = [];
   for (const id of ids) {
     try {
       const run = await loadRun(id, cwd);
@@ -1500,7 +1629,7 @@ export async function listRuns(cwd = process.cwd()) {
   return runs.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
 }
 
-export function reportJson(definition, state, manifest) {
+export function reportJson(definition: any, state: any, manifest: any) {
   return {
     schema_version: FLOW_SCHEMA_VERSION,
     run_id: state.run_id,
@@ -1517,7 +1646,7 @@ export function reportJson(definition, state, manifest) {
     gate_summaries: Object.keys(definition.gates).map((gateId) => {
       const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gateId);
       const evidence = attachedEvidenceFor(manifest, gateId);
-      const summary = {
+      const summary: MutableRecord = {
         gate_id: gateId,
         status: outcome?.status ?? "wait",
         summary: outcome?.summary ?? `${slugLabel(gateId)} waiting`,

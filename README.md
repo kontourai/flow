@@ -29,6 +29,12 @@ Setup is idempotent and writes only this repository's local Git config: `core.ho
 
 These hooks are contributor tooling. They are not Flow Definition semantics, not Flow Run state, not gate evaluation, not Flow Console behavior, and not CI or merge authority.
 
+## TypeScript Development
+
+Flow core runtime sources live in `src/*.ts`. `npm run typecheck` validates those sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
+
+The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and fixtures remain JSON/data assets rather than TypeScript modules.
+
 ## Status
 
 Flow v0.1 is local and file-backed.
