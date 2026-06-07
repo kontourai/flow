@@ -1,0 +1,6 @@
+{
+  "artifact_type": "trust-report",
+  "subject": "console-projection-fixture",
+  "producer": "surface/fixture",
+  "status": "trusted"
+}

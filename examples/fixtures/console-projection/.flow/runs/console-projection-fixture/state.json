@@ -1,0 +1,123 @@
+{
+  "schema_version": "0.1",
+  "run_id": "console-projection-fixture",
+  "definition_id": "console-projection-flow",
+  "definition_version": "0.1",
+  "subject": "console-projection-fixture",
+  "status": "active",
+  "current_step": "verify",
+  "params": {
+    "work_item": "flow-18"
+  },
+  "gate_outcomes": [
+    {
+      "gate_id": "build-gate",
+      "status": "pass",
+      "summary": "Implementation diff accepted by explicit exception.",
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ],
+      "missing": [
+        "missing-review"
+      ],
+      "matched_expectations": [
+        {
+          "expectation_id": "scoped-diff",
+          "evidence_id": "ev.scoped-diff"
+        }
+      ],
+      "accepted_exception_id": "ex.review-deferred"
+    },
+    {
+      "gate_id": "verify-gate",
+      "status": "block",
+      "summary": "Tests failed; route back to build.",
+      "evidence_refs": [
+        "ev.surface-tests",
+        "ev.veritas-readiness",
+        "ev.failed-tests"
+      ],
+      "matched_expectations": [
+        {
+          "expectation_id": "tests-passed",
+          "evidence_id": "ev.surface-tests"
+        },
+        {
+          "expectation_id": "veritas-readiness",
+          "evidence_id": "ev.veritas-readiness"
+        }
+      ],
+      "route_back_to": "build",
+      "selected_route": "implementation_defect",
+      "recovery_step": "build",
+      "route_reason": "implementation_defect",
+      "attempt": 1,
+      "max_attempts": 2,
+      "limit_exceeded": false,
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "external_links": [
+        {
+          "id": "ci-route",
+          "kind": "ci",
+          "label": "Failing CI route",
+          "href": "https://ci.example.test/kontourai/flow/actions/runs/4242"
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr.shape-build",
+      "type": "step",
+      "from_step": "shape",
+      "to_step": "build",
+      "status": "allowed",
+      "gate_id": null,
+      "reason": "shape complete",
+      "at": "2026-06-07T14:00:00.000Z"
+    },
+    {
+      "id": "tr.verify-build",
+      "type": "route_back",
+      "from_step": "verify",
+      "to_step": "build",
+      "status": "blocked",
+      "gate_id": "verify-gate",
+      "reason": "tests failed",
+      "route_reason": "implementation_defect",
+      "evidence_refs": [
+        "ev.failed-tests"
+      ],
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "attempt": 1,
+      "max_attempts": 2,
+      "external_refs": [
+        {
+          "id": "pr-18",
+          "kind": "pull-request",
+          "label": "PR 18",
+          "href": "https://github.com/kontourai/flow/pull/18"
+        }
+      ],
+      "at": "2026-06-07T14:20:00.000Z"
+    }
+  ],
+  "exceptions": [
+    {
+      "id": "ex.review-deferred",
+      "gate_id": "build-gate",
+      "reason": "Reviewer approval deferred for fixture coverage.",
+      "authority": "fixture-owner",
+      "accepted_at": "2026-06-07T14:10:00.000Z",
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ]
+    }
+  ],
+  "next_action": "Fix the test failure and rerun verification.",
+  "updated_at": "2026-06-07T14:30:00.000Z"
+}

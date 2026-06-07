@@ -1793,3 +1793,5 @@ export function renderResume(definition, state) {
 export function sortStatus(a, b) {
   return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
 }
+
+export * from "./console-projection.js";

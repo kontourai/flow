@@ -1,0 +1,80 @@
+{
+  "id": "console-projection-flow",
+  "version": "0.1",
+  "title": "Console projection fixture",
+  "description": "Hand-authored fixture for the Flow Console projection read model.",
+  "steps": [
+    {
+      "id": "shape",
+      "label": "Shape",
+      "next": "build"
+    },
+    {
+      "id": "build",
+      "label": "Build",
+      "next": "verify"
+    },
+    {
+      "id": "verify",
+      "label": "Verify",
+      "next": "release"
+    },
+    {
+      "id": "release",
+      "label": "Release",
+      "next": null
+    }
+  ],
+  "gates": {
+    "build-gate": {
+      "step": "build",
+      "requires": [
+        "file"
+      ],
+      "expects": [
+        {
+          "id": "missing-review",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Reviewer approval is attached.",
+          "claim": {
+            "type": "human.review",
+            "subject": "console-projection-fixture",
+            "accepted_statuses": [
+              "trusted"
+            ]
+          }
+        }
+      ]
+    },
+    "verify-gate": {
+      "step": "verify",
+      "requires": [
+        "veritas-readiness"
+      ],
+      "expects": [
+        {
+          "id": "tests-passed",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Tests passed through Surface trust.",
+          "claim": {
+            "type": "quality.tests",
+            "subject": "console-projection-fixture",
+            "accepted_statuses": [
+              "trusted"
+            ]
+          }
+        }
+      ],
+      "on_route_back": {
+        "implementation_defect": "build",
+        "default": "build"
+      },
+      "route_back_policy": {
+        "max_attempts": 2,
+        "on_exceeded": "block"
+      }
+    }
+  }
+}
