@@ -1,0 +1,2 @@
+diff --git a/src/console-projection.js b/src/console-projection.js
+fixture scoped diff

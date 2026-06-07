@@ -1,0 +1,1225 @@
+{
+  "continuation": "resume from verify, not chat memory",
+  "current_step": "verify",
+  "definition": {
+    "description": "Hand-authored fixture for the Flow Console projection read model.",
+    "id": "console-projection-flow",
+    "raw": {
+      "description": "Hand-authored fixture for the Flow Console projection read model.",
+      "gates": {
+        "build-gate": {
+          "expects": [
+            {
+              "claim": {
+                "accepted_statuses": [
+                  "trusted"
+                ],
+                "subject": "console-projection-fixture",
+                "type": "human.review"
+              },
+              "description": "Reviewer approval is attached.",
+              "id": "missing-review",
+              "kind": "surface.claim",
+              "required": true
+            }
+          ],
+          "requires": [
+            "file"
+          ],
+          "step": "build"
+        },
+        "verify-gate": {
+          "expects": [
+            {
+              "claim": {
+                "accepted_statuses": [
+                  "trusted"
+                ],
+                "subject": "console-projection-fixture",
+                "type": "quality.tests"
+              },
+              "description": "Tests passed through Surface trust.",
+              "id": "tests-passed",
+              "kind": "surface.claim",
+              "required": true
+            }
+          ],
+          "on_route_back": {
+            "default": "build",
+            "implementation_defect": "build"
+          },
+          "requires": [
+            "veritas-readiness"
+          ],
+          "route_back_policy": {
+            "max_attempts": 2,
+            "on_exceeded": "block"
+          },
+          "step": "verify"
+        }
+      },
+      "id": "console-projection-flow",
+      "steps": [
+        {
+          "id": "shape",
+          "label": "Shape",
+          "next": "build"
+        },
+        {
+          "id": "build",
+          "label": "Build",
+          "next": "verify"
+        },
+        {
+          "id": "verify",
+          "label": "Verify",
+          "next": "release"
+        },
+        {
+          "id": "release",
+          "label": "Release",
+          "next": null
+        }
+      ],
+      "title": "Console projection fixture",
+      "version": "0.1"
+    },
+    "title": "Console projection fixture",
+    "version": "0.1"
+  },
+  "evidence": [
+    {
+      "authority_trace": null,
+      "authority_traces": [],
+      "claim": null,
+      "diagnostics": {
+        "summary": "Unit test failed for projection edge case."
+      },
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "external_links": [
+        {
+          "id": "ev.failed-tests:stored_path",
+          "kind": "artifact",
+          "path": "evidence/failed-tests.txt",
+          "source": "evidence",
+          "target_id": "ev.failed-tests"
+        },
+        {
+          "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+          "id": "ci-failed-tests",
+          "kind": "ci",
+          "label": "Failed test job",
+          "source": "evidence",
+          "target_id": "ev.failed-tests"
+        }
+      ],
+      "gate_id": "verify-gate",
+      "id": "ev.failed-tests",
+      "kind": "command",
+      "original_path": null,
+      "producer": "npm",
+      "raw": {
+        "attached_at": "2026-06-07T14:18:00.000Z",
+        "classifier": {
+          "confidence": 0.9,
+          "kind": "manual",
+          "source": "fixture"
+        },
+        "diagnostics": {
+          "summary": "Unit test failed for projection edge case."
+        },
+        "expectation_ids": [
+          "tests-passed"
+        ],
+        "external_links": [
+          {
+            "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+            "id": "ci-failed-tests",
+            "kind": "ci",
+            "label": "Failed test job"
+          }
+        ],
+        "gate_id": "verify-gate",
+        "id": "ev.failed-tests",
+        "kind": "command",
+        "producer": "npm",
+        "requested_kind": "command",
+        "route_reason": "implementation_defect",
+        "status": "failed",
+        "stored_path": "evidence/failed-tests.txt"
+      },
+      "requested_kind": "command",
+      "route_reason": "implementation_defect",
+      "status": "failed",
+      "stored_path": "evidence/failed-tests.txt",
+      "trust_artifact": null
+    },
+    {
+      "authority_trace": null,
+      "authority_traces": [],
+      "claim": null,
+      "diagnostics": null,
+      "expectation_ids": [
+        "scoped-diff"
+      ],
+      "external_links": [
+        {
+          "id": "artifact-scoped-diff",
+          "kind": "artifact",
+          "label": "Scoped diff artifact",
+          "path": "artifacts/scoped-diff.txt",
+          "source": "evidence",
+          "target_id": "ev.scoped-diff"
+        },
+        {
+          "id": "ev.scoped-diff:original_path",
+          "kind": "artifact",
+          "path": "artifacts/scoped-diff.txt",
+          "source": "evidence",
+          "target_id": "ev.scoped-diff"
+        },
+        {
+          "id": "ev.scoped-diff:stored_path",
+          "kind": "artifact",
+          "path": "evidence/scoped-diff.txt",
+          "source": "evidence",
+          "target_id": "ev.scoped-diff"
+        }
+      ],
+      "gate_id": "build-gate",
+      "id": "ev.scoped-diff",
+      "kind": "file",
+      "original_path": "artifacts/scoped-diff.txt",
+      "producer": "fixture",
+      "raw": {
+        "attached_at": "2026-06-07T14:05:00.000Z",
+        "expectation_ids": [
+          "scoped-diff"
+        ],
+        "external_links": [
+          {
+            "id": "artifact-scoped-diff",
+            "kind": "artifact",
+            "label": "Scoped diff artifact",
+            "path": "artifacts/scoped-diff.txt"
+          }
+        ],
+        "gate_id": "build-gate",
+        "id": "ev.scoped-diff",
+        "kind": "file",
+        "original_path": "artifacts/scoped-diff.txt",
+        "producer": "fixture",
+        "requested_kind": "file",
+        "status": "passed",
+        "stored_path": "evidence/scoped-diff.txt"
+      },
+      "requested_kind": "file",
+      "route_reason": null,
+      "status": "passed",
+      "stored_path": "evidence/scoped-diff.txt",
+      "trust_artifact": null
+    },
+    {
+      "authority_trace": "surface:claim:tests",
+      "authority_traces": [],
+      "claim": {
+        "status": "trusted",
+        "subject": "console-projection-fixture",
+        "type": "quality.tests"
+      },
+      "diagnostics": null,
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "external_links": [
+        {
+          "id": "ev.surface-tests:stored_path",
+          "kind": "artifact",
+          "path": "evidence/surface-tests.json",
+          "source": "evidence",
+          "target_id": "ev.surface-tests"
+        },
+        {
+          "href": "surface://claims/quality.tests/console-projection-fixture",
+          "id": "surface-claim-tests",
+          "kind": "surface",
+          "label": "Surface test claim",
+          "source": "evidence",
+          "target_id": "ev.surface-tests"
+        }
+      ],
+      "gate_id": "verify-gate",
+      "id": "ev.surface-tests",
+      "kind": "surface.claim",
+      "original_path": null,
+      "producer": "surface/fixture",
+      "raw": {
+        "attached_at": "2026-06-07T14:12:00.000Z",
+        "authority_trace": "surface:claim:tests",
+        "claim": {
+          "status": "trusted",
+          "subject": "console-projection-fixture",
+          "type": "quality.tests"
+        },
+        "expectation_ids": [
+          "tests-passed"
+        ],
+        "gate_id": "verify-gate",
+        "id": "ev.surface-tests",
+        "kind": "surface.claim",
+        "producer": "surface/fixture",
+        "refs": [
+          {
+            "href": "surface://claims/quality.tests/console-projection-fixture",
+            "id": "surface-claim-tests",
+            "kind": "surface",
+            "label": "Surface test claim"
+          }
+        ],
+        "requested_kind": "surface.claim",
+        "status": "passed",
+        "stored_path": "evidence/surface-tests.json",
+        "trust_artifact": {
+          "artifact_type": "trust-report",
+          "claims": [
+            {
+              "status": "trusted",
+              "subject": "console-projection-fixture",
+              "type": "quality.tests"
+            }
+          ],
+          "issued_at": "2026-06-07T14:12:00.000Z",
+          "producer": "surface/fixture",
+          "status": "trusted",
+          "subject": "console-projection-fixture"
+        }
+      },
+      "requested_kind": "surface.claim",
+      "route_reason": null,
+      "status": "passed",
+      "stored_path": "evidence/surface-tests.json",
+      "trust_artifact": {
+        "artifact_type": "trust-report",
+        "claims": [
+          {
+            "status": "trusted",
+            "subject": "console-projection-fixture",
+            "type": "quality.tests"
+          }
+        ],
+        "issued_at": "2026-06-07T14:12:00.000Z",
+        "producer": "surface/fixture",
+        "status": "trusted",
+        "subject": "console-projection-fixture"
+      }
+    },
+    {
+      "authority_trace": null,
+      "authority_traces": [],
+      "claim": null,
+      "diagnostics": null,
+      "expectation_ids": [
+        "veritas-readiness"
+      ],
+      "external_links": [
+        {
+          "id": "ev.veritas-readiness:stored_path",
+          "kind": "artifact",
+          "path": "evidence/veritas-readiness.json",
+          "source": "evidence",
+          "target_id": "ev.veritas-readiness"
+        },
+        {
+          "id": "release-report-local",
+          "kind": "release-report",
+          "label": "Release report",
+          "path": "reports/release-readiness.md",
+          "source": "evidence",
+          "target_id": "ev.veritas-readiness"
+        },
+        {
+          "href": "veritas://readiness/console-projection-fixture",
+          "id": "veritas-readiness-report",
+          "kind": "veritas",
+          "label": "Veritas readiness",
+          "source": "evidence",
+          "target_id": "ev.veritas-readiness"
+        }
+      ],
+      "gate_id": "verify-gate",
+      "id": "ev.veritas-readiness",
+      "kind": "veritas-readiness",
+      "original_path": null,
+      "producer": "veritas/fixture",
+      "raw": {
+        "attached_at": "2026-06-07T14:15:00.000Z",
+        "expectation_ids": [
+          "veritas-readiness"
+        ],
+        "external_refs": [
+          {
+            "href": "veritas://readiness/console-projection-fixture",
+            "id": "veritas-readiness-report",
+            "kind": "veritas",
+            "label": "Veritas readiness"
+          },
+          {
+            "id": "release-report-local",
+            "kind": "release-report",
+            "label": "Release report",
+            "path": "reports/release-readiness.md"
+          }
+        ],
+        "gate_id": "verify-gate",
+        "id": "ev.veritas-readiness",
+        "kind": "veritas-readiness",
+        "producer": "veritas/fixture",
+        "requested_kind": "veritas-readiness",
+        "status": "passed",
+        "stored_path": "evidence/veritas-readiness.json"
+      },
+      "requested_kind": "veritas-readiness",
+      "route_reason": null,
+      "status": "passed",
+      "stored_path": "evidence/veritas-readiness.json",
+      "trust_artifact": null
+    }
+  ],
+  "exceptions": [
+    {
+      "accepted_at": "2026-06-07T14:10:00.000Z",
+      "authority": "fixture-owner",
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ],
+      "external_links": [],
+      "gate_id": "build-gate",
+      "id": "ex.review-deferred",
+      "raw": {
+        "accepted_at": "2026-06-07T14:10:00.000Z",
+        "authority": "fixture-owner",
+        "evidence_refs": [
+          "ev.scoped-diff"
+        ],
+        "gate_id": "build-gate",
+        "id": "ex.review-deferred",
+        "reason": "Reviewer approval deferred for fixture coverage."
+      },
+      "reason": "Reviewer approval deferred for fixture coverage."
+    }
+  ],
+  "expectations": [
+    {
+      "claim": {
+        "accepted_statuses": [
+          "trusted"
+        ],
+        "subject": "console-projection-fixture",
+        "type": "human.review"
+      },
+      "description": "Reviewer approval is attached.",
+      "gate_id": "build-gate",
+      "id": "missing-review",
+      "kind": "surface.claim",
+      "raw": {
+        "claim": {
+          "accepted_statuses": [
+            "trusted"
+          ],
+          "subject": "console-projection-fixture",
+          "type": "human.review"
+        },
+        "description": "Reviewer approval is attached.",
+        "id": "missing-review",
+        "kind": "surface.claim",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "claim": {
+        "accepted_statuses": [
+          "trusted"
+        ],
+        "subject": "console-projection-fixture",
+        "type": "quality.tests"
+      },
+      "description": "Tests passed through Surface trust.",
+      "gate_id": "verify-gate",
+      "id": "tests-passed",
+      "kind": "surface.claim",
+      "raw": {
+        "claim": {
+          "accepted_statuses": [
+            "trusted"
+          ],
+          "subject": "console-projection-fixture",
+          "type": "quality.tests"
+        },
+        "description": "Tests passed through Surface trust.",
+        "id": "tests-passed",
+        "kind": "surface.claim",
+        "required": true
+      },
+      "required": true
+    }
+  ],
+  "external_links": [
+    {
+      "id": "ev.failed-tests:stored_path",
+      "kind": "artifact",
+      "path": "evidence/failed-tests.txt",
+      "source": "evidence",
+      "target_id": "ev.failed-tests"
+    },
+    {
+      "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+      "id": "ci-failed-tests",
+      "kind": "ci",
+      "label": "Failed test job",
+      "source": "evidence",
+      "target_id": "ev.failed-tests"
+    },
+    {
+      "id": "artifact-scoped-diff",
+      "kind": "artifact",
+      "label": "Scoped diff artifact",
+      "path": "artifacts/scoped-diff.txt",
+      "source": "evidence",
+      "target_id": "ev.scoped-diff"
+    },
+    {
+      "id": "ev.scoped-diff:original_path",
+      "kind": "artifact",
+      "path": "artifacts/scoped-diff.txt",
+      "source": "evidence",
+      "target_id": "ev.scoped-diff"
+    },
+    {
+      "id": "ev.scoped-diff:stored_path",
+      "kind": "artifact",
+      "path": "evidence/scoped-diff.txt",
+      "source": "evidence",
+      "target_id": "ev.scoped-diff"
+    },
+    {
+      "id": "ev.surface-tests:stored_path",
+      "kind": "artifact",
+      "path": "evidence/surface-tests.json",
+      "source": "evidence",
+      "target_id": "ev.surface-tests"
+    },
+    {
+      "href": "surface://claims/quality.tests/console-projection-fixture",
+      "id": "surface-claim-tests",
+      "kind": "surface",
+      "label": "Surface test claim",
+      "source": "evidence",
+      "target_id": "ev.surface-tests"
+    },
+    {
+      "id": "ev.veritas-readiness:stored_path",
+      "kind": "artifact",
+      "path": "evidence/veritas-readiness.json",
+      "source": "evidence",
+      "target_id": "ev.veritas-readiness"
+    },
+    {
+      "id": "release-report-local",
+      "kind": "release-report",
+      "label": "Release report",
+      "path": "reports/release-readiness.md",
+      "source": "evidence",
+      "target_id": "ev.veritas-readiness"
+    },
+    {
+      "href": "veritas://readiness/console-projection-fixture",
+      "id": "veritas-readiness-report",
+      "kind": "veritas",
+      "label": "Veritas readiness",
+      "source": "evidence",
+      "target_id": "ev.veritas-readiness"
+    },
+    {
+      "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+      "id": "ci-route",
+      "kind": "ci",
+      "label": "Failing CI route",
+      "source": "gate_outcome",
+      "target_id": "verify-gate"
+    },
+    {
+      "href": "https://github.com/kontourai/flow/pull/18",
+      "id": "pr-18",
+      "kind": "pull-request",
+      "label": "PR 18",
+      "source": "transition",
+      "target_id": "tr.verify-build"
+    }
+  ],
+  "gates": [
+    {
+      "accepted_exception_id": "ex.review-deferred",
+      "evidence": [
+        {
+          "authority_trace": null,
+          "authority_traces": [],
+          "claim": null,
+          "diagnostics": null,
+          "expectation_ids": [
+            "scoped-diff"
+          ],
+          "external_links": [
+            {
+              "id": "artifact-scoped-diff",
+              "kind": "artifact",
+              "label": "Scoped diff artifact",
+              "path": "artifacts/scoped-diff.txt",
+              "source": "evidence",
+              "target_id": "ev.scoped-diff"
+            },
+            {
+              "id": "ev.scoped-diff:original_path",
+              "kind": "artifact",
+              "path": "artifacts/scoped-diff.txt",
+              "source": "evidence",
+              "target_id": "ev.scoped-diff"
+            },
+            {
+              "id": "ev.scoped-diff:stored_path",
+              "kind": "artifact",
+              "path": "evidence/scoped-diff.txt",
+              "source": "evidence",
+              "target_id": "ev.scoped-diff"
+            }
+          ],
+          "gate_id": "build-gate",
+          "id": "ev.scoped-diff",
+          "kind": "file",
+          "original_path": "artifacts/scoped-diff.txt",
+          "producer": "fixture",
+          "raw": {
+            "attached_at": "2026-06-07T14:05:00.000Z",
+            "expectation_ids": [
+              "scoped-diff"
+            ],
+            "external_links": [
+              {
+                "id": "artifact-scoped-diff",
+                "kind": "artifact",
+                "label": "Scoped diff artifact",
+                "path": "artifacts/scoped-diff.txt"
+              }
+            ],
+            "gate_id": "build-gate",
+            "id": "ev.scoped-diff",
+            "kind": "file",
+            "original_path": "artifacts/scoped-diff.txt",
+            "producer": "fixture",
+            "requested_kind": "file",
+            "status": "passed",
+            "stored_path": "evidence/scoped-diff.txt"
+          },
+          "requested_kind": "file",
+          "route_reason": null,
+          "status": "passed",
+          "stored_path": "evidence/scoped-diff.txt",
+          "trust_artifact": null
+        }
+      ],
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ],
+      "expectations": [
+        {
+          "claim": {
+            "accepted_statuses": [
+              "trusted"
+            ],
+            "subject": "console-projection-fixture",
+            "type": "human.review"
+          },
+          "description": "Reviewer approval is attached.",
+          "id": "missing-review",
+          "kind": "surface.claim",
+          "raw": {
+            "claim": {
+              "accepted_statuses": [
+                "trusted"
+              ],
+              "subject": "console-projection-fixture",
+              "type": "human.review"
+            },
+            "description": "Reviewer approval is attached.",
+            "id": "missing-review",
+            "kind": "surface.claim",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "build-gate",
+      "is_open": false,
+      "matched_expectations": [
+        {
+          "evidence_id": "ev.scoped-diff",
+          "expectation_id": "scoped-diff"
+        }
+      ],
+      "missing": [
+        "missing-review"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "claim": {
+              "accepted_statuses": [
+                "trusted"
+              ],
+              "subject": "console-projection-fixture",
+              "type": "human.review"
+            },
+            "description": "Reviewer approval is attached.",
+            "id": "missing-review",
+            "kind": "surface.claim",
+            "required": true
+          }
+        ],
+        "id": "build-gate",
+        "requires": [
+          "file"
+        ],
+        "step": "build"
+      },
+      "status": "pass",
+      "step_id": "build",
+      "summary": "Implementation diff accepted by explicit exception."
+    },
+    {
+      "attempt": 1,
+      "evidence": [
+        {
+          "authority_trace": "surface:claim:tests",
+          "authority_traces": [],
+          "claim": {
+            "status": "trusted",
+            "subject": "console-projection-fixture",
+            "type": "quality.tests"
+          },
+          "diagnostics": null,
+          "expectation_ids": [
+            "tests-passed"
+          ],
+          "external_links": [
+            {
+              "id": "ev.surface-tests:stored_path",
+              "kind": "artifact",
+              "path": "evidence/surface-tests.json",
+              "source": "evidence",
+              "target_id": "ev.surface-tests"
+            },
+            {
+              "href": "surface://claims/quality.tests/console-projection-fixture",
+              "id": "surface-claim-tests",
+              "kind": "surface",
+              "label": "Surface test claim",
+              "source": "evidence",
+              "target_id": "ev.surface-tests"
+            }
+          ],
+          "gate_id": "verify-gate",
+          "id": "ev.surface-tests",
+          "kind": "surface.claim",
+          "original_path": null,
+          "producer": "surface/fixture",
+          "raw": {
+            "attached_at": "2026-06-07T14:12:00.000Z",
+            "authority_trace": "surface:claim:tests",
+            "claim": {
+              "status": "trusted",
+              "subject": "console-projection-fixture",
+              "type": "quality.tests"
+            },
+            "expectation_ids": [
+              "tests-passed"
+            ],
+            "gate_id": "verify-gate",
+            "id": "ev.surface-tests",
+            "kind": "surface.claim",
+            "producer": "surface/fixture",
+            "refs": [
+              {
+                "href": "surface://claims/quality.tests/console-projection-fixture",
+                "id": "surface-claim-tests",
+                "kind": "surface",
+                "label": "Surface test claim"
+              }
+            ],
+            "requested_kind": "surface.claim",
+            "status": "passed",
+            "stored_path": "evidence/surface-tests.json",
+            "trust_artifact": {
+              "artifact_type": "trust-report",
+              "claims": [
+                {
+                  "status": "trusted",
+                  "subject": "console-projection-fixture",
+                  "type": "quality.tests"
+                }
+              ],
+              "issued_at": "2026-06-07T14:12:00.000Z",
+              "producer": "surface/fixture",
+              "status": "trusted",
+              "subject": "console-projection-fixture"
+            }
+          },
+          "requested_kind": "surface.claim",
+          "route_reason": null,
+          "status": "passed",
+          "stored_path": "evidence/surface-tests.json",
+          "trust_artifact": {
+            "artifact_type": "trust-report",
+            "claims": [
+              {
+                "status": "trusted",
+                "subject": "console-projection-fixture",
+                "type": "quality.tests"
+              }
+            ],
+            "issued_at": "2026-06-07T14:12:00.000Z",
+            "producer": "surface/fixture",
+            "status": "trusted",
+            "subject": "console-projection-fixture"
+          }
+        },
+        {
+          "authority_trace": null,
+          "authority_traces": [],
+          "claim": null,
+          "diagnostics": null,
+          "expectation_ids": [
+            "veritas-readiness"
+          ],
+          "external_links": [
+            {
+              "id": "ev.veritas-readiness:stored_path",
+              "kind": "artifact",
+              "path": "evidence/veritas-readiness.json",
+              "source": "evidence",
+              "target_id": "ev.veritas-readiness"
+            },
+            {
+              "id": "release-report-local",
+              "kind": "release-report",
+              "label": "Release report",
+              "path": "reports/release-readiness.md",
+              "source": "evidence",
+              "target_id": "ev.veritas-readiness"
+            },
+            {
+              "href": "veritas://readiness/console-projection-fixture",
+              "id": "veritas-readiness-report",
+              "kind": "veritas",
+              "label": "Veritas readiness",
+              "source": "evidence",
+              "target_id": "ev.veritas-readiness"
+            }
+          ],
+          "gate_id": "verify-gate",
+          "id": "ev.veritas-readiness",
+          "kind": "veritas-readiness",
+          "original_path": null,
+          "producer": "veritas/fixture",
+          "raw": {
+            "attached_at": "2026-06-07T14:15:00.000Z",
+            "expectation_ids": [
+              "veritas-readiness"
+            ],
+            "external_refs": [
+              {
+                "href": "veritas://readiness/console-projection-fixture",
+                "id": "veritas-readiness-report",
+                "kind": "veritas",
+                "label": "Veritas readiness"
+              },
+              {
+                "id": "release-report-local",
+                "kind": "release-report",
+                "label": "Release report",
+                "path": "reports/release-readiness.md"
+              }
+            ],
+            "gate_id": "verify-gate",
+            "id": "ev.veritas-readiness",
+            "kind": "veritas-readiness",
+            "producer": "veritas/fixture",
+            "requested_kind": "veritas-readiness",
+            "status": "passed",
+            "stored_path": "evidence/veritas-readiness.json"
+          },
+          "requested_kind": "veritas-readiness",
+          "route_reason": null,
+          "status": "passed",
+          "stored_path": "evidence/veritas-readiness.json",
+          "trust_artifact": null
+        },
+        {
+          "authority_trace": null,
+          "authority_traces": [],
+          "claim": null,
+          "diagnostics": {
+            "summary": "Unit test failed for projection edge case."
+          },
+          "expectation_ids": [
+            "tests-passed"
+          ],
+          "external_links": [
+            {
+              "id": "ev.failed-tests:stored_path",
+              "kind": "artifact",
+              "path": "evidence/failed-tests.txt",
+              "source": "evidence",
+              "target_id": "ev.failed-tests"
+            },
+            {
+              "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+              "id": "ci-failed-tests",
+              "kind": "ci",
+              "label": "Failed test job",
+              "source": "evidence",
+              "target_id": "ev.failed-tests"
+            }
+          ],
+          "gate_id": "verify-gate",
+          "id": "ev.failed-tests",
+          "kind": "command",
+          "original_path": null,
+          "producer": "npm",
+          "raw": {
+            "attached_at": "2026-06-07T14:18:00.000Z",
+            "classifier": {
+              "confidence": 0.9,
+              "kind": "manual",
+              "source": "fixture"
+            },
+            "diagnostics": {
+              "summary": "Unit test failed for projection edge case."
+            },
+            "expectation_ids": [
+              "tests-passed"
+            ],
+            "external_links": [
+              {
+                "href": "https://ci.example.test/kontourai/flow/actions/runs/4242",
+                "id": "ci-failed-tests",
+                "kind": "ci",
+                "label": "Failed test job"
+              }
+            ],
+            "gate_id": "verify-gate",
+            "id": "ev.failed-tests",
+            "kind": "command",
+            "producer": "npm",
+            "requested_kind": "command",
+            "route_reason": "implementation_defect",
+            "status": "failed",
+            "stored_path": "evidence/failed-tests.txt"
+          },
+          "requested_kind": "command",
+          "route_reason": "implementation_defect",
+          "status": "failed",
+          "stored_path": "evidence/failed-tests.txt",
+          "trust_artifact": null
+        }
+      ],
+      "evidence_refs": [
+        "ev.surface-tests",
+        "ev.veritas-readiness",
+        "ev.failed-tests"
+      ],
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "expectations": [
+        {
+          "claim": {
+            "accepted_statuses": [
+              "trusted"
+            ],
+            "subject": "console-projection-fixture",
+            "type": "quality.tests"
+          },
+          "description": "Tests passed through Surface trust.",
+          "id": "tests-passed",
+          "kind": "surface.claim",
+          "raw": {
+            "claim": {
+              "accepted_statuses": [
+                "trusted"
+              ],
+              "subject": "console-projection-fixture",
+              "type": "quality.tests"
+            },
+            "description": "Tests passed through Surface trust.",
+            "id": "tests-passed",
+            "kind": "surface.claim",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "verify-gate",
+      "is_open": true,
+      "limit_exceeded": false,
+      "matched_expectations": [
+        {
+          "evidence_id": "ev.surface-tests",
+          "expectation_id": "tests-passed"
+        },
+        {
+          "evidence_id": "ev.veritas-readiness",
+          "expectation_id": "veritas-readiness"
+        }
+      ],
+      "max_attempts": 2,
+      "missing": [],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "claim": {
+              "accepted_statuses": [
+                "trusted"
+              ],
+              "subject": "console-projection-fixture",
+              "type": "quality.tests"
+            },
+            "description": "Tests passed through Surface trust.",
+            "id": "tests-passed",
+            "kind": "surface.claim",
+            "required": true
+          }
+        ],
+        "id": "verify-gate",
+        "on_route_back": {
+          "default": "build",
+          "implementation_defect": "build"
+        },
+        "requires": [
+          "veritas-readiness"
+        ],
+        "route_back_policy": {
+          "max_attempts": 2,
+          "on_exceeded": "block"
+        },
+        "step": "verify"
+      },
+      "recovery_step": "build",
+      "route_back_to": "build",
+      "route_reason": "implementation_defect",
+      "selected_route": "implementation_defect",
+      "status": "block",
+      "step_id": "verify",
+      "summary": "Tests failed; route back to build."
+    }
+  ],
+  "next_action": "Fix the test failure and rerun verification.",
+  "open_gates": [
+    "verify-gate"
+  ],
+  "report": null,
+  "route_backs": [
+    {
+      "attempt": 1,
+      "evidence_refs": [
+        "ev.surface-tests",
+        "ev.veritas-readiness",
+        "ev.failed-tests"
+      ],
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "from_step": null,
+      "gate_id": "verify-gate",
+      "id": "gate_outcome.1",
+      "limit_exceeded": false,
+      "max_attempts": 2,
+      "reason": "implementation_defect",
+      "recovery_step": "build",
+      "route_back_to": "build",
+      "selected_route": "implementation_defect",
+      "source": "gate_outcome",
+      "to_step": "build"
+    },
+    {
+      "attempt": 1,
+      "evidence_refs": [
+        "ev.failed-tests"
+      ],
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "from_step": "verify",
+      "gate_id": "verify-gate",
+      "id": "tr.verify-build",
+      "limit_exceeded": false,
+      "max_attempts": 2,
+      "reason": "implementation_defect",
+      "recovery_step": null,
+      "route_back_to": "build",
+      "selected_route": null,
+      "source": "transition",
+      "to_step": "build"
+    }
+  ],
+  "run": {
+    "current_step": "verify",
+    "definition_id": "console-projection-flow",
+    "definition_version": "0.1",
+    "params": {
+      "work_item": "flow-18"
+    },
+    "run_id": "console-projection-fixture",
+    "status": "active",
+    "subject": "console-projection-fixture",
+    "updated_at": "2026-06-07T14:30:00.000Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [],
+      "id": "shape",
+      "index": 0,
+      "label": "Shape",
+      "next": "build",
+      "raw": {
+        "id": "shape",
+        "label": "Shape",
+        "next": "build"
+      }
+    },
+    {
+      "gates": [
+        "build-gate"
+      ],
+      "id": "build",
+      "index": 1,
+      "label": "Build",
+      "next": "verify",
+      "raw": {
+        "id": "build",
+        "label": "Build",
+        "next": "verify"
+      }
+    },
+    {
+      "gates": [
+        "verify-gate"
+      ],
+      "id": "verify",
+      "index": 2,
+      "label": "Verify",
+      "next": "release",
+      "raw": {
+        "id": "verify",
+        "label": "Verify",
+        "next": "release"
+      }
+    },
+    {
+      "gates": [],
+      "id": "release",
+      "index": 3,
+      "label": "Release",
+      "next": null,
+      "raw": {
+        "id": "release",
+        "label": "Release",
+        "next": null
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "at": "2026-06-07T14:00:00.000Z",
+      "evidence_refs": [],
+      "expectation_ids": [],
+      "external_links": [],
+      "from_step": "shape",
+      "gate_id": null,
+      "id": "tr.shape-build",
+      "raw": {
+        "at": "2026-06-07T14:00:00.000Z",
+        "from_step": "shape",
+        "gate_id": null,
+        "id": "tr.shape-build",
+        "reason": "shape complete",
+        "status": "allowed",
+        "to_step": "build",
+        "type": "step"
+      },
+      "reason": "shape complete",
+      "route_reason": null,
+      "status": "allowed",
+      "to_step": "build",
+      "type": "step"
+    },
+    {
+      "at": "2026-06-07T14:20:00.000Z",
+      "evidence_refs": [
+        "ev.failed-tests"
+      ],
+      "expectation_ids": [
+        "tests-passed"
+      ],
+      "external_links": [
+        {
+          "href": "https://github.com/kontourai/flow/pull/18",
+          "id": "pr-18",
+          "kind": "pull-request",
+          "label": "PR 18",
+          "source": "transition",
+          "target_id": "tr.verify-build"
+        }
+      ],
+      "from_step": "verify",
+      "gate_id": "verify-gate",
+      "id": "tr.verify-build",
+      "raw": {
+        "at": "2026-06-07T14:20:00.000Z",
+        "attempt": 1,
+        "evidence_refs": [
+          "ev.failed-tests"
+        ],
+        "expectation_ids": [
+          "tests-passed"
+        ],
+        "external_refs": [
+          {
+            "href": "https://github.com/kontourai/flow/pull/18",
+            "id": "pr-18",
+            "kind": "pull-request",
+            "label": "PR 18"
+          }
+        ],
+        "from_step": "verify",
+        "gate_id": "verify-gate",
+        "id": "tr.verify-build",
+        "max_attempts": 2,
+        "reason": "tests failed",
+        "route_reason": "implementation_defect",
+        "status": "blocked",
+        "to_step": "build",
+        "type": "route_back"
+      },
+      "reason": "tests failed",
+      "route_reason": "implementation_defect",
+      "status": "blocked",
+      "to_step": "build",
+      "type": "route_back"
+    }
+  ]
+}

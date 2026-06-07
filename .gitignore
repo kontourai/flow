@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .flow/
+!examples/fixtures/console-projection/.flow/
+!examples/fixtures/console-projection/.flow/**
 *.tgz
 .surface/
 .veritas/

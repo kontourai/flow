@@ -13,6 +13,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./console-projection": {
+      "types": "./dist/console-projection.d.ts",
+      "import": "./dist/console-projection.js",
+      "default": "./dist/console-projection.js"
     }
   },
   "files": [
@@ -24,7 +29,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs",
+    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs scripts/check-console-projection.mjs",
     "typecheck": "tsc --noEmit",
     "check:schemas": "npm run build && node scripts/check-schemas.mjs",
     "check:repo-hooks": "node --test scripts/check-repo-hooks.mjs",

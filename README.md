@@ -100,6 +100,27 @@ Flow v0.1 is local and file-backed. A run is stored at `.flow/runs/<run-id>/`:
 
 The continuation contract is intentionally simple: `flow resume <run-id>` reads only the run directory and prints the current step, next action, open gates, accepted exceptions, and a one-line instruction for the next agent.
 
+## Console Projection
+
+Downstream console code can project a local Flow Run into a deterministic read model:
+
+```js
+import { projectFlowRunFromFiles } from "@kontourai/flow/console-projection";
+
+const projection = await projectFlowRunFromFiles("dev-1847", {
+  cwd: process.cwd()
+});
+
+console.log(projection.current_step);
+console.log(projection.gates);
+```
+
+The root package also exports `projectFlowRun` and `projectFlowRunFromFiles` from `@kontourai/flow`. Type declarations are available from both package boundaries.
+
+`projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
+
+This API is the Flow boundary for console consumers. Browser UI, hosted behavior, companion console startup, and `kontour-console` integration are outside this Flow issue.
+
 ## Evidence Kinds
 
 `flow attach-evidence --kind <kind>` accepts these documented kinds:
