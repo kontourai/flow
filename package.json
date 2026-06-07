@@ -5,25 +5,32 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "flow": "src/cli.js"
+    "flow": "dist/cli.js"
   },
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
-    "src/",
+    "dist/",
     "schemas/",
     "examples/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs",
-    "check:schemas": "node scripts/check-schemas.mjs",
+    "build": "tsc",
+    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs",
+    "typecheck": "tsc --noEmit",
+    "check:schemas": "npm run build && node scripts/check-schemas.mjs",
     "check:repo-hooks": "node --test scripts/check-repo-hooks.mjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.mjs",
     "validate:repo-hooks": "node scripts/validate-repo-hooks.mjs",
-    "prepack": "npm test && npm run check:schemas"
+    "prepack": "npm run typecheck && npm test"
   },
   "keywords": [
     "agents",
@@ -37,5 +44,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kontourai/flow.git"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3"
   }
 }

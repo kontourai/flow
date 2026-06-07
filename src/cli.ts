@@ -21,6 +21,8 @@ import {
   validateDefinitionWithDiagnostics
 } from "./index.js";
 
+type CliFlags = Record<string, any>;
+
 function usage() {
   return `Usage:
   flow init
@@ -39,9 +41,9 @@ function usage() {
 `;
 }
 
-function parseArgs(argv) {
-  const args = [];
-  const flags = {};
+function parseArgs(argv: string[]) {
+  const args: string[] = [];
+  const flags: CliFlags = {};
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!token.startsWith("--")) {
@@ -75,8 +77,8 @@ function parseArgs(argv) {
   return { args, flags };
 }
 
-function parseParams(values = []) {
-  const params = {};
+function parseParams(values: string[] = []) {
+  const params: CliFlags = {};
   for (const value of values) {
     const index = value.indexOf("=");
     if (index === -1) throw new Error(`invalid --params value: ${value}`);
@@ -99,7 +101,7 @@ function mergeObject(base, next) {
   return { ...(base ?? {}), ...next };
 }
 
-async function parseRouteMetadata(flags) {
+async function parseRouteMetadata(flags: CliFlags) {
   const metadataFile = flags["route-metadata"] ?? flags.metadata;
   const fileMetadata = metadataFile
     ? JSON.parse(await readFile(path.resolve(process.cwd(), metadataFile), "utf8"))
