@@ -39,6 +39,8 @@ The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` a
 
 Flow v0.1 is local and file-backed.
 
+Developer architecture guide: [docs/developer-architecture.md](docs/developer-architecture.md) explains Flow lifecycle and enforcement diagrams, product ownership boundaries, and current versus future Resource Contract alignment.
+
 ## First Wedge
 
 Agentic development workflows are the first wedge: plan, implementation, verification, publish, release, and learning gates with evidence that survives handoff and context compaction.
