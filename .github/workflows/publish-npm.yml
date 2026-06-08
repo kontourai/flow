@@ -1,0 +1,116 @@
+name: Publish NPM
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["18", "22", "24"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: flow
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: flow/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+        working-directory: flow
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: flow
+
+      - name: Run tests
+        run: npm test
+        working-directory: flow
+
+      - name: Check schemas
+        run: npm run check:schemas
+        working-directory: flow
+
+      - name: Pack dry run
+        run: npm pack --dry-run
+        working-directory: flow
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: flow
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+        working-directory: flow
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: flow
+
+      - name: Verify tag matches package version
+        run: |
+          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
+          if [ "v${PACKAGE_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version v${PACKAGE_VERSION}" >&2
+            exit 1
+          fi
+        working-directory: flow
+
+      - name: Verify tagged commit is on main
+        run: |
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "FETCH_HEAD"; then
+            echo "Tagged commit ${GITHUB_SHA} is not reachable from the fetched origin/main tip" >&2
+            exit 1
+          fi
+        working-directory: flow
+
+      - name: Check published version
+        id: published
+        run: |
+          PACKAGE_NAME=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).name")
+          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "published=true" >> "${GITHUB_OUTPUT}"
+            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping npm publish."
+          else
+            echo "published=false" >> "${GITHUB_OUTPUT}"
+          fi
+        working-directory: flow
+
+      - name: Publish public package
+        if: steps.published.outputs.published != 'true'
+        run: npm publish --access public --provenance
+        working-directory: flow

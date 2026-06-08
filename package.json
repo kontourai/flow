@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "flow": "dist/cli.js"
