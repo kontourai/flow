@@ -7,4 +7,6 @@ dist/
 .surface/
 .veritas/
 .agents/
+test-results/
+playwright-report/
 .DS_Store
