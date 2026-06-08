@@ -218,6 +218,7 @@ test("schemas describe the runtime contract", async () => {
 
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
+  assert.equal(definitionSchema.$defs.gate.properties.route_back_policy.properties.allow_unknown_reasons.type, "boolean");
   assert.ok(evidenceSchema.$defs.evidence.properties.route_reason);
   assert.ok(evidenceSchema.$defs.evidence.properties.trust_artifact);
   assert.equal(evidenceSchema.$defs.evidence.properties.trust_artifact.additionalProperties, false);
@@ -943,14 +944,16 @@ test("transition validator rejects gate skips and premature completion before re
 });
 
 test("transition validator preserves legacy permissive route reasons unless route policy is closed", () => {
+  const definitionSchemaPolicy = {
+    max_attempts: 2,
+    on_exceeded: "block",
+    allow_unknown_reasons: false
+  };
   const openDefinition = routeBackDefinition();
   const closedDefinition = routeBackDefinition({
-    route_back_policy: {
-      max_attempts: 2,
-      on_exceeded: "block",
-      allow_unknown_reasons: false
-    }
+    route_back_policy: definitionSchemaPolicy
   });
+  assert.deepEqual(closedDefinition.gates["verify-gate"].route_back_policy, definitionSchemaPolicy);
   const state = initialState(openDefinition, "transition-route-policy");
   state.current_step = "verify";
   const manifest = routeBackManifest([failedEvidence({ id: "ev.vendor", route_reason: "vendor_reason" })]);

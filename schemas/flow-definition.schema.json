@@ -83,7 +83,8 @@
             "on_exceeded": {
               "type": "string",
               "pattern": "^(block|[a-z0-9][a-z0-9._-]*)$"
-            }
+            },
+            "allow_unknown_reasons": { "type": "boolean" }
           }
         }
       }
