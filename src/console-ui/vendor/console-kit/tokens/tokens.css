@@ -1,0 +1,79 @@
+:root {
+  color-scheme: dark;
+
+  /* structure */
+  --k-bg: #0a0e13;
+  --k-panel: #111824;
+  --k-panel-raised: #16202d;
+  --k-line: rgba(150, 180, 210, 0.12);
+  --k-line-strong: rgba(150, 180, 210, 0.22);
+  --k-shadow: 0 26px 60px -42px rgba(0, 0, 0, 0.95);
+
+  /* text */
+  --k-text: #eef3f8;
+  --k-text-muted: #aebccb;
+  --k-text-faint: #72869b;
+
+  /* brand */
+  --k-brand: #5ce0c6;
+  --k-brand-contrast: #06080b;
+
+  /* semantic status scale */
+  --k-positive: #34d399;
+  --k-caution: #f3b14b;
+  --k-negative: #ff6f6f;
+  --k-neutral: #6f8095;
+  --k-active: #7aa2ff;
+  --k-positive-soft: color-mix(in oklab, var(--k-positive) 14%, transparent);
+  --k-caution-soft: color-mix(in oklab, var(--k-caution) 14%, transparent);
+  --k-negative-soft: color-mix(in oklab, var(--k-negative) 14%, transparent);
+  --k-active-soft: color-mix(in oklab, var(--k-active) 14%, transparent);
+
+  /* spacing */
+  --k-space-1: 4px;
+  --k-space-2: 8px;
+  --k-space-3: 12px;
+  --k-space-4: 16px;
+  --k-space-5: 24px;
+  --k-space-6: 32px;
+
+  /* radius */
+  --k-radius-sm: 9px;
+  --k-radius-md: 14px;
+
+  /* type */
+  --k-text-xs: 11px;
+  --k-text-sm: 12.5px;
+  --k-text-md: 14px;
+  --k-text-lg: 18px;
+  --k-text-xl: 22px;
+  --k-text-2xl: clamp(26px, 3.4vw, 38px);
+
+  /* fonts */
+  --k-font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --k-font-ui: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --k-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* motion */
+  --k-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --k-dur: 0.16s;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --k-bg: #f5f4ef;
+  --k-panel: #ffffff;
+  --k-panel-raised: #fbfaf7;
+  --k-line: rgba(36, 40, 46, 0.12);
+  --k-line-strong: rgba(36, 40, 46, 0.20);
+  --k-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.25);
+  --k-text: #202124;
+  --k-text-muted: #5b626b;
+  --k-text-faint: #707782;
+  --k-brand-contrast: #ffffff;
+  --k-positive: #168257;
+  --k-caution: #8a5a00;
+  --k-negative: #c83b3b;
+  --k-neutral: #5f6975;
+  --k-active: #3f6fd6;
+}

@@ -1,15 +1,20 @@
 :root {
   color-scheme: light;
-  --bg: #f5f4ef;
-  --surface: #ffffff;
-  --ink: #202124;
-  --muted: #666a70;
-  --line: #d8d6ce;
-  --pass: #2f7d52;
-  --block: #b24734;
-  --wait: #9a6a24;
-  --current: #245e73;
-  --accent: #6e5b3d;
+  --bg: var(--k-bg);
+  --surface: var(--k-panel);
+  --ink: var(--k-text);
+  --muted: var(--k-text-muted);
+  --line: var(--k-line);
+  --pass: var(--k-positive);
+  --block: var(--k-negative);
+  --wait: var(--k-caution);
+  --current: var(--k-active);
+  --accent: var(--k-brand);
+  --flow-panel-subtle: var(--k-panel-raised);
+  --flow-chip-bg: var(--k-panel-raised);
+  --flow-edge-bg: color-mix(in srgb, var(--k-panel) 82%, var(--k-bg));
+  --flow-current-ring: color-mix(in srgb, var(--k-active) 16%, transparent);
+  --flow-current-outline: color-mix(in srgb, var(--k-active) 42%, transparent);
 }
 
 * {
@@ -20,7 +25,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--k-font-ui);
 }
 
 #app {
@@ -34,7 +39,7 @@ body {
   align-items: end;
   padding: 22px 28px 16px;
   border-bottom: 1px solid var(--line);
-  background: #fbfaf7;
+  background: var(--flow-panel-subtle);
 }
 
 .eyebrow,
@@ -109,7 +114,7 @@ p {
   border: 1px solid var(--line);
   border-top: 4px solid var(--muted);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .graph-node strong {
@@ -132,14 +137,14 @@ p {
 
 .graph-node.is-current {
   border-color: var(--current);
-  box-shadow: 0 0 0 2px rgba(36, 94, 115, 0.16);
+  box-shadow: 0 0 0 2px var(--flow-current-ring);
 }
 
 .graph-node.is-current::after {
   content: "";
   position: absolute;
   inset: -4px;
-  border: 2px solid rgba(36, 94, 115, 0.42);
+  border: 2px solid var(--flow-current-outline);
   border-radius: 10px;
   animation: current-pulse 1.8s ease-in-out infinite;
   pointer-events: none;
@@ -164,7 +169,7 @@ p {
   height: 22px;
   border-radius: 999px;
   padding: 0 8px;
-  background: #ece9df;
+  background: var(--flow-chip-bg);
   color: var(--ink);
   font-size: 12px;
 }
@@ -190,7 +195,7 @@ p {
 .edge-row {
   min-height: 34px;
   padding: 8px 10px;
-  background: #faf9f4;
+  background: var(--flow-edge-bg);
   font-size: 13px;
 }
 
@@ -305,7 +310,7 @@ a {
   margin: 24px;
   padding: 16px;
   border: 1px solid var(--block);
-  background: #fff;
+  background: var(--surface);
 }
 
 @media (max-width: 900px) {

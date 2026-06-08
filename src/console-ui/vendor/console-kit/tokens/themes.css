@@ -1,0 +1,65 @@
+.theme-survey {
+  --k-brand: #5ce0c6;
+}
+
+.theme-console {
+  --k-font-ui: "Aptos Narrow", "DIN Condensed", "IBM Plex Sans Condensed", "Gill Sans", sans-serif;
+  --k-font-display: "Aptos Narrow", "DIN Condensed", "IBM Plex Sans Condensed", "Gill Sans", sans-serif;
+  --k-radius-sm: 0;
+  --k-radius-md: 0;
+  --k-brand: #c9ff4a;
+  --k-brand-contrast: #11120f;
+  --k-bg: #11120f;
+  --k-panel: #191b16;
+  --k-panel-raised: #20231e;
+  --k-line: #3a4035;
+  --k-line-strong: #8ea36e;
+  --k-text: #f2f0e8;
+  --k-text-muted: #a6ab9c;
+  --k-text-faint: #747a6c;
+  --k-positive: #a6d37b;
+  --k-caution: #e8c15f;
+  --k-negative: #ee776f;
+  --k-active: #84d8c8;
+}
+
+.theme-flow {
+  --k-brand: #2f88a6;
+}
+
+.theme-surface {
+  --k-brand: #14a37a;
+}
+
+[data-theme="light"].theme-survey,
+[data-theme="light"] .theme-survey {
+  --k-brand: #16806f;
+}
+
+[data-theme="light"].theme-console,
+[data-theme="light"] .theme-console {
+  --k-brand: #6c9400;
+  --k-brand-contrast: #ffffff;
+  --k-bg: #f3f5eb;
+  --k-panel: #fbfcf7;
+  --k-panel-raised: #eef2e6;
+  --k-line: #ccd5bf;
+  --k-line-strong: #8fa36f;
+  --k-text: #1e2319;
+  --k-text-muted: #596250;
+  --k-text-faint: #77816d;
+  --k-positive: #2f7d32;
+  --k-caution: #8a6500;
+  --k-negative: #b93a36;
+  --k-active: #247f75;
+}
+
+[data-theme="light"].theme-flow,
+[data-theme="light"] .theme-flow {
+  --k-brand: #1f6f88;
+}
+
+[data-theme="light"].theme-surface,
+[data-theme="light"] .theme-surface {
+  --k-brand: #0f6b52;
+}

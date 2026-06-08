@@ -1,5 +1,7 @@
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 
 await mkdir("dist/console-ui", { recursive: true });
+await rm("dist/console-ui/vendor", { recursive: true, force: true });
 await cp("src/console-ui/index.html", "dist/console-ui/index.html");
 await cp("src/console-ui/styles.css", "dist/console-ui/styles.css");
+await cp("src/console-ui/vendor", "dist/console-ui/vendor", { recursive: true });
