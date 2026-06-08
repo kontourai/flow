@@ -1,5 +1,7 @@
 .theme-survey {
+  --k-bg: #06080b;
   --k-brand: #5ce0c6;
+  --k-text-faint: #6f8095;
 }
 
 .theme-console {
