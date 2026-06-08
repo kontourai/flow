@@ -5,7 +5,7 @@ Flow is the product context for process transparency and gate enforcement. This 
 ## Language
 
 **Flow**:
-A process transparency and gate enforcement product for work that must follow an inspectable path. Flow shows which steps ran, which gates passed or blocked, what evidence supported transitions, and what should happen next.
+A process transparency and gate enforcement product for work that must follow an inspectable path. Flow shows which steps ran, which gates passed or blocked, what evidence supported transitions, and what should happen next. Flow is a foundational primitive other Kontour products build on.
 _Avoid_: Agent orchestrator, task board, repo standards engine, generic workflow app
 
 **Process Transparency**:
