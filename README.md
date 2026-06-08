@@ -411,6 +411,8 @@ When `route_back_policy.max_attempts` is exceeded, `on_exceeded` decides the out
 
 Flow Run state and reports expose route-back details for continuation and analysis: selected route, final route target, route reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, classifier, diagnostics, analytics loop key, and recovery step. The CLI records these metadata fields through `flow attach-evidence`, but Flow core remains neutral: Builder Kit or Flow Agents policy can choose reason ids and mappings, while Flow itself only applies the authored Flow Definition, `route_reason`, and persisted transition history.
 
+For an adversarial-review pattern, see the reference definition in `examples/adversarial-pass-flow.json` and the boundary notes in [docs/adversarial-pass.md](docs/adversarial-pass.md). The example models `produce -> adversarial-review -> resolve`, routes adversarial defect reasons back to the documented steps, and treats external Survey escalation records as per-round evidence while Flow owns only orchestration, route-back policy, and transition accounting.
+
 ## Definition Validation
 
 Validate arbitrary Flow Definition JSON before starting a run:

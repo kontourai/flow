@@ -1,0 +1,66 @@
+{
+  "id": "adversarial-pass-flow",
+  "version": "1",
+  "steps": [
+    { "id": "produce", "next": "adversarial-review" },
+    { "id": "adversarial-review", "next": "resolve" },
+    { "id": "resolve", "next": null }
+  ],
+  "gates": {
+    "adversarial-review-gate": {
+      "step": "adversarial-review",
+      "expects": [
+        {
+          "id": "producer-output-claim",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "The producer output under adversarial review is available as trusted evidence.",
+          "claim": {
+            "type": "adversarial.producer-output",
+            "subject": "adversarial-pass.produce",
+            "accepted_statuses": ["trusted"]
+          }
+        },
+        {
+          "id": "adversarial-review-claim",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "The adversarial review result is recorded as trusted per-round evidence.",
+          "claim": {
+            "type": "adversarial.review",
+            "subject": "adversarial-pass.review",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ],
+      "on_route_back": {
+        "conclusion_defect": "produce",
+        "framing_defect": "produce",
+        "completeness_defect": "produce",
+        "citation_defect": "resolve",
+        "missing_evidence": "adversarial-review",
+        "default": "resolve"
+      },
+      "route_back_policy": {
+        "max_attempts": 2,
+        "on_exceeded": "block"
+      }
+    },
+    "resolve-gate": {
+      "step": "resolve",
+      "expects": [
+        {
+          "id": "resolution-claim",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "The resolved output addresses the adversarial review findings.",
+          "claim": {
+            "type": "adversarial.resolution",
+            "subject": "adversarial-pass.resolve",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ]
+    }
+  }
+}

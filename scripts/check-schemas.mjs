@@ -720,6 +720,29 @@ test("example definition matches the v0.1 runtime shape", async () => {
   assert.doesNotThrow(() => validateDefinition(definition));
 });
 
+test("adversarial-pass reference definition validates and documents route targets", async () => {
+  const definition = await json("examples/adversarial-pass-flow.json");
+  assert.equal(definition.id, "adversarial-pass-flow");
+  assert.deepEqual(definition.steps.map((step) => step.id), ["produce", "adversarial-review", "resolve"]);
+
+  const gate = definition.gates["adversarial-review-gate"];
+  assert.equal(gate.step, "adversarial-review");
+  assert.ok(gate.expects.every((expectation) => expectation.kind === "surface.claim"));
+  assert.deepEqual(gate.on_route_back, {
+    conclusion_defect: "produce",
+    framing_defect: "produce",
+    completeness_defect: "produce",
+    citation_defect: "resolve",
+    missing_evidence: "adversarial-review",
+    default: "resolve"
+  });
+  assert.deepEqual(gate.route_back_policy, {
+    max_attempts: 2,
+    on_exceeded: "block"
+  });
+  assert.doesNotThrow(() => validateDefinition(definition));
+});
+
 test("legacy definitions without route-back fields remain valid", () => {
   const legacyDefinition = {
     id: "legacy-flow",
@@ -1292,6 +1315,242 @@ test("failed evidence routes standard route reasons to mapped steps", () => {
     assert.equal(outcome.route_back_to, targetStep);
     assert.equal(outcome.attempt, 1);
   }
+});
+
+test("adversarial-pass defect reasons route to documented targets and enforce per-case budget", async () => {
+  const definition = await json("examples/adversarial-pass-flow.json");
+  const gateId = "adversarial-review-gate";
+  const cases = [
+    ["conclusion_defect", "produce"],
+    ["framing_defect", "produce"],
+    ["completeness_defect", "produce"],
+    ["citation_defect", "resolve"]
+  ];
+
+  for (const [routeReason, targetStep] of cases) {
+    const state = initialState(definition, `adversarial-${routeReason}`);
+    state.current_step = "adversarial-review";
+    const manifest = routeBackManifest([
+      {
+        id: `ev.${routeReason}`,
+        gate_id: gateId,
+        kind: "surface.claim",
+        requested_kind: "surface.claim",
+        status: "failed",
+        route_reason: routeReason,
+        attached_at: "2026-06-08T00:00:00.000Z"
+      }
+    ]);
+    const outcome = evaluateGate(definition, state, manifest, gateId);
+    assert.equal(outcome.status, "route-back", routeReason);
+    assert.equal(outcome.route_reason, routeReason);
+    assert.equal(outcome.route_back_to, targetStep);
+    assert.equal(outcome.selected_route, targetStep);
+    assert.equal(outcome.attempt, 1);
+
+    const validation = validateRunTransition({
+      definition,
+      current_state: state,
+      proposed_transition: {
+        type: "route_back",
+        from_step: "adversarial-review",
+        to_step: targetStep,
+        status: "route-back",
+        gate_id: gateId,
+        route_reason: routeReason,
+        evidence_refs: [`ev.${routeReason}`]
+      },
+      manifest
+    });
+    assert.equal(validation.valid, true, routeReason);
+    assert.equal(validation.transition.to_step, targetStep);
+    assert.equal(validation.transition.attempt, 1);
+    assert.equal(validation.transition.max_attempts, 2);
+  }
+
+  const exceededState = initialState(definition, "adversarial-budget-exceeded");
+  exceededState.current_step = "adversarial-review";
+  exceededState.transitions = [
+    { type: "route_back", gate_id: gateId, route_reason: "conclusion_defect", from_step: "adversarial-review", to_step: "produce", status: "blocked", reason: "conclusion_defect", at: "2026-06-08T00:00:00.000Z" },
+    { type: "route_back", gate_id: gateId, route_reason: "conclusion_defect", from_step: "adversarial-review", to_step: "produce", status: "blocked", reason: "conclusion_defect", at: "2026-06-08T00:01:00.000Z" },
+    { type: "route_back", gate_id: gateId, route_reason: "framing_defect", from_step: "adversarial-review", to_step: "produce", status: "blocked", reason: "framing_defect", at: "2026-06-08T00:02:00.000Z" }
+  ];
+  const exceededManifest = routeBackManifest([
+    {
+      id: "ev.conclusion-budget",
+      gate_id: gateId,
+      kind: "surface.claim",
+      requested_kind: "surface.claim",
+      status: "failed",
+      route_reason: "conclusion_defect",
+      attached_at: "2026-06-08T00:03:00.000Z"
+    }
+  ]);
+  const exceededOutcome = evaluateGate(definition, exceededState, exceededManifest, gateId);
+  assert.equal(exceededOutcome.status, "block");
+  assert.equal(exceededOutcome.route_back_to, "produce");
+  assert.equal(exceededOutcome.selected_route, "produce");
+  assert.equal(exceededOutcome.route_reason, "conclusion_defect");
+  assert.equal(exceededOutcome.attempt, 3);
+  assert.equal(exceededOutcome.max_attempts, 2);
+  assert.equal(exceededOutcome.limit_exceeded, true);
+
+  const exceededValidation = validateRunTransition({
+    definition,
+    current_state: exceededState,
+    proposed_transition: {
+      type: "route_back",
+      from_step: "adversarial-review",
+      to_step: "produce",
+      status: "route-back",
+      gate_id: gateId,
+      route_reason: "conclusion_defect",
+      evidence_refs: ["ev.conclusion-budget"]
+    },
+    manifest: exceededManifest
+  });
+  assert.equal(exceededValidation.valid, false);
+  assert.equal(exceededValidation.status, "blocked");
+  assert.equal(exceededValidation.transition.attempt, 3);
+  assert.equal(exceededValidation.transition.max_attempts, 2);
+  assert.equal(exceededValidation.transition.limit_exceeded, true);
+});
+
+test("adversarial-pass reference routes missing required evidence to adversarial review", async () => {
+  const definition = await json("examples/adversarial-pass-flow.json");
+  const gateId = "adversarial-review-gate";
+  const state = initialState(definition, "adversarial-missing-evidence");
+  state.current_step = "adversarial-review";
+  const manifest = routeBackManifest([]);
+
+  const outcome = evaluateGate(definition, state, manifest, gateId);
+  assert.equal(outcome.status, "route-back");
+  assert.equal(outcome.route_reason, "missing_evidence");
+  assert.equal(outcome.reason, "missing_evidence");
+  assert.equal(outcome.route_back_to, "adversarial-review");
+  assert.equal(outcome.selected_route, "adversarial-review");
+  assert.deepEqual(outcome.expectation_ids, ["producer-output-claim", "adversarial-review-claim"]);
+
+  const validation = validateRunTransition({
+    definition,
+    current_state: state,
+    proposed_transition: {
+      type: "route_back",
+      from_step: "adversarial-review",
+      to_step: "adversarial-review",
+      status: "route-back",
+      gate_id: gateId,
+      route_reason: "missing_evidence",
+      expectation_ids: ["producer-output-claim", "adversarial-review-claim"]
+    },
+    manifest
+  });
+  assert.equal(validation.valid, true);
+  assert.equal(validation.transition.route_reason, "missing_evidence");
+  assert.equal(validation.transition.to_step, "adversarial-review");
+});
+
+test("adversarial-pass reference uses default route for omitted and unmapped failed-evidence reasons", async () => {
+  const definition = await json("examples/adversarial-pass-flow.json");
+  const gateId = "adversarial-review-gate";
+  const cases = [
+    ["omitted", {}, undefined, "default"],
+    ["unmapped", { route_reason: "vendor_unknown" }, "vendor_unknown", "vendor_unknown"]
+  ];
+
+  for (const [name, routeFields, expectedRouteReason, expectedReason] of cases) {
+    const state = initialState(definition, `adversarial-default-${name}`);
+    state.current_step = "adversarial-review";
+    const manifest = routeBackManifest([
+      {
+        id: `ev.default-${name}`,
+        gate_id: gateId,
+        kind: "surface.claim",
+        requested_kind: "surface.claim",
+        status: "failed",
+        attached_at: "2026-06-08T00:00:00.000Z",
+        ...routeFields
+      }
+    ]);
+
+    const outcome = evaluateGate(definition, state, manifest, gateId);
+    assert.equal(outcome.status, "route-back", name);
+    assert.equal(outcome.route_reason, expectedRouteReason, name);
+    assert.equal(outcome.reason, expectedReason, name);
+    assert.equal(outcome.route_back_to, "resolve", name);
+    assert.equal(outcome.selected_route, "resolve", name);
+
+    const validation = validateRunTransition({
+      definition,
+      current_state: state,
+      proposed_transition: {
+        type: "route_back",
+        from_step: "adversarial-review",
+        to_step: "resolve",
+        status: "route-back",
+        gate_id: gateId,
+        ...(expectedRouteReason ? { route_reason: expectedRouteReason } : {}),
+        evidence_refs: [`ev.default-${name}`]
+      },
+      manifest
+    });
+    assert.equal(validation.valid, true, name);
+    assert.equal(validation.transition.to_step, "resolve", name);
+    assert.equal(validation.transition.selected_route, "resolve", name);
+  }
+});
+
+test("adversarial-pass reference counts persisted default route-backs against the budget", async () => {
+  const definition = await json("examples/adversarial-pass-flow.json");
+  const gateId = "adversarial-review-gate";
+  const state = initialState(definition, "adversarial-default-budget-exceeded");
+  state.current_step = "adversarial-review";
+  state.transitions = [
+    { type: "route_back", gate_id: gateId, reason: "default", from_step: "adversarial-review", to_step: "resolve", status: "blocked", at: "2026-06-08T00:00:00.000Z" },
+    { type: "route_back", gate_id: gateId, reason: "default", from_step: "adversarial-review", to_step: "resolve", status: "blocked", at: "2026-06-08T00:01:00.000Z" },
+    { type: "route_back", gate_id: gateId, route_reason: "citation_defect", reason: "citation_defect", from_step: "adversarial-review", to_step: "resolve", status: "blocked", at: "2026-06-08T00:02:00.000Z" }
+  ];
+  const manifest = routeBackManifest([
+    {
+      id: "ev.default-budget",
+      gate_id: gateId,
+      kind: "surface.claim",
+      requested_kind: "surface.claim",
+      status: "failed",
+      attached_at: "2026-06-08T00:03:00.000Z"
+    }
+  ]);
+
+  const outcome = evaluateGate(definition, state, manifest, gateId);
+  assert.equal(outcome.status, "block");
+  assert.equal(outcome.reason, "default");
+  assert.equal(outcome.route_reason, undefined);
+  assert.equal(outcome.route_back_to, "resolve");
+  assert.equal(outcome.selected_route, "resolve");
+  assert.equal(outcome.attempt, 3);
+  assert.equal(outcome.max_attempts, 2);
+  assert.equal(outcome.limit_exceeded, true);
+
+  const validation = validateRunTransition({
+    definition,
+    current_state: state,
+    proposed_transition: {
+      type: "route_back",
+      from_step: "adversarial-review",
+      to_step: "resolve",
+      status: "route-back",
+      gate_id: gateId,
+      reason: "default",
+      evidence_refs: ["ev.default-budget"]
+    },
+    manifest
+  });
+  assert.equal(validation.valid, false);
+  assert.equal(validation.status, "blocked");
+  assert.equal(validation.transition.reason, "default");
+  assert.equal(validation.transition.attempt, 3);
+  assert.equal(validation.transition.max_attempts, 2);
+  assert.equal(validation.transition.limit_exceeded, true);
 });
 
 test("missing required evidence may infer missing_evidence only when Flow detects the missing expectation", () => {
