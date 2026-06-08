@@ -24,8 +24,8 @@ jobs:
       - name: Check out Console Kit
         uses: actions/checkout@v4
         with:
-          repository: kontourai/console-ui
-          path: console-ui
+          repository: kontourai/console-kit
+          path: console-kit
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
