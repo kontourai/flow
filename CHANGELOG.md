@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.11
+
+- Splits the oversized Node schema/runtime suite into focused domain files
+  under `tests/node/` for package runtime, CLI, config merge, definitions,
+  transitions, release checks, Surface claim handling, route-back behavior, and
+  reports.
+- Adds shared test-only helpers under `tests/node/helpers/` so fixture loading,
+  CLI setup, config fixtures, route-back fixtures, and schema assertions have a
+  clear home.
+- Keeps `check:schemas` on the full Node contract lane so the split preserves
+  the previous runtime/schema coverage.
+
 ## 0.1.10
 
 - Defines the public npm package API boundary as `@kontourai/flow`,
