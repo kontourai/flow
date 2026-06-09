@@ -29,9 +29,11 @@ These hooks are contributor tooling. They are not Flow Definition semantics, not
 
 ## Source Layout
 
-Flow core runtime sources live in `src/*.ts`. `npm run typecheck` validates those sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
+Flow core runtime sources live under domain folders in `src/`: contracts, runtime storage, shared helpers, config, definitions, gates, transitions, reports, release checks, console implementation, and console UI. The root `src/index.ts`, `src/cli.ts`, `src/console-projection.ts`, `src/console-server.ts`, and `src/flow-files.ts` files are compatibility entrypoints for generated package paths.
 
-The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and scenarios remain JSON/data assets rather than TypeScript modules.
+`npm run typecheck` validates runtime sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, package subpath exports, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
+
+Node test suites live under `tests/node/`, and browser tests live under `tests/browser/`. The remaining JavaScript/MJS files in `scripts/` are operational repository tools, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and scenarios remain JSON/data assets rather than TypeScript modules.
 
 For placement rules and generated artifact policy, see [repo-structure.md](repo-structure.md).
 

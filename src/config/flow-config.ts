@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { flowConfigPath, readJson, writeJson } from "./flow-files.js";
-import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
-import type { ConfigMergeReport, FlowConfig, MutableRecord } from "./flow-types.js";
-import { cloneJson, isNonEmptyString, isObject, valueEquals } from "./flow-utils.js";
+import { flowConfigPath, readJson, writeJson } from "../runtime/flow-files.js";
+import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
+import type { ConfigMergeReport, FlowConfig, MutableRecord } from "../contracts/flow-types.js";
+import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
 
 const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";

@@ -1,7 +1,7 @@
 export {
   BUILTIN_EVIDENCE_KINDS,
   FLOW_SCHEMA_VERSION
-} from "./flow-types.js";
+} from "./contracts/flow-types.js";
 export type {
   ConfigMergeReport,
   FlowConfig,
@@ -31,7 +31,7 @@ export type {
   VersionReleaseReportGap,
   VersionReleaseReportGapKind,
   VersionReleaseReportInput
-} from "./flow-types.js";
+} from "./contracts/flow-types.js";
 export {
   assertSafeRunId,
   examplePath,
@@ -41,7 +41,7 @@ export {
   readJson,
   runDir,
   writeJson
-} from "./flow-files.js";
+} from "./runtime/flow-files.js";
 export {
   evidenceLabel,
   evidenceMatchesRequirement,
@@ -51,7 +51,7 @@ export {
   normalizeEvidenceKind,
   passSummary,
   slugLabel
-} from "./flow-utils.js";
+} from "./shared/flow-utils.js";
 export {
   FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION,
   applyFlowConfigMerge,
@@ -61,7 +61,7 @@ export {
   previewFlowConfigMergeFile,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary
-} from "./flow-config.js";
+} from "./config/flow-config.js";
 export {
   acceptedExceptionFor,
   attachedEvidenceFor,
@@ -80,11 +80,11 @@ export {
   routeTargetForReason,
   validateDefinition,
   validateDefinitionWithDiagnostics
-} from "./flow-definition.js";
+} from "./definition/flow-definition.js";
 export {
   validateRunTransition,
   validateTransitionRequest
-} from "./flow-transition.js";
+} from "./transition/flow-transition.js";
 export {
   applyEvaluation,
   evaluateGate,
@@ -93,10 +93,10 @@ export {
   expectationsForGate,
   legacyEvaluateGate,
   mergeGateOutcome
-} from "./flow-gates.js";
+} from "./gates/flow-gates.js";
 export {
   validateEvaluationTransition
-} from "./flow-evaluation-transition.js";
+} from "./transition/flow-evaluation-transition.js";
 export {
   changeManagementFixtureAdapter,
   deploymentWindowFixtureAdapter,
@@ -105,7 +105,7 @@ export {
   loadReleaseReadinessInputs,
   projectVersionReleaseReport,
   renderVersionReleaseReportMarkdown
-} from "./flow-release.js";
+} from "./release/flow-release.js";
 export {
   acceptException,
   attachEvidence,
@@ -118,7 +118,7 @@ export {
   saveRun,
   sha256File,
   startRun
-} from "./flow-run-store.js";
+} from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,
   renderMarkdownReport,
@@ -126,5 +126,5 @@ export {
   renderSummary,
   reportJson,
   sortStatus
-} from "./flow-reports.js";
+} from "./reports/flow-reports.js";
 export * from "./console-projection.js";

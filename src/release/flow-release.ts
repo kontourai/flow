@@ -1,5 +1,5 @@
-import { readJson } from "./flow-files.js";
-import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
+import { readJson } from "../runtime/flow-files.js";
+import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type {
   FlowEvidenceEntry,
   MutableRecord,
@@ -16,10 +16,10 @@ import type {
   VersionReleaseReportDecision,
   VersionReleaseReportGap,
   VersionReleaseReportInput
-} from "./flow-types.js";
-import { defaultFlowConfig } from "./flow-config.js";
-import { evidenceMatchesExpectation } from "./flow-gates.js";
-import { cloneJson, isObject, markdownText } from "./flow-utils.js";
+} from "../contracts/flow-types.js";
+import { defaultFlowConfig } from "../config/flow-config.js";
+import { evidenceMatchesExpectation } from "../gates/flow-gates.js";
+import { cloneJson, isObject, markdownText } from "../shared/flow-utils.js";
 
 function releaseStringArray(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
-const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 async function packFiles() {
   const { stdout } = await execFileAsync("npm", [
@@ -17,7 +17,7 @@ async function packFiles() {
     "--cache",
     `${tmpdir()}/flow-npm-cache`
   ], {
-    cwd: new URL("..", import.meta.url)
+    cwd: new URL("../..", import.meta.url)
   });
   const [pack] = JSON.parse(stdout);
   assert.ok(pack, "npm pack must return package metadata");

@@ -1,17 +1,17 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { writeJson } from "./flow-files.js";
-import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
-import type { MutableRecord } from "./flow-types.js";
+import { writeJson } from "../runtime/flow-files.js";
+import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
+import type { MutableRecord } from "../contracts/flow-types.js";
 import {
   attachedEvidenceFor,
   continuationLine,
   findGate,
   openGates
-} from "./flow-definition.js";
-import { expectationsForGate } from "./flow-gates.js";
-import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "./flow-utils.js";
+} from "../definition/flow-definition.js";
+import { expectationsForGate } from "../gates/flow-gates.js";
+import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "../shared/flow-utils.js";
 
 export function reportJson(definition: any, state: any, manifest: any) {
   return {
@@ -178,4 +178,4 @@ export function sortStatus(a, b) {
   return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
 }
 
-export * from "./console-projection.js";
+export * from "../console/console-projection.js";

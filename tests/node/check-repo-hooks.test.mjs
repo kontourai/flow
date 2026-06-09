@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { access, constants, readFile, stat } from "node:fs/promises";
 import { test } from "node:test";
 
-const hookPath = new URL("../.githooks/pre-push", import.meta.url);
-const contributingPath = new URL("../docs/contributing.md", import.meta.url);
-const packagePath = new URL("../package.json", import.meta.url);
-const readmePath = new URL("../README.md", import.meta.url);
-const setupPath = new URL("./setup-repo-hooks.mjs", import.meta.url);
-const validatePath = new URL("./validate-repo-hooks.mjs", import.meta.url);
+const hookPath = new URL("../../.githooks/pre-push", import.meta.url);
+const contributingPath = new URL("../../docs/contributing.md", import.meta.url);
+const packagePath = new URL("../../package.json", import.meta.url);
+const readmePath = new URL("../../README.md", import.meta.url);
+const setupPath = new URL("../../scripts/setup-repo-hooks.mjs", import.meta.url);
+const validatePath = new URL("../../scripts/validate-repo-hooks.mjs", import.meta.url);
 
 const downstreamNamePatterns = [
   ["Camp", "fit"],
@@ -37,9 +37,10 @@ test("repo hook package scripts stay wired", async () => {
 
   assert.equal(packageJson.scripts["setup:repo-hooks"], "node scripts/setup-repo-hooks.mjs");
   assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
-  assert.equal(packageJson.scripts["check:repo-hooks"], "node --test scripts/check-repo-hooks.mjs");
-  assert.match(packageJson.scripts.test, /scripts\/check-schemas\.mjs/);
-  assert.match(packageJson.scripts.test, /scripts\/check-repo-hooks\.mjs/);
+  assert.equal(packageJson.scripts["check:repo-hooks"], "node --test tests/node/check-repo-hooks.test.mjs");
+  assert.equal(packageJson.scripts["test:node"], "node --test tests/node/*.test.mjs");
+  assert.match(packageJson.scripts.test, /tests\/node\/\*\.test\.mjs/);
+  assert.doesNotMatch(packageJson.scripts.test, /scripts\/check-(schemas|repo-hooks|console-projection|package-contents)\.mjs/);
 });
 
 test("pre-push hook is executable and runs the bounded local lane", async () => {
@@ -67,6 +68,8 @@ test("setup and validation scripts use repo-local hooks path", async () => {
 
   assert.match(setup, /"config", "--local", "core\.hooksPath", "\.githooks"/);
   assert.doesNotMatch(setup, /--global|--system/);
+  assert.match(validate, /\.\.\/tests\/node\/check-repo-hooks\.test\.mjs/);
+  assert.doesNotMatch(validate, /scripts\/check-repo-hooks\.mjs|\.\/check-repo-hooks\.mjs/);
   assert.match(validate, /"config", "--local", "--get", "core\.hooksPath"/);
   assert.match(validate, /\.githooks/);
   assert.match(validate, /pre-push/);

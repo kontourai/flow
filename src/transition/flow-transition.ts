@@ -1,6 +1,6 @@
-import type { FlowDiagnostic, MutableRecord, TransitionValidationResult } from "./flow-types.js";
-import { cloneJson, isNonEmptyString, isObject } from "./flow-utils.js";
-import { defaultFlowConfig } from "./flow-config.js";
+import type { FlowDiagnostic, MutableRecord, TransitionValidationResult } from "../contracts/flow-types.js";
+import { cloneJson, isNonEmptyString, isObject } from "../shared/flow-utils.js";
+import { defaultFlowConfig } from "../config/flow-config.js";
 import {
   createDiagnostic,
   findGate,
@@ -9,8 +9,8 @@ import {
   routeBackDecision,
   validateDefinition,
   validateDefinitionWithDiagnostics
-} from "./flow-definition.js";
-import { evaluateGate } from "./flow-gates.js";
+} from "../definition/flow-definition.js";
+import { evaluateGate } from "../gates/flow-gates.js";
 
 function transitionDiagnostic(code: string, path: string, message: string, related: MutableRecord = {}, severity = "error") {
   return {

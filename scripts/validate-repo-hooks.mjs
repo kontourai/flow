@@ -17,7 +17,7 @@ try {
   const repoRoot = git(["rev-parse", "--show-toplevel"]);
   process.chdir(repoRoot);
 
-  execFileSync(process.execPath, ["--test", fileURLToPath(new URL("./check-repo-hooks.mjs", import.meta.url))], {
+  execFileSync(process.execPath, ["--test", fileURLToPath(new URL("../tests/node/check-repo-hooks.test.mjs", import.meta.url))], {
     stdio: "inherit"
   });
 
