@@ -69,6 +69,9 @@ export interface FlowEvidenceEntry extends MutableRecord {
 
 export interface FlowEvidenceManifest extends MutableRecord {
   schema_version?: string;
+  run_id?: string;
+  definition_id?: string;
+  definition_version?: string;
   evidence: FlowEvidenceEntry[];
 }
 

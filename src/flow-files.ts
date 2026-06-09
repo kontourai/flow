@@ -2,6 +2,23 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+export const FLOW_RUN_DEFINITION_FILE = "definition.json";
+export const FLOW_RUN_STATE_FILE = "state.json";
+export const FLOW_RUN_REPORT_JSON_FILE = "report.json";
+export const FLOW_RUN_REPORT_MARKDOWN_FILE = "report.md";
+export const FLOW_RUN_EVIDENCE_DIR = "evidence";
+export const FLOW_RUN_EVIDENCE_MANIFEST_FILE = "manifest.json";
+export const FLOW_RUN_EVIDENCE_MANIFEST_PATH = `${FLOW_RUN_EVIDENCE_DIR}/${FLOW_RUN_EVIDENCE_MANIFEST_FILE}`;
+
+export const FLOW_RUN_LAYOUT = Object.freeze({
+  definition: FLOW_RUN_DEFINITION_FILE,
+  state: FLOW_RUN_STATE_FILE,
+  evidenceDirectory: FLOW_RUN_EVIDENCE_DIR,
+  evidenceManifest: FLOW_RUN_EVIDENCE_MANIFEST_PATH,
+  reportJson: FLOW_RUN_REPORT_JSON_FILE,
+  reportMarkdown: FLOW_RUN_REPORT_MARKDOWN_FILE
+});
+
 export function flowRoot(cwd = process.cwd()) {
   return path.join(cwd, ".flow");
 }

@@ -9,6 +9,14 @@ import {
   projectFlowRunFromFiles
 } from "../dist/index.js";
 import * as packageProjection from "../dist/console-projection.js";
+import {
+  FLOW_RUN_DEFINITION_FILE,
+  FLOW_RUN_EVIDENCE_MANIFEST_PATH,
+  FLOW_RUN_LAYOUT,
+  FLOW_RUN_REPORT_JSON_FILE,
+  FLOW_RUN_REPORT_MARKDOWN_FILE,
+  FLOW_RUN_STATE_FILE
+} from "../dist/flow-files.js";
 
 const fixtureCwd = fileURLToPath(new URL("../examples/scenarios/console-projection", import.meta.url));
 const fixtureRunId = "console-projection-fixture";
@@ -30,10 +38,29 @@ function byId(values, id) {
 
 test("AC1 fixture Flow Run state follows the checked run schema contract", async () => {
   const state = await readFixtureJson("state.json");
+  const manifest = await readFixtureJson(FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const runSchema = await readRepoJson("schemas/flow-run.schema.json");
   const allowedStatuses = new Set(runSchema.$defs.transition.properties.status.enum);
   const allowedGateOutcomeStatuses = new Set(runSchema.$defs.gate_outcome.properties.status.enum);
   const allowedExceptionKeys = new Set(Object.keys(runSchema.$defs.exception.properties));
+
+  assert.deepEqual(FLOW_RUN_LAYOUT, {
+    definition: "definition.json",
+    state: "state.json",
+    evidenceDirectory: "evidence",
+    evidenceManifest: "evidence/manifest.json",
+    reportJson: "report.json",
+    reportMarkdown: "report.md"
+  });
+  await readFixtureJson(FLOW_RUN_DEFINITION_FILE);
+  await readFixtureJson(FLOW_RUN_STATE_FILE);
+  await readFixtureJson(FLOW_RUN_EVIDENCE_MANIFEST_PATH);
+  await readFixtureJson(FLOW_RUN_REPORT_JSON_FILE);
+  await readFile(path.join(fixtureRunDir, FLOW_RUN_REPORT_MARKDOWN_FILE), "utf8");
+  assert.equal(manifest.run_id, state.run_id);
+  assert.equal(manifest.definition_id, state.definition_id);
+  assert.equal(manifest.definition_version, state.definition_version);
+  assert.ok(Array.isArray(manifest.evidence));
 
   for (const outcome of state.gate_outcomes) {
     assert.ok(allowedGateOutcomeStatuses.has(outcome.status), `${outcome.gate_id} gate outcome status must be schema-valid`);
@@ -184,6 +211,7 @@ test("AC6 projection is deterministic for repeat local-file reads and direct par
   const definition = await readFixtureJson("definition.json");
   const state = await readFixtureJson("state.json");
   const manifest = await readFixtureJson("evidence/manifest.json");
-  const fromParts = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest });
+  const report = await readFixtureJson(FLOW_RUN_REPORT_JSON_FILE);
+  const fromParts = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest, report });
   assert.deepEqual(fromParts, first);
 });

@@ -1,37 +1,71 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kontourai.io/schemas/flow-run.schema.json",
-  "title": "Flow Run",
+  "title": "Flow Run State",
+  "description": "Flat v0.1 runtime state persisted at .flow/runs/<run-id>/state.json. This file is the authoritative continuation state for a local Flow Run; reports and console projections are derived from it plus the run definition snapshot and evidence manifest. It is not a Resource Contract envelope.",
   "type": "object",
   "required": ["schema_version", "run_id", "definition_id", "status", "current_step", "gate_outcomes", "transitions", "exceptions"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "type": "string", "const": "0.1" },
-    "run_id": { "type": "string", "minLength": 1 },
-    "definition_id": { "type": "string", "minLength": 1 },
-    "definition_version": { "type": "string" },
-    "subject": { "type": "string" },
+    "schema_version": {
+      "type": "string",
+      "const": "0.1",
+      "description": "Flow schema version for this flat run-state contract."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Local run directory id from .flow/runs/<run-id>/."
+    },
+    "definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Flow Definition id captured in definition.json when the run started."
+    },
+    "definition_version": {
+      "type": "string",
+      "description": "Flow Definition version captured in definition.json when the run started."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Human or tool-facing process subject for the run."
+    },
     "status": {
       "type": "string",
+      "description": "Current lifecycle status for continuation and reporting.",
       "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
     },
-    "current_step": { "type": "string" },
+    "current_step": {
+      "type": "string",
+      "description": "Current Flow Definition step id; open gates are derived from this step."
+    },
     "params": {
       "type": "object",
+      "description": "Run parameters captured at start time.",
       "additionalProperties": { "type": "string" }
     },
-    "next_action": { "type": "string" },
-    "updated_at": { "type": "string", "format": "date-time" },
+    "next_action": {
+      "type": "string",
+      "description": "One-line continuation instruction for the next operator or agent."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last state update timestamp."
+    },
     "gate_outcomes": {
       "type": "array",
+      "description": "Persisted gate decisions that explain why the run advanced, blocked, waited, routed back, or accepted an exception.",
       "items": { "$ref": "#/$defs/gate_outcome" }
     },
     "transitions": {
       "type": "array",
+      "description": "Persisted transition history used for continuation, reporting, and route-back attempt counting.",
       "items": { "$ref": "#/$defs/transition" }
     },
     "exceptions": {
       "type": "array",
+      "description": "Accepted exceptions with explicit reason and authority.",
       "items": { "$ref": "#/$defs/exception" }
     }
   },

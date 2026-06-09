@@ -3,7 +3,19 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 
-import { examplePath, flowConfigPath, flowRoot, readJson, runDir, writeJson } from "./flow-files.js";
+import {
+  FLOW_RUN_DEFINITION_FILE,
+  FLOW_RUN_EVIDENCE_DIR,
+  FLOW_RUN_EVIDENCE_MANIFEST_PATH,
+  FLOW_RUN_LAYOUT,
+  FLOW_RUN_STATE_FILE,
+  examplePath,
+  flowConfigPath,
+  flowRoot,
+  readJson,
+  runDir,
+  writeJson
+} from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
 import type { FlowEvidenceEntry, GateOutcome, MutableRecord } from "./flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "./flow-config.js";
@@ -30,7 +42,47 @@ export async function ensureFlowLayout(cwd = process.cwd()) {
 }
 
 export function flowReadme() {
-  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- runs/<run-id>/ contains definition.json, state.json, evidence/, report.md, and report.json.\n- runs/<run-id>/evidence/manifest.json records attached evidence metadata.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
+  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains authored Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- runs/<run-id>/ is generated run state, not an authored Resource Contract.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.definition} is the Flow Definition snapshot from run start.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.state} is the authoritative mutable run state.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceManifest} records attached evidence metadata for this run.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceDirectory}/<id>.* contains copied evidence files.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.reportMarkdown} and runs/<run-id>/${FLOW_RUN_LAYOUT.reportJson} are generated reports.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
+}
+
+export function initialEvidenceManifest(definition, state) {
+  return {
+    schema_version: FLOW_SCHEMA_VERSION,
+    run_id: state.run_id,
+    definition_id: definition.id,
+    definition_version: definition.version,
+    evidence: []
+  };
+}
+
+export function validateRunStateIdentity(definition, state, runId) {
+  if (state.run_id !== runId) {
+    throw new Error(`run state run_id mismatch: expected ${runId}, got ${state.run_id}`);
+  }
+  if (state.definition_id !== definition.id) {
+    throw new Error(`run state definition_id mismatch: expected ${definition.id}, got ${state.definition_id}`);
+  }
+  if (state.definition_version !== definition.version) {
+    throw new Error(`run state definition_version mismatch: expected ${definition.version}, got ${state.definition_version}`);
+  }
+  return state;
+}
+
+export function validateEvidenceManifestIdentity(manifest, definition, state) {
+  const checks = [
+    ["run_id", state.run_id],
+    ["definition_id", definition.id],
+    ["definition_version", definition.version]
+  ];
+  for (const [field, expected] of checks) {
+    if (manifest[field] === undefined) {
+      throw new Error(`evidence manifest ${field} is required for run ${state.run_id}`);
+    }
+    if (manifest[field] !== expected) {
+      throw new Error(`evidence manifest ${field} mismatch: expected ${expected}, got ${manifest[field]}`);
+    }
+  }
+  return manifest;
 }
 
 export async function startRun(definitionPath: string, options: MutableRecord = {}) {
@@ -41,30 +93,32 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
   const dir = runDir(runId, cwd);
   if (existsSync(dir)) throw new Error(`run already exists: ${runId}`);
   const state = initialState(definition, runId, options.params ?? {});
-  await mkdir(path.join(dir, "evidence"), { recursive: true });
-  await writeJson(path.join(dir, "definition.json"), definition);
-  await writeJson(path.join(dir, "state.json"), state);
-  await writeJson(path.join(dir, "evidence", "manifest.json"), { schema_version: FLOW_SCHEMA_VERSION, evidence: [] });
-  await renderAndWriteReport(definition, state, { schema_version: FLOW_SCHEMA_VERSION, evidence: [] }, dir);
+  const manifest = initialEvidenceManifest(definition, state);
+  await mkdir(path.join(dir, FLOW_RUN_EVIDENCE_DIR), { recursive: true });
+  await writeJson(path.join(dir, FLOW_RUN_DEFINITION_FILE), definition);
+  await writeJson(path.join(dir, FLOW_RUN_STATE_FILE), state);
+  await writeJson(path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), manifest);
+  await renderAndWriteReport(definition, state, manifest, dir);
   return { runId, dir, state };
 }
 
 export async function loadRun(runId, cwd = process.cwd()) {
   const dir = runDir(runId, cwd);
-  const rawDefinition = await readJson(path.join(dir, "definition.json"));
+  const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
   const definition = validateDefinition(rawDefinition);
-  const state = await readJson(path.join(dir, "state.json"));
+  const state = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
+  validateRunStateIdentity(definition, state, runId);
   const config = await loadFlowConfig(cwd);
-  const manifestPath = path.join(dir, "evidence", "manifest.json");
+  const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
-    ? await readJson(manifestPath)
-    : { schema_version: FLOW_SCHEMA_VERSION, evidence: [] };
+    ? validateEvidenceManifestIdentity(await readJson(manifestPath), definition, state)
+    : initialEvidenceManifest(definition, state);
   return { dir, definition, state, manifest, config };
 }
 
 export async function saveRun(run) {
-  await writeJson(path.join(run.dir, "state.json"), run.state);
-  await writeJson(path.join(run.dir, "evidence", "manifest.json"), run.manifest);
+  await writeJson(path.join(run.dir, FLOW_RUN_STATE_FILE), run.state);
+  await writeJson(path.join(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), run.manifest);
   await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
 }
 
@@ -131,7 +185,7 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   const id = `ev.${Date.now()}.${run.manifest.evidence.length + 1}`;
   const ext = path.extname(source);
   const storedName = `${id}${ext}`;
-  const storedPath = path.join(run.dir, "evidence", storedName);
+  const storedPath = path.join(run.dir, FLOW_RUN_EVIDENCE_DIR, storedName);
   await copyFile(source, storedPath);
   const sourceSha256 = await sha256File(source);
   const entry: FlowEvidenceEntry = {
@@ -141,7 +195,7 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
     requested_kind: requestedKind,
     status: options.status ?? "passed",
     original_path: options.file,
-    stored_path: path.join("evidence", storedName),
+    stored_path: path.join(FLOW_RUN_EVIDENCE_DIR, storedName),
     sha256: sourceSha256,
     attached_at: new Date().toISOString()
   };

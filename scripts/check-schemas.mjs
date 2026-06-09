@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { access, constants, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, mkdtemp, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -36,6 +36,14 @@ import {
   validateRunTransition,
   startRun
 } from "../dist/index.js";
+import {
+  FLOW_RUN_DEFINITION_FILE,
+  FLOW_RUN_EVIDENCE_MANIFEST_PATH,
+  FLOW_RUN_LAYOUT,
+  FLOW_RUN_REPORT_JSON_FILE,
+  FLOW_RUN_REPORT_MARKDOWN_FILE,
+  FLOW_RUN_STATE_FILE
+} from "../dist/flow-files.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -244,9 +252,13 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     flowCwd
   ], { cwd: repoCwd });
 
+  const runPath = path.join(flowCwd, ".flow", "runs", "cwd-smoke");
   const statusPayload = JSON.parse(status.stdout);
   const reportPayload = JSON.parse(report.stdout);
-  const manifest = JSON.parse(await readFile(path.join(flowCwd, ".flow", "runs", "cwd-smoke", "evidence", "manifest.json"), "utf8"));
+  const storedDefinition = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_DEFINITION_FILE), "utf8"));
+  const storedState = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_STATE_FILE), "utf8"));
+  const manifest = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), "utf8"));
+  const storedReport = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_REPORT_JSON_FILE), "utf8"));
 
   assert.equal(statusPayload.run_id, "cwd-smoke");
   assert.equal(statusPayload.current_step, "implement");
@@ -257,7 +269,39 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
   assert.equal(manifest.evidence[0].original_path, "acceptance.txt");
   assert.equal(manifest.evidence[0].route_reason, "plan_gap");
   assert.deepEqual(manifest.evidence[0].expectation_ids, ["plan-gate"]);
-  await access(path.join(flowCwd, ".flow", "runs", "cwd-smoke", "definition.json"), constants.R_OK);
+  assert.deepEqual(FLOW_RUN_LAYOUT, {
+    definition: "definition.json",
+    state: "state.json",
+    evidenceDirectory: "evidence",
+    evidenceManifest: "evidence/manifest.json",
+    reportJson: "report.json",
+    reportMarkdown: "report.md"
+  });
+  assert.equal(storedDefinition.apiVersion, undefined);
+  assert.equal(storedDefinition.kind, undefined);
+  assert.equal(storedDefinition.id, "resource-contract-flow");
+  assert.equal(storedState.schema_version, FLOW_SCHEMA_VERSION);
+  assert.equal(storedState.run_id, "cwd-smoke");
+  assert.equal(storedState.definition_id, storedDefinition.id);
+  assert.equal(storedState.definition_version, storedDefinition.version);
+  assert.equal(storedState.status, "active");
+  assert.equal(storedState.current_step, "implement");
+  assert.equal(manifest.schema_version, FLOW_SCHEMA_VERSION);
+  assert.equal(manifest.run_id, storedState.run_id);
+  assert.equal(manifest.definition_id, storedState.definition_id);
+  assert.equal(manifest.definition_version, storedState.definition_version);
+  assert.equal(storedReport.run_id, storedState.run_id);
+  assert.equal(storedReport.definition_id, storedState.definition_id);
+  assert.equal(storedReport.definition_version, storedState.definition_version);
+  assert.equal(storedReport.status, storedState.status);
+  assert.equal(storedReport.current_step, storedState.current_step);
+  assert.equal(storedReport.next_action, storedState.next_action);
+  assert.equal(storedReport.subject, storedState.subject);
+  await access(path.join(runPath, FLOW_RUN_DEFINITION_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_STATE_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_REPORT_MARKDOWN_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_REPORT_JSON_FILE), constants.R_OK);
 
   await execFile(process.execPath, [
     cli,
@@ -494,8 +538,20 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(definitionSchema.$defs.resource_spec.properties.gates.$ref, "#/$defs/gates");
   assert.equal(definitionSchema.$defs.steps.items.$ref, "#/$defs/step");
   assert.equal(definitionSchema.$defs.gates.additionalProperties.$ref, "#/$defs/gate");
+  assert.equal(runSchema.title, "Flow Run State");
+  assert.match(runSchema.description, /state\.json/);
+  assert.match(runSchema.description, /not a Resource Contract envelope/);
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.match(runSchema.properties.run_id.description, /\.flow\/runs\/<run-id>/);
+  assert.match(runSchema.properties.current_step.description, /step id/);
+  assert.match(runSchema.properties.gate_outcomes.description, /gate decisions/);
+  assert.match(runSchema.properties.transitions.description, /route-back attempt counting/);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.match(evidenceSchema.description, /evidence\/manifest\.json/);
+  assert.match(evidenceSchema.description, /standalone scenario manifests may omit/);
+  assert.match(evidenceSchema.description, /not an authored Resource Contract/);
+  assert.equal(evidenceSchema.properties.run_id.minLength, 1);
+  assert.equal(evidenceSchema.properties.definition_id.minLength, 1);
   assert.equal(reportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.deepEqual(configSchema.oneOf, [
     { $ref: "#/$defs/flat_config" },
@@ -570,6 +626,8 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaDefFields(definitionSchema, "resource_spec", ["version", "steps", "gates"]);
   requireSchemaFields(runSchema, ["schema_version", "run_id", "definition_id", "status", "current_step", "gate_outcomes", "transitions", "exceptions"]);
   requireSchemaFields(evidenceSchema, ["schema_version", "evidence"]);
+  assert.ok(evidenceSchema.properties.run_id);
+  assert.ok(evidenceSchema.properties.definition_id);
   requireSchemaFields(reportSchema, ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
   requireSchemaDefFields(configSchema, "flat_config", ["schema_version"]);
   requireSchemaDefFields(configSchema, "resource_config", ["apiVersion", "kind", "metadata", "spec"]);
@@ -1213,9 +1271,11 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
     runId: "resource-contract-smoke",
     params: { subject: "resource-contract-smoke" }
   });
-  const storedDefinition = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "definition.json"), "utf8"));
-  const storedState = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "state.json"), "utf8"));
-  const storedReport = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "report.json"), "utf8"));
+  const runPath = path.join(cwd, ".flow", "runs", "resource-contract-smoke");
+  const storedDefinition = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_DEFINITION_FILE), "utf8"));
+  const storedState = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_STATE_FILE), "utf8"));
+  const storedManifest = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), "utf8"));
+  const storedReport = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_REPORT_JSON_FILE), "utf8"));
   const loaded = await loadRun("resource-contract-smoke", cwd);
 
   assert.equal(started.state.definition_id, "resource-contract-flow");
@@ -1223,9 +1283,88 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   assert.equal(storedDefinition.version, "1");
   assert.equal(storedDefinition.apiVersion, undefined);
   assert.equal(storedState.definition_id, "resource-contract-flow");
+  assert.equal(storedState.schema_version, FLOW_SCHEMA_VERSION);
+  assert.equal(storedState.run_id, "resource-contract-smoke");
+  assert.equal(storedState.status, "active");
+  assert.equal(storedState.current_step, "plan");
+  assert.deepEqual(storedManifest, {
+    schema_version: FLOW_SCHEMA_VERSION,
+    run_id: "resource-contract-smoke",
+    definition_id: "resource-contract-flow",
+    definition_version: "1",
+    evidence: []
+  });
+  assert.equal(storedReport.run_id, storedState.run_id);
   assert.equal(storedReport.definition_id, "resource-contract-flow");
+  assert.equal(storedReport.definition_version, storedState.definition_version);
+  assert.equal(storedReport.status, storedState.status);
+  assert.equal(storedReport.current_step, storedState.current_step);
+  assert.equal(storedReport.next_action, storedState.next_action);
+  await access(path.join(runPath, FLOW_RUN_DEFINITION_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_STATE_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_REPORT_MARKDOWN_FILE), constants.R_OK);
+  await access(path.join(runPath, FLOW_RUN_REPORT_JSON_FILE), constants.R_OK);
   assert.equal(loaded.definition.id, "resource-contract-flow");
   assert.equal(loaded.state.definition_id, "resource-contract-flow");
+  assert.deepEqual(loaded.manifest, storedManifest);
+
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify({
+    ...storedManifest,
+    run_id: "different-run"
+  }, null, 2)}\n`);
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /evidence manifest run_id mismatch: expected resource-contract-smoke, got different-run/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify({
+    schema_version: FLOW_SCHEMA_VERSION,
+    definition_id: "resource-contract-flow",
+    definition_version: "1",
+    evidence: []
+  }, null, 2)}\n`);
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /evidence manifest run_id is required for run resource-contract-smoke/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
+  await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify({
+    ...storedState,
+    run_id: "different-run"
+  }, null, 2)}\n`);
+  await unlink(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH));
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /run state run_id mismatch: expected resource-contract-smoke, got different-run/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /run state run_id mismatch: expected resource-contract-smoke, got different-run/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify({
+    ...storedState,
+    definition_id: "different-definition"
+  }, null, 2)}\n`);
+  await unlink(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH));
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /run state definition_id mismatch: expected resource-contract-flow, got different-definition/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /run state definition_id mismatch: expected resource-contract-flow, got different-definition/
+  );
+  await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify(storedState, null, 2)}\n`);
+  await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify({
+    ...storedManifest,
+    definition_id: "different-definition"
+  }, null, 2)}\n`);
+  await assert.rejects(
+    loadRun("resource-contract-smoke", cwd),
+    /evidence manifest definition_id mismatch: expected resource-contract-flow, got different-definition/
+  );
 });
 
 test("adversarial-pass reference definition validates and documents route targets", async () => {

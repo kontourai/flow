@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+import { FLOW_RUN_REPORT_JSON_FILE } from "./flow-files.js";
 import {
   attachedEvidenceFor,
   continuationLine,
@@ -568,7 +569,7 @@ function projectAllEvidence(manifest): FlowConsoleEvidenceProjection[] {
 function projectReport(dir, report): FlowConsoleReportProjection | null {
   if (!report) return null;
   return {
-    path: dir ? path.join(dir, "report.json") : null,
+    path: dir ? FLOW_RUN_REPORT_JSON_FILE : null,
     json: stableClone(report)
   };
 }
