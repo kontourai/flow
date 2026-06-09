@@ -17,7 +17,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
 | `scripts/` | Operational Node tooling for Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
-| `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. | Tracked Node test lane. Node tests belong here instead of `scripts/`. |
+| `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. Domain files keep package runtime, CLI, config, definitions, transitions, release checks, Surface claim handling, route-back behavior, and reports separate. | Tracked Node test lane. Node tests belong here instead of `scripts/`. Shared test-only helpers belong in `tests/node/helpers/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
 | `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
@@ -63,7 +63,7 @@ New docs belong in `docs/`. Use ADRs for durable decisions that change product o
 
 New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them. Any new published example or scenario must be documented and asserted by `tests/node/check-package-contents.test.mjs`.
 
-New browser tests for the local console belong in `tests/browser/`. New Node contract or package checks belong in `tests/node/`. Keep `scripts/` for operational tools that set up, build, copy, sync, or smoke-run repo behavior.
+New browser tests for the local console belong in `tests/browser/`. New Node contract or package checks belong in the closest domain file under `tests/node/`, with reusable setup in `tests/node/helpers/`. Keep `scripts/` for operational tools that set up, build, copy, sync, or smoke-run repo behavior.
 
 New workflow planning, execution, review, or handoff artifacts belong under `.flow-agents/` and remain ignored. They are evidence for work coordination, not Flow runtime contracts.
 
@@ -91,7 +91,7 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 `npm test` runs the full local lane: build, Node tests under `tests/node/`, console smoke, and Playwright browser tests.
 
-`npm run check:schemas` builds first, then runs schema and runtime contract checks in `tests/node/check-schemas.test.mjs`.
+`npm run check:schemas` builds first, then runs the split Node schema/runtime contract lane under `tests/node/`.
 
 `npm run check:console-kit-assets` verifies tracked vendored Console Kit assets match the installed package.
 

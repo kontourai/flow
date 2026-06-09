@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -46,7 +46,7 @@
     "sync:console-kit": "node scripts/sync-console-kit-assets.mjs",
     "check:console-kit-assets": "node scripts/sync-console-kit-assets.mjs --check",
     "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
-    "check:schemas": "npm run build && node --test tests/node/check-schemas.test.mjs",
+    "check:schemas": "npm run build && npm run test:node",
     "check:console-projection": "npm run build && node --test tests/node/check-console-projection.test.mjs",
     "check:package-contents": "npm run build && node --test tests/node/check-package-contents.test.mjs",
     "check:repo-hooks": "node --test tests/node/check-repo-hooks.test.mjs",
