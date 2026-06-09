@@ -165,6 +165,126 @@ test("CLI validate-definition rejects invalid Resource metadata string maps", as
   );
 });
 
+test("CLI --cwd scopes run lifecycle commands and relative file inputs", async () => {
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const repoCwd = new URL("..", import.meta.url);
+  const flowCwd = await mkdtemp(path.join(tmpdir(), "flow-cli-cwd-"));
+  const definition = await resourceDefinitionFixture();
+  await writeFile(path.join(flowCwd, "flow-definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
+  await writeFile(path.join(flowCwd, "acceptance.txt"), "acceptance criteria linked\n");
+  await writeFile(path.join(flowCwd, "route-metadata.json"), `${JSON.stringify({ route_reason: "plan_gap", expectation_ids: ["plan-gate"] }, null, 2)}\n`);
+
+  await execFile(process.execPath, [
+    cli,
+    "start",
+    "flow-definition.json",
+    "--run-id",
+    "cwd-smoke",
+    "--params",
+    "subject=cwd-smoke",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+
+  await execFile(process.execPath, [
+    cli,
+    "attach-evidence",
+    "cwd-smoke",
+    "--gate",
+    "plan-gate",
+    "--file",
+    "acceptance.txt",
+    "--kind",
+    "acceptance-criteria",
+    "--route-metadata",
+    "route-metadata.json",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+
+  await execFile(process.execPath, [
+    cli,
+    "evaluate",
+    "cwd-smoke",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+
+  const status = await execFile(process.execPath, [
+    cli,
+    "status",
+    "cwd-smoke",
+    "--format",
+    "json",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+  const report = await execFile(process.execPath, [
+    cli,
+    "report",
+    "cwd-smoke",
+    "--format",
+    "json",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+  const resume = await execFile(process.execPath, [
+    cli,
+    "resume",
+    "cwd-smoke",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+  const list = await execFile(process.execPath, [
+    cli,
+    "list",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+
+  const statusPayload = JSON.parse(status.stdout);
+  const reportPayload = JSON.parse(report.stdout);
+  const manifest = JSON.parse(await readFile(path.join(flowCwd, ".flow", "runs", "cwd-smoke", "evidence", "manifest.json"), "utf8"));
+
+  assert.equal(statusPayload.run_id, "cwd-smoke");
+  assert.equal(statusPayload.current_step, "implement");
+  assert.equal(reportPayload.run_id, "cwd-smoke");
+  assert.equal(reportPayload.current_step, "implement");
+  assert.match(resume.stdout, /current step: implement/);
+  assert.match(list.stdout, /cwd-smoke\tactive\timplement\tresource-contract-flow \/ cwd-smoke/);
+  assert.equal(manifest.evidence[0].original_path, "acceptance.txt");
+  assert.equal(manifest.evidence[0].route_reason, "plan_gap");
+  assert.deepEqual(manifest.evidence[0].expectation_ids, ["plan-gate"]);
+  await access(path.join(flowCwd, ".flow", "runs", "cwd-smoke", "definition.json"), constants.R_OK);
+
+  await execFile(process.execPath, [
+    cli,
+    "start",
+    "flow-definition.json",
+    "--run-id",
+    "cwd-exception",
+    "--params",
+    "subject=cwd-exception",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+  await execFile(process.execPath, [
+    cli,
+    "accept-exception",
+    "cwd-exception",
+    "--gate",
+    "plan-gate",
+    "--reason",
+    "cwd smoke",
+    "--authority",
+    "cli-test",
+    "--cwd",
+    flowCwd
+  ], { cwd: repoCwd });
+  const exceptionState = JSON.parse(await readFile(path.join(flowCwd, ".flow", "runs", "cwd-exception", "state.json"), "utf8"));
+  assert.equal(exceptionState.exceptions[0].authority, "cli-test");
+});
+
 test("package root exports stay stable across source-domain splits", () => {
   const expectedRuntimeExports = [
     "BUILTIN_EVIDENCE_KINDS",
@@ -836,19 +956,20 @@ test("config merge apply writes only accepted changes unless conflicts are expli
 
 test("CLI config preview and apply support JSON and Markdown reports", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-config-merge-"));
+  const repoCwd = new URL("..", import.meta.url);
   const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
   await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
   await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`);
 
-  const preview = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "json"], { cwd });
+  const preview = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "json", "--cwd", cwd], { cwd: repoCwd });
   const previewReport = JSON.parse(preview.stdout);
   assert.equal(previewReport.mode, "preview");
   assert.equal(previewReport.status, "conflicts");
   const afterPreview = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
   assert.deepEqual(afterPreview.trusted_producers["quality.tests"].producers, ["ci/main"]);
 
-  const markdown = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "markdown"], { cwd });
+  const markdown = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "markdown", "--cwd", cwd], { cwd: repoCwd });
   assert.match(markdown.stdout, /## Conflicts/);
 
   const applied = await execFile(process.execPath, [
@@ -865,8 +986,10 @@ test("CLI config preview and apply support JSON and Markdown reports", async () 
     "--exception-reason",
     "CLI smoke accepted kit update",
     "--authority",
-    "cli-smoke"
-  ], { cwd });
+    "cli-smoke",
+    "--cwd",
+    cwd
+  ], { cwd: repoCwd });
   const applyReport = JSON.parse(applied.stdout);
   assert.equal(applyReport.status, "applied");
   assert.ok(applyReport.exceptions.some((entry) => entry.authority === "cli-smoke"));
@@ -2201,17 +2324,24 @@ test("CLI attaches Surface trust artifact evidence and reports claim diagnostics
 
 test("CLI validates arbitrary Flow Definition files with JSON diagnostics", async () => {
   const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const repoCwd = new URL("..", import.meta.url).pathname;
+  const callerCwd = await mkdtemp(path.join(tmpdir(), "flow-cli-validate-definition-"));
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/builder-kit-flow.json", "--json"], {
-    cwd: new URL("..", import.meta.url).pathname
+    cwd: repoCwd
   });
   const validPayload = JSON.parse(valid.stdout);
   assert.equal(validPayload.valid, true);
   assert.equal(validPayload.error_count, 0);
   assert.deepEqual(validPayload.diagnostics, []);
 
+  const cwdValid = await execFile(process.execPath, [cli, "validate-definition", "examples/builder-kit-flow.json", "--json", "--cwd", repoCwd], {
+    cwd: callerCwd
+  });
+  assert.equal(JSON.parse(cwdValid.stdout).valid, true);
+
   await assert.rejects(
-    async () => execFile(process.execPath, [cli, "validate-definition", "examples/invalid-claim-expectation-flow.json", "--json"], {
-      cwd: new URL("..", import.meta.url).pathname
+    async () => execFile(process.execPath, [cli, "validate-definition", "examples/invalid-claim-expectation-flow.json", "--json", "--cwd", repoCwd], {
+      cwd: callerCwd
     }),
     (error) => {
       const payload = JSON.parse(error.stdout);
@@ -2227,6 +2357,7 @@ test("CLI validates arbitrary Flow Definition files with JSON diagnostics", asyn
 
 test("CLI validates provider-neutral transition request files", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-transition-"));
+  const repoCwd = new URL("..", import.meta.url);
   const cli = new URL("../dist/cli.js", import.meta.url).pathname;
   const requestPath = path.join(cwd, "transition-request.json");
   const definition = routeBackDefinition();
@@ -2244,7 +2375,7 @@ test("CLI validates provider-neutral transition request files", async () => {
     manifest: routeBackManifest([])
   }, null, 2)}\n`);
 
-  const output = await execFile(process.execPath, [cli, "validate-transition", "transition-request.json"], { cwd });
+  const output = await execFile(process.execPath, [cli, "validate-transition", "transition-request.json", "--cwd", cwd], { cwd: repoCwd });
   const payload = JSON.parse(output.stdout);
   assert.equal(payload.valid, false);
   assert.equal(payload.status, "route-back");
