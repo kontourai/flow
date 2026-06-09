@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Made CLI `--cwd <path>` consistently scope run lifecycle commands and local
+  file inputs instead of only the console command.
+- Added regression coverage for starting, attaching evidence, evaluating,
+  reading status, reading reports, and listing runs from a caller-selected cwd.
+
 ## 0.1.3
 
 - Added Flow Definition Resource Contract authoring support with

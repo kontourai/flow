@@ -78,22 +78,27 @@ report: .flow/runs/dev-1847/report.md
 ## CLI
 
 ```text
-flow init
-flow validate-definition <path> [--json]
-flow validate-transition <request-json>
-flow start <definition> [--run-id <id>] [--params key=value ...]
-flow status <run-id> [--format summary|json|markdown]
-flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>]
-flow evaluate <run-id> [--gate <gate>]
-flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
-flow config preview <proposal> [--format summary|markdown|json]
-flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
-flow report <run-id> [--format summary|markdown|json]
-flow version-release-report <fixture-json> [--format json|markdown]
+flow init [--cwd <path>]
+flow validate-definition <path> [--json] [--cwd <path>]
+flow validate-transition <request-json> [--cwd <path>]
+flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
+flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
+flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>] [--cwd <path>]
+flow evaluate <run-id> [--gate <gate>] [--cwd <path>]
+flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
+flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
+flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
+flow report <run-id> [--format summary|markdown|json] [--cwd <path>]
+flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path>]
 flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
-flow resume <run-id>
-flow list
+flow resume <run-id> [--cwd <path>]
+flow list [--cwd <path>]
 ```
+
+`--cwd <path>` scopes local Flow files and relative inputs for CLI commands
+that read or write project state. For example, `flow start flow-definition.json
+--cwd /tmp/workspace` writes the run under `/tmp/workspace/.flow/` and resolves
+`flow-definition.json` from `/tmp/workspace`.
 
 ## Local Run Store
 

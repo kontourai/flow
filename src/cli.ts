@@ -29,21 +29,21 @@ type CliFlags = Record<string, any>;
 
 function usage() {
   return `Usage:
-  flow init
-  flow validate-definition <path> [--json]
-  flow validate-transition <request-json>
-  flow start <definition> [--run-id <id>] [--params key=value ...]
-  flow status <run-id> [--format summary|json|markdown]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>]
-  flow evaluate <run-id> [--gate <gate>]
-  flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority>
-  flow config preview <proposal> [--format summary|markdown|json]
-  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json]
-  flow report <run-id> [--format summary|markdown|json]
-  flow version-release-report <fixture-json> [--format json|markdown]
+  flow init [--cwd <path>]
+  flow validate-definition <path> [--json] [--cwd <path>]
+  flow validate-transition <request-json> [--cwd <path>]
+  flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
+  flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow evaluate <run-id> [--gate <gate>] [--cwd <path>]
+  flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
+  flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
+  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
+  flow report <run-id> [--format summary|markdown|json] [--cwd <path>]
+  flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path>]
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
-  flow resume <run-id>
-  flow list
+  flow resume <run-id> [--cwd <path>]
+  flow list [--cwd <path>]
 `;
 }
 
@@ -107,10 +107,14 @@ function mergeObject(base, next) {
   return { ...(base ?? {}), ...next };
 }
 
-async function parseRouteMetadata(flags: CliFlags) {
+function resolveCliCwd(flags: CliFlags) {
+  return flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd();
+}
+
+async function parseRouteMetadata(flags: CliFlags, cwd = process.cwd()) {
   const metadataFile = flags["route-metadata"] ?? flags.metadata;
   const fileMetadata = metadataFile
-    ? JSON.parse(await readFile(path.resolve(process.cwd(), metadataFile), "utf8"))
+    ? JSON.parse(await readFile(path.resolve(cwd, metadataFile), "utf8"))
     : {};
   const classifier = compactObject({
     kind: flags["classifier-kind"],
@@ -133,8 +137,8 @@ async function parseRouteMetadata(flags: CliFlags) {
   };
 }
 
-async function printStatus(runId, format) {
-  const run = await loadRun(runId);
+async function printStatus(runId, format, cwd = process.cwd()) {
+  const run = await loadRun(runId, cwd);
   if (format === "json") {
     console.log(JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2));
   } else if (format === "markdown") {
@@ -154,8 +158,8 @@ function printConfigMergeReport(report, format) {
   }
 }
 
-async function readDefinitionForValidation(definitionPath) {
-  const resolved = path.resolve(process.cwd(), definitionPath);
+async function readDefinitionForValidation(definitionPath, cwd = process.cwd()) {
+  const resolved = path.resolve(cwd, definitionPath);
   try {
     return JSON.parse(await readFile(resolved, "utf8"));
   } catch (error) {
@@ -201,16 +205,17 @@ async function main() {
   }
 
   const { args, flags } = parseArgs(rest);
+  const cwd = resolveCliCwd(flags);
 
   if (command === "init") {
-    const root = await ensureFlowLayout();
+    const root = await ensureFlowLayout(cwd);
     console.log(`initialized ${path.relative(process.cwd(), root) || root}`);
     return;
   }
 
   if (command === "validate-definition") {
     const definitionPath = requireArg(args[0], "flow validate-definition requires a definition path");
-    const definition = await readDefinitionForValidation(definitionPath);
+    const definition = await readDefinitionForValidation(definitionPath, cwd);
     const result = definition.__flowReadError
       ? { valid: false, diagnostics: [definition.__flowReadError] }
       : validateDefinitionWithDiagnostics(definition);
@@ -222,7 +227,7 @@ async function main() {
 
   if (command === "validate-transition") {
     const requestPath = requireArg(args[0], "flow validate-transition requires a request JSON path");
-    const request = JSON.parse(await readFile(path.resolve(process.cwd(), requestPath), "utf8"));
+    const request = JSON.parse(await readFile(path.resolve(cwd, requestPath), "utf8"));
     const result = validateRunTransition(request);
     console.log(JSON.stringify(result, null, 2));
     if (!result.valid && result.status === "invalid") process.exitCode = 1;
@@ -234,12 +239,12 @@ async function main() {
     const proposal = requireArg(args[1], `flow config ${action} requires a proposal path`);
     const format = flags.format ?? "summary";
     if (action === "preview") {
-      const report = await previewFlowConfigMergeFile(proposal);
+      const report = await previewFlowConfigMergeFile(proposal, { cwd });
       printConfigMergeReport(report, format);
       return;
     }
     if (action === "apply") {
-      const report = await applyFlowConfigMerge(proposal, {
+      const report = await applyFlowConfigMerge(cwd, proposal, {
         acceptConflicts: flags["accept-conflict"] ?? [],
         exceptionReason: flags["exception-reason"],
         authority: flags.authority
@@ -254,6 +259,7 @@ async function main() {
   if (command === "start") {
     const definition = requireArg(args[0], "flow start requires a definition path");
     const result = await startRun(definition, {
+      cwd,
       runId: flags["run-id"],
       params: parseParams(flags.params)
     });
@@ -265,14 +271,15 @@ async function main() {
 
   if (command === "status") {
     const runId = requireArg(args[0], "flow status requires a run id");
-    await printStatus(runId, flags.format ?? "summary");
+    await printStatus(runId, flags.format ?? "summary", cwd);
     return;
   }
 
   if (command === "attach-evidence") {
     const runId = requireArg(args[0], "flow attach-evidence requires a run id");
-    const routeMetadata = await parseRouteMetadata(flags);
+    const routeMetadata = await parseRouteMetadata(flags, cwd);
     const entry = await attachEvidence(runId, {
+      cwd,
       gate: requireArg(flags.gate, "--gate is required"),
       file: requireArg(flags.file, "--file is required"),
       kind: flags.kind,
@@ -297,7 +304,7 @@ async function main() {
 
   if (command === "evaluate") {
     const runId = requireArg(args[0], "flow evaluate requires a run id");
-    const result = await evaluateRun(runId, { gate: flags.gate });
+    const result = await evaluateRun(runId, { cwd, gate: flags.gate });
     for (const outcome of result.outcomes) {
       console.log(`${outcome.status} ${outcome.gate_id}: ${outcome.summary}`);
     }
@@ -309,6 +316,7 @@ async function main() {
   if (command === "accept-exception") {
     const runId = requireArg(args[0], "flow accept-exception requires a run id");
     const exception = await acceptException(runId, {
+      cwd,
       gate: requireArg(flags.gate, "--gate is required"),
       reason: requireArg(flags.reason, "--reason is required"),
       authority: requireArg(flags.authority, "--authority is required")
@@ -320,7 +328,7 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
-    const dir = runDir(runId);
+    const dir = runDir(runId, cwd);
     if (format === "summary") {
       const report = JSON.parse(await readFile(path.join(dir, "report.json"), "utf8"));
       console.log(`${report.status} ${report.summary}`);
@@ -335,7 +343,7 @@ async function main() {
 
   if (command === "version-release-report") {
     const fixturePath = requireArg(args[0], "flow version-release-report requires a fixture JSON path");
-    const fixture = JSON.parse(await readFile(path.resolve(process.cwd(), fixturePath), "utf8"));
+    const fixture = JSON.parse(await readFile(path.resolve(cwd, fixturePath), "utf8"));
     const report = projectVersionReleaseReport(fixture);
     const format = flags.format ?? "markdown";
     if (format === "json") {
@@ -354,7 +362,7 @@ async function main() {
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port must be an integer from 0 to 65535");
     const server = await startFlowConsoleServer({
       runId,
-      cwd: flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd(),
+      cwd,
       host: flags.host ?? "127.0.0.1",
       port
     });
@@ -374,13 +382,13 @@ async function main() {
 
   if (command === "resume") {
     const runId = requireArg(args[0], "flow resume requires a run id");
-    const run = await loadRun(runId);
+    const run = await loadRun(runId, cwd);
     process.stdout.write(renderResume(run.definition, run.state));
     return;
   }
 
   if (command === "list") {
-    const runs = await listRuns();
+    const runs = await listRuns(cwd);
     for (const run of runs) {
       console.log(`${run.run_id}\t${run.status}\t${run.current_step}\t${run.definition_id} / ${run.subject}`);
     }
