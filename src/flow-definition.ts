@@ -2,7 +2,96 @@ import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
 import type { FlowDiagnostic, MutableRecord } from "./flow-types.js";
 import { evidenceLabel, expectationLabel, isNonEmptyString, isObject, slugLabel } from "./flow-utils.js";
 
+const FLOW_DEFINITION_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
+const FLOW_DEFINITION_RESOURCE_KIND = "FlowDefinition";
+
+function isFlowDefinitionResource(definition: any) {
+  return isObject(definition)
+    && (
+      definition.apiVersion !== undefined
+      || definition.kind !== undefined
+      || definition.metadata !== undefined
+      || definition.spec !== undefined
+    );
+}
+
+function normalizeFlowDefinition(definition: any) {
+  if (!isFlowDefinitionResource(definition)) return definition;
+  const metadata = isObject(definition.metadata) ? definition.metadata : {};
+  const spec = isObject(definition.spec) ? definition.spec : {};
+  return {
+    id: metadata.name,
+    version: spec.version,
+    steps: spec.steps,
+    gates: spec.gates
+  };
+}
+
+function resourcePathForFlatPath(path: string) {
+  if (path === "$.id") return "$.metadata.name";
+  if (path === "$.version") return "$.spec.version";
+  if (path === "$.steps") return "$.spec.steps";
+  if (path.startsWith("$.steps[")) return `$.spec${path.slice(1)}`;
+  if (path === "$.gates") return "$.spec.gates";
+  if (path.startsWith("$.gates.")) return `$.spec${path.slice(1)}`;
+  return path;
+}
+
+function resourceEnvelopeDiagnostics(definition: any) {
+  const diagnostics: FlowDiagnostic[] = [];
+  if (definition.apiVersion !== FLOW_DEFINITION_RESOURCE_API_VERSION) {
+    diagnostics.push(createDiagnostic(
+      "definition.resource.apiVersion.unsupported",
+      "$.apiVersion",
+      `definition.apiVersion must be ${FLOW_DEFINITION_RESOURCE_API_VERSION}`
+    ));
+  }
+  if (definition.kind !== FLOW_DEFINITION_RESOURCE_KIND) {
+    diagnostics.push(createDiagnostic(
+      "definition.resource.kind.unsupported",
+      "$.kind",
+      `definition.kind must be ${FLOW_DEFINITION_RESOURCE_KIND}`
+    ));
+  }
+  if (!isObject(definition.metadata)) {
+    diagnostics.push(createDiagnostic("definition.resource.metadata.required", "$.metadata", "definition.metadata must be an object"));
+  }
+  if (!isObject(definition.spec)) {
+    diagnostics.push(createDiagnostic("definition.resource.spec.required", "$.spec", "definition.spec must be an object"));
+  }
+  if (isObject(definition.metadata)) {
+    validateResourceStringMap(definition.metadata.labels, "$.metadata.labels", "labels", diagnostics);
+    validateResourceStringMap(definition.metadata.annotations, "$.metadata.annotations", "annotations", diagnostics);
+  }
+  return diagnostics;
+}
+
+function validateResourceStringMap(value: any, path: string, label: string, diagnostics: FlowDiagnostic[]) {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    diagnostics.push(createDiagnostic(`definition.resource.metadata.${label}.invalid`, path, `definition.metadata.${label} must be an object with string values`));
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string") {
+      diagnostics.push(createDiagnostic(
+        `definition.resource.metadata.${label}.value.invalid`,
+        `${path}.${key}`,
+        `definition.metadata.${label}.${key} must be a string`
+      ));
+    }
+  }
+}
+
+function mapDiagnosticsToResourcePaths(diagnostics: FlowDiagnostic[]) {
+  return diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    path: resourcePathForFlatPath(diagnostic.path)
+  }));
+}
+
 export function getStep(definition, stepId) {
+  definition = normalizeFlowDefinition(definition);
   return definition.steps.find((step) => step.id === stepId);
 }
 
@@ -58,10 +147,20 @@ function validateExpectation(expectation: any, path: string, diagnostics: FlowDi
 }
 
 export function definitionDiagnostics(definition: any): FlowDiagnostic[] {
-  const diagnostics: FlowDiagnostic[] = [];
   if (!isObject(definition)) {
     return [createDiagnostic("definition.invalid", "$", "definition must be an object")];
   }
+  if (isFlowDefinitionResource(definition)) {
+    return [
+      ...resourceEnvelopeDiagnostics(definition),
+      ...mapDiagnosticsToResourcePaths(flatDefinitionDiagnostics(normalizeFlowDefinition(definition)))
+    ];
+  }
+  return flatDefinitionDiagnostics(definition);
+}
+
+function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
+  const diagnostics: FlowDiagnostic[] = [];
   if (!isNonEmptyString(definition.id)) {
     diagnostics.push(createDiagnostic("definition.id.required", "$.id", "definition.id must be a non-empty string"));
   }
@@ -148,6 +247,7 @@ export function validateDefinitionWithDiagnostics(definition: any) {
 export function validateDefinition(definition: any) {
   const diagnostic = validateDefinitionWithDiagnostics(definition).diagnostics[0];
   if (diagnostic) throw new Error(diagnostic.message);
+  definition = normalizeFlowDefinition(definition);
   const stepIds = new Set((definition.steps ?? []).map((step) => step.id));
   for (const [gateId, gate] of Object.entries(definition.gates ?? {}) as Array<[string, any]>) {
     if (gate.step && !stepIds.has(gate.step)) {
@@ -167,17 +267,20 @@ export function validateDefinition(definition: any) {
 }
 
 export function gatesForStep(definition: any, stepId: string) {
+  definition = normalizeFlowDefinition(definition);
   return (Object.entries(definition.gates) as Array<[string, any]>)
     .map(([id, gate]) => ({ id, ...gate }))
     .filter((gate) => gate.step === stepId);
 }
 
 export function findGate(definition: any, gateId: string) {
+  definition = normalizeFlowDefinition(definition);
   const gate = definition.gates[gateId];
   return gate ? { id: gateId, ...gate } : null;
 }
 
 export function initialState(definition: any, runId: string, params: MutableRecord = {}) {
+  definition = validateDefinition(definition);
   const firstStep = definition.steps[0];
   const subject = params.subject ?? params.feature ?? params.task ?? params.name ?? runId;
   return {
@@ -198,6 +301,7 @@ export function initialState(definition: any, runId: string, params: MutableReco
 }
 
 export function nextActionForStep(definition: any, stepId: string, outcome: any = null) {
+  definition = normalizeFlowDefinition(definition);
   if (outcome?.status === "block" && outcome.missing?.length) {
     if (outcome.missing.includes("browser-evidence")) return "run browser check before publish";
     return `attach ${outcome.missing.map(evidenceLabel).join(", ")} before continuing`;

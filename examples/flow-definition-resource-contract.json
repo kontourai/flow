@@ -1,0 +1,48 @@
+{
+  "apiVersion": "flow.kontourai.io/v1alpha1",
+  "kind": "FlowDefinition",
+  "metadata": {
+    "name": "resource-contract-flow",
+    "labels": {
+      "example": "resource-contract"
+    },
+    "annotations": {
+      "flow.kontourai.io/description": "Small Flow Definition authored with the Resource Contract envelope."
+    }
+  },
+  "spec": {
+    "version": "1",
+    "steps": [
+      { "id": "plan", "next": "implement" },
+      { "id": "implement", "next": "verify" },
+      { "id": "verify", "next": null }
+    ],
+    "gates": {
+      "plan-gate": {
+        "step": "plan",
+        "requires": ["acceptance-criteria"]
+      },
+      "implement-gate": {
+        "step": "implement",
+        "requires": ["scoped-diff"]
+      },
+      "verify-gate": {
+        "step": "verify",
+        "expects": [
+          {
+            "id": "tests-passed",
+            "kind": "surface.claim",
+            "required": true,
+            "description": "Test results are ready for verification.",
+            "claim": {
+              "type": "quality.tests",
+              "subject": "resource-contract-flow",
+              "accepted_statuses": ["trusted"]
+            }
+          }
+        ],
+        "requires": ["tests"]
+      }
+    }
+  }
+}
