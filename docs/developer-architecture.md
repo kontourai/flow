@@ -4,6 +4,8 @@ Flow is the process transparency and gate enforcement kernel for required-path w
 
 This guide is self-contained for Flow developers. It explains the current v0.1 implementation, product ownership boundaries, runtime and evidence lifecycles, and the future Resource Contract alignment direction without requiring the Flow Agents cross-product guide.
 
+For file placement, generated artifact policy, and validation lane ownership, see the repo structure guide in [docs/repo-structure.md](repo-structure.md).
+
 ## Current Implementation
 
 Flow v0.1 is a local, file-backed CLI and library published as `@kontourai/flow`.
