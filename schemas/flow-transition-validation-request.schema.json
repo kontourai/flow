@@ -18,7 +18,7 @@
       "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true
     },
-    "config": { "$ref": "flow-config.schema.json" },
+    "config": { "$ref": "flow-config.schema.json#/$defs/flat_config" },
     "now": { "type": "string", "format": "date-time" }
   },
   "allOf": [

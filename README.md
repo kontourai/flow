@@ -300,6 +300,19 @@ npx flow config preview ./kit-flow-config.json --format markdown
 
 Preview is read-only. The JSON report includes stable buckets for `proposed_changes`, `accepted_changes`, `rejected_changes`, `conflicts`, `unchanged`, `exceptions`, `merged_config`, and `summary`. Each change records a machine-readable `path`, `section`, `operation`, `reason`, and source values when relevant.
 
+Flow accepts two authored Project Config shapes:
+
+- The v0.1 flat shape used by existing `.flow/config.json` files, with top-level
+  `schema_version`, `trusted_producers`, and `gate_overrides`.
+- The Resource Contract shape shown in
+  `examples/flow-project-config-resource-contract.json`, with
+  `apiVersion`, `kind: "FlowProjectConfig"`, `metadata`, and `spec`.
+
+Resource-shaped Project Config files map `spec` to the same flat runtime config.
+Config merge reports and applied `.flow/config.json` output stay flat, so
+existing tools that read `trusted_producers` and `gate_overrides` do not need to
+migrate.
+
 Apply is explicit:
 
 ```sh
@@ -448,7 +461,7 @@ Resource-shaped Flow Definitions map to the same runtime model as flat v0.1 defi
 
 The flat v0.1 Flow Definition shape remains supported for compatibility. Existing definitions, examples, local run snapshots, reports, and workflows that use top-level `id`, `version`, `steps`, and `gates` do not need to migrate to the Resource Contract envelope.
 
-This Resource Contract slice is Flow Definition only. It does not migrate Flow Run state, Flow Project Config, gate evidence manifests, reports, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters.
+Resource Contract support currently covers authored Flow Definition and authored Flow Project Config inputs. It does not migrate Flow Run state, gate evidence manifests, reports, transition validation results, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters.
 
 `--json` emits a stable machine-readable payload:
 

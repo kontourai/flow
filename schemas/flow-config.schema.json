@@ -2,21 +2,75 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kontourai.io/schemas/flow-config.schema.json",
   "title": "Flow Project Config",
-  "type": "object",
-  "required": ["schema_version"],
-  "additionalProperties": false,
-  "properties": {
-    "schema_version": { "type": "string", "const": "0.1" },
+  "oneOf": [
+    { "$ref": "#/$defs/flat_config" },
+    { "$ref": "#/$defs/resource_config" }
+  ],
+  "$defs": {
+    "flat_config": {
+      "type": "object",
+      "required": ["schema_version"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "0.1" },
+        "trusted_producers": { "$ref": "#/$defs/trusted_producers" },
+        "gate_overrides": { "$ref": "#/$defs/gate_overrides" }
+      }
+    },
+    "resource_config": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "metadata", "spec"],
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": { "const": "flow.kontourai.io/v1alpha1" },
+        "kind": { "const": "FlowProjectConfig" },
+        "metadata": { "$ref": "#/$defs/resource_metadata" },
+        "spec": { "$ref": "#/$defs/config_spec" }
+      }
+    },
+    "resource_metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/config_name" },
+        "labels": { "$ref": "#/$defs/resource_string_map" },
+        "annotations": { "$ref": "#/$defs/resource_string_map" }
+      }
+    },
+    "config_spec": {
+      "type": "object",
+      "required": ["schema_version"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "0.1" },
+        "trusted_producers": { "$ref": "#/$defs/trusted_producers" },
+        "gate_overrides": { "$ref": "#/$defs/gate_overrides" }
+      }
+    },
+    "resource_string_map": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/safe_map_key" },
+      "additionalProperties": { "type": "string" }
+    },
+    "config_name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
     "trusted_producers": {
       "type": "object",
+      "propertyNames": { "$ref": "#/$defs/safe_map_key" },
       "additionalProperties": { "$ref": "#/$defs/trusted_producer_mapping" }
     },
     "gate_overrides": {
       "type": "object",
+      "propertyNames": { "$ref": "#/$defs/safe_map_key" },
       "additionalProperties": { "$ref": "#/$defs/gate_override" }
-    }
-  },
-  "$defs": {
+    },
+    "safe_map_key": {
+      "type": "string",
+      "not": { "enum": ["__proto__", "prototype", "constructor"] }
+    },
     "trusted_producer_mapping": {
       "type": "object",
       "additionalProperties": false,
@@ -39,6 +93,7 @@
       "properties": {
         "expectations": {
           "type": "object",
+          "propertyNames": { "$ref": "#/$defs/safe_map_key" },
           "additionalProperties": { "$ref": "#/$defs/expectation_override" }
         }
       }

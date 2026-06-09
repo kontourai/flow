@@ -1,0 +1,33 @@
+{
+  "apiVersion": "flow.kontourai.io/v1alpha1",
+  "kind": "FlowProjectConfig",
+  "metadata": {
+    "name": "resource-project-config",
+    "labels": {
+      "example": "resource-contract"
+    },
+    "annotations": {
+      "description": "Resource-shaped Flow Project Config example"
+    }
+  },
+  "spec": {
+    "schema_version": "0.1",
+    "trusted_producers": {
+      "quality.tests": {
+        "producers": ["ci/main"],
+        "authority_traces": ["github:main"]
+      }
+    },
+    "gate_overrides": {
+      "verify-gate": {
+        "expectations": {
+          "tests-passed": {
+            "required": true,
+            "accepted_statuses": ["trusted"],
+            "trusted_producers": ["ci/main"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -31,7 +31,7 @@
     "conflicts": { "type": "array", "items": { "$ref": "#/$defs/change" } },
     "unchanged": { "type": "array", "items": { "$ref": "#/$defs/change" } },
     "exceptions": { "type": "array", "items": { "$ref": "#/$defs/exception" } },
-    "merged_config": { "$ref": "flow-config.schema.json" },
+    "merged_config": { "$ref": "flow-config.schema.json#/$defs/flat_config" },
     "summary": {
       "type": "object",
       "required": ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"],
