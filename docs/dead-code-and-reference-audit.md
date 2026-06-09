@@ -35,13 +35,13 @@ were edited by this audit.
 | `git ls-files \| sort` | Tracked source includes `src/`, `schemas/`, `examples/`, scripts, browser tests, docs, workflows, hooks, and hidden console `.flow` fixture files. |
 | `node -e "const p=require('./package.json'); ..."` | Package exposes root, `./console-projection`, `./console-server`, bin `flow`, files `dist/`, `schemas/`, `examples/`, `README.md`, `LICENSE`, and documented npm scripts. |
 | `rg -n "scripts/\|check-schemas\|check-console-projection\|..." . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Every tracked `scripts/*.mjs` file is referenced by `package.json`, another script, README, or hook tests. |
-| `rg -n "examples/fixtures\|console-projection\|surface-claims\|release-readiness\|version-release-report\|\\.flow/runs" . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Fixture trees are referenced by README, scripts/checks, browser server/tests, and docs. |
+| `rg -n "examples/scenarios\|console-projection\|surface-claims\|release-readiness\|version-release-report\|\\.flow/runs" . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Scenario trees are referenced by README, scripts/checks, browser server/tests, and docs. |
 | `rg -n "console-kit\|vendor/console-kit\|tokens/\|copy-console-ui\|sync-console-kit-assets\|console-ui" . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Vendored Console Kit assets are referenced by `src/console-ui/index.html`, sync/copy scripts, tsconfigs, package scripts, and dependency metadata. |
 | `rg -n "from ['\"]\|import\\(\|require\\(" src scripts tests --glob '!node_modules/**' --glob '!dist/**'` | Import map confirms public exports and tests rely on built `dist/*` plus source internals. |
 | `git status --short --ignored context evals dist test-results .agents .flow .surface .veritas node_modules \| head -200` | Ignored generated/local dirs present: `.agents/`, `dist/`, `node_modules/`, `test-results/`. `context/` and `evals/` were not tracked or ignored. |
 | `git ls-files context evals dist test-results .agents .flow .surface .veritas node_modules` | No tracked files in those top-level local/generated directories. Tracked `.flow` files live only under the explicit fixture exception path. |
 | `npm pack --dry-run --ignore-scripts` | Failed because the user npm cache has root-owned files under `/Users/brian/.npm/_cacache/tmp`. |
-| `npm pack --dry-run --ignore-scripts --cache /private/tmp/flow-npm-cache` | Succeeded. Tarball has 74 files and includes `dist/`, `schemas/`, `examples/`, README, LICENSE, and the tracked `examples/fixtures/console-projection/.flow/...` fixture. |
+| `npm pack --dry-run --ignore-scripts --cache /private/tmp/flow-npm-cache` | Succeeded. Tarball includes `dist/`, `schemas/`, `examples/`, README, CHANGELOG, LICENSE, and the tracked `examples/scenarios/console-projection/.flow/...` scenario. |
 
 ## Package Boundary Map
 
@@ -53,7 +53,7 @@ were edited by this audit.
 | `@kontourai/flow/console-projection` | `src/console-projection.ts` builds to `dist/console-projection.js` and `.d.ts` | Keep. Explicit export; README and checks import it. |
 | `@kontourai/flow/console-server` | `src/console-server.ts` builds to `dist/console-server.js` and `.d.ts` | Keep. Explicit export; console smoke and browser server use it. |
 | bin `flow` | `src/cli.ts` builds to `dist/cli.js` | Keep. CLI commands are documented and tested. |
-| package files | `dist/`, `schemas/`, `examples/`, `README.md`, `LICENSE` | Keep as published surface unless a package migration is planned. |
+| package files | `dist/`, `schemas/`, `examples/`, `README.md`, `CHANGELOG.md`, `LICENSE` | Keep as published surface unless a package migration is planned. |
 
 `npm pack --dry-run --ignore-scripts --cache /private/tmp/flow-npm-cache` confirms the tarball currently includes built console UI assets, public schemas, public examples, fixture README files, and the hidden console projection `.flow` fixture.
 
@@ -79,11 +79,11 @@ No tracked script is unreferenced by the package scripts/readme/test graph. Scri
 | Area | Evidence | Disposition |
 | --- | --- | --- |
 | `tests/browser/console-ui.spec.ts` | Uses Playwright against `tests/browser/serve-flow-console.mjs`; asserts console title/status for `console-projection-fixture`. | Keep. Browser lane. |
-| `tests/browser/serve-flow-console.mjs` | Imports `dist/console-server.js`; serves run id `console-projection-fixture` from `examples/fixtures/console-projection`. | Keep. Depends on built dist and tracked fixture. |
-| `examples/fixtures/console-projection/.flow/...` | Referenced by `scripts/check-console-projection.mjs`, `scripts/check-console-smoke.mjs`, browser server/tests, README console examples, and package dry-run. | Keep. Intentional tracked `.flow` exception. |
-| `examples/fixtures/surface-claims/*` | Referenced by `scripts/check-schemas.mjs`, fixture README, and product boundary/resource docs. | Keep. Surface-shaped evidence fixture. |
-| `examples/fixtures/release-readiness/*` | Referenced by `scripts/check-schemas.mjs`, README, fixture README, and docs. | Keep. Release readiness fixture. |
-| `examples/fixtures/version-release-report/*` | Referenced by `scripts/check-schemas.mjs`, README commands, fixture README, and package dry-run. | Keep. CLI/report fixture. |
+| `tests/browser/serve-flow-console.mjs` | Imports `dist/console-server.js`; serves run id `console-projection-fixture` from `examples/scenarios/console-projection`. | Keep. Depends on built dist and tracked scenario. |
+| `examples/scenarios/console-projection/.flow/...` | Referenced by `scripts/check-console-projection.mjs`, `scripts/check-console-smoke.mjs`, browser server/tests, README console examples, and package dry-run. | Keep. Intentional tracked `.flow` scenario. |
+| `examples/scenarios/surface-claims/*` | Referenced by `scripts/check-schemas.mjs`, scenario README, and product boundary/resource docs. | Keep. Surface-shaped evidence scenario. |
+| `examples/scenarios/release-readiness/*` | Referenced by `scripts/check-schemas.mjs`, README, scenario README, and docs. | Keep. Release readiness scenario. |
+| `examples/scenarios/version-release-report/*` | Referenced by `scripts/check-schemas.mjs`, README commands, scenario README, and package dry-run. | Keep. CLI/report scenario. |
 | `examples/*.json` | Public examples included by package files and README/docs. | Keep. Published package data. |
 
 ## Console Kit Vendor Map
@@ -105,7 +105,7 @@ are checked before copy, and would make the console dependent on package-manager
 | `node_modules/` | Ignored dependency install output. | Keep ignored. |
 | `.agents/` | Ignored workflow artifact area. This task writes only session artifacts under `.agents/flow-agents/...`. | Keep ignored; not production Flow source. |
 | `.flow/` | Ignored local Flow run/config store. | Keep ignored, except tracked fixture exception. |
-| `examples/fixtures/console-projection/.flow/**` | Explicit tracked exception to `.flow/` ignore rule. | Keep tracked; package and tests depend on it. |
+| `examples/scenarios/console-projection/.flow/**` | Explicit tracked exception to `.flow/` ignore rule. | Keep tracked; package and tests depend on it. |
 | `.surface/` | Ignored local Surface state/artifacts. | Keep ignored; Flow does not own Surface authority. |
 | `.veritas/` | Ignored local Veritas state/artifacts. | Keep ignored; Flow does not own Veritas policy. |
 | `test-results/`, `playwright-report/` | Ignored test output. | Keep ignored. |
@@ -120,10 +120,10 @@ are checked before copy, and would make the console dependent on package-manager
 | Empty local `evals/` directories | `find` found directories only; `git ls-files evals` found none. | Safe local cleanup candidate. | Removed with `rmdir`; no tracked files were affected. |
 | Ignored local `dist/` | Ignored by `.gitignore`; package dry-run includes it because current workspace has built output and package files require it. | Generated output, not dead code. | Keep ignored; do not delete in cleanup unless explicitly doing local housekeeping after rebuild verification. |
 | Ignored `.agents/`, `test-results/`, `node_modules/` | `git status --short --ignored ...` reports ignored dirs; no tracked files in top-level query. | Generated/local artifacts. | Keep ignored. Do not classify as source. |
-| `examples/fixtures/console-projection/.flow/**` | Explicit `.gitignore` exception; referenced by projection/smoke/browser checks and included in package dry-run. | Not dead. | Keep. |
+| `examples/scenarios/console-projection/.flow/**` | Explicit `.gitignore` exception; referenced by projection/smoke/browser checks and included in package dry-run. | Not dead. | Keep. |
 | `src/console-ui/vendor/console-kit/**` | Referenced by HTML, sync/copy scripts, package scripts, and package dependency. | Not dead. | Keep. |
 | `scripts/*.mjs` | Every tracked script is referenced by package scripts, README, hook tests, or another script. | Not dead. | Keep; docs can group by purpose. |
-| `examples/fixtures/*` under published `examples/` | Referenced by tests/docs and included in published package. | Needs product/package decision before any move. | Keep now; future relocation would need migration notes and package dry-run review. |
+| `examples/scenarios/*` under published `examples/` | Referenced by tests/docs and included in the published package as developer-facing scenarios. | Product/package decision recorded in v0.1.2: keep published and name the tree as scenarios rather than test fixtures. | Keep. |
 | `src/index.ts` monolith | Public root export and core implementation; large but referenced by CLI, projection, scripts, and package export. | Architecture/refactor candidate, not dead code. | Keep now; split only after API tests and plan approval. |
 
 ## Safe Removal Controls For Future Cleanup
@@ -136,7 +136,7 @@ Before deleting or relocating any candidate beyond local empty directories:
    `npm run check:console-kit-assets`, and `npm pack --dry-run`.
 4. Review `git diff --stat`, `git diff --name-only`, and targeted diffs for `src/`, `schemas/`,
    `examples/`, package exports, and docs.
-5. Record migration notes when moving published examples/fixtures or public build outputs.
+5. Record migration notes when moving published examples/scenarios or public build outputs.
 
 ## Gaps And Risks
 

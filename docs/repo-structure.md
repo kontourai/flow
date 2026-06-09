@@ -1,6 +1,6 @@
 # Flow Repo Structure
 
-This guide documents where work belongs in the Flow repo and how to distinguish source, public contracts, fixtures, tooling, generated output, and workflow artifacts.
+This guide documents where work belongs in the Flow repo and how to distinguish source, public contracts, examples, scenario data, tooling, generated output, and workflow artifacts.
 
 Flow is the process transparency and gate enforcement kernel. The repo structure must preserve that boundary: Flow is not an agent runtime, not Surface authority, not Veritas policy ownership, and not the Builder Kit adapter layer.
 
@@ -13,8 +13,9 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `src/console-ui/vendor/console-kit/` | Vendored Console Kit styles and tokens used by the local console build. | Tracked vendor asset exception. Updated by `scripts/sync-console-kit-assets.mjs`; do not hand-edit generated copies without checking the sync script. |
 | `schemas/` | Public JSON schemas for Flow Definitions, Flow Runs, Gate Evidence, Flow Reports, project config, config merge reports, transition validation, release readiness, and version release reports. | Tracked public contract assets and included in the npm package. New Flow-owned schema contracts belong here. |
 | `examples/` | Published examples for authoring and using Flow Definitions. | Tracked package assets. New user-facing examples belong here. |
-| `examples/fixtures/` | Fixture data used by checks and examples, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked fixtures and included in the package. Keep test-only moves out of this tree until package contents and references are reviewed. |
-| `examples/fixtures/console-projection/.flow/` | Intentionally tracked local-run fixture for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This fixture proves console projection behavior and must stay inspectable. |
+| `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example. |
+| `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
+| `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
 | `scripts/` | Node support tooling for schema/runtime checks, console projection checks, Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
 | `docs/` | Durable product, architecture, ADR, audit, release operations, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
@@ -22,7 +23,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `.github/` | GitHub Actions workflows for CI and package publishing. | Tracked repo operations. This is not Flow runtime behavior. |
 | `.githooks/` | Optional contributor Git hooks. | Tracked contributor tooling. Installed locally by `npm run setup:repo-hooks`. |
 | `.agents/` | Flow Agents and Kiro-style workflow artifacts for planning, execution, and handoff. | Ignored workflow artifacts. Current task artifacts may live under `.agents/flow-agents`, but production source must not depend on them. |
-| `.flow/` | Local Flow project config and run store used by the CLI. | Ignored local runtime state at the repo root. The only tracked `.flow` tree is the console projection fixture under `examples/fixtures/console-projection/`. |
+| `.flow/` | Local Flow project config and run store used by the CLI. | Ignored local runtime state at the repo root. The only tracked `.flow` tree is the console projection scenario under `examples/scenarios/console-projection/`. |
 | `.surface/` | Local Surface state or artifacts. | Ignored local product state. Flow may consume Surface-shaped evidence files, but Surface owns trust semantics. |
 | `.veritas/` | Local Veritas state or artifacts. | Ignored local product state. Veritas owns repo standards and merge readiness policy. |
 | `dist/` | Build output for the npm package runtime, declarations, and compiled console assets. | Ignored generated output, but included by `package.json.files` after `npm run build` and `prepack`. Do not edit by hand. |
@@ -58,7 +59,7 @@ New schemas belong in `schemas/` and should be validated by the schema check lan
 
 New docs belong in `docs/`. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations.
 
-New examples belong in `examples/`. New fixtures belong in `examples/fixtures/` when they are package-visible examples or existing checks depend on published fixture paths. Use a separate migration plan before moving fixtures to a non-published test fixture tree.
+New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them.
 
 New browser tests for the local console belong in `tests/browser/`. Node contract checks currently live in `scripts/check-*.mjs`; keep script moves separate from behavior changes because package scripts, hooks, and CI reference those paths.
 
@@ -75,10 +76,10 @@ Generated local output stays ignored:
 
 Tracked exceptions are intentional:
 
-- `examples/fixtures/console-projection/.flow/**` is tracked even though root `.flow/` is ignored. It is a deterministic Flow Run fixture for console projection checks.
+- `examples/scenarios/console-projection/.flow/**` is tracked even though root `.flow/` is ignored. It is a deterministic Flow Run scenario for console projection checks.
 - `src/console-ui/vendor/console-kit/**` is tracked even though it is copied from `@kontourai/console-kit`. The local console build depends on these assets being present in source form before `dist/console-ui/` is generated.
 
-Do not delete, move, or re-ignore tracked fixtures, schemas, examples, or vendored console assets without checking package contents, script references, browser tests, and `npm pack --dry-run`.
+Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendored console assets without checking package contents, script references, browser tests, and `npm pack --dry-run`.
 
 ## Validation Lanes
 

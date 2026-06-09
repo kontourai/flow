@@ -6,7 +6,7 @@ import { startFlowConsoleServer } from "../../dist/console-server.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const server = await startFlowConsoleServer({
   runId: "console-projection-fixture",
-  cwd: path.join(root, "examples", "fixtures", "console-projection"),
+  cwd: path.join(root, "examples", "scenarios", "console-projection"),
   host: "127.0.0.1",
   port: 4184,
 });

@@ -40,7 +40,7 @@ async function json(file) {
 }
 
 async function surfaceClaimFixture(file) {
-  return json(`examples/fixtures/surface-claims/${file}`);
+  return json(`examples/scenarios/surface-claims/${file}`);
 }
 
 async function surfaceClaimEvidenceFixture(file) {
@@ -48,11 +48,11 @@ async function surfaceClaimEvidenceFixture(file) {
 }
 
 async function releaseReadinessFixture(file) {
-  return json(`examples/fixtures/release-readiness/${file}`);
+  return json(`examples/scenarios/release-readiness/${file}`);
 }
 
 async function versionReleaseReportFixture(file) {
-  return json(`examples/fixtures/version-release-report/${file}`);
+  return json(`examples/scenarios/version-release-report/${file}`);
 }
 
 function clone(value) {
@@ -196,7 +196,7 @@ test("CLI version-release-report renders deterministic JSON and Markdown from lo
   const complete = await execFile(process.execPath, [
     cli,
     "version-release-report",
-    "examples/fixtures/version-release-report/complete.json",
+    "examples/scenarios/version-release-report/complete.json",
     "--format",
     "json"
   ], { cwd });
@@ -209,7 +209,7 @@ test("CLI version-release-report renders deterministic JSON and Markdown from lo
   const missing = await execFile(process.execPath, [
     cli,
     "version-release-report",
-    "examples/fixtures/version-release-report/missing-required-evidence.json",
+    "examples/scenarios/version-release-report/missing-required-evidence.json",
     "--format",
     "markdown"
   ], { cwd });
@@ -380,7 +380,7 @@ test("version release report projects complete local fixtures and preserves refs
   assert.deepEqual(report.release_evidence.lanes.filter((lane) => lane.required).map((lane) => lane.status), ["pass", "pass", "pass"]);
   assert.equal(report.exceptions[0].id, "ex.release.docs-late");
   assert.equal(report.accepted_risks[0].id, "risk.telemetry-delay");
-  assert.ok(report.external_links.some((link) => link.url === "file://fixtures/version-release-report/release-notes.md"));
+  assert.ok(report.external_links.some((link) => link.url === "file://scenarios/version-release-report/release-notes.md"));
   assert.ok(report.external_links.some((link) => link.url === "https://change.example.test/changes/CHG-1847"));
   assert.ok(report.external_links.some((link) => link.url === "https://deploy.example.test/windows/production"));
   assert.ok(report.external_links.some((link) => link.url === "https://freeze.example.test/windows/freeze-2026-06"));
@@ -1208,7 +1208,7 @@ test("fixture-backed Surface claim manifests satisfy the neutral fixture shape",
   assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["surface-fixture/ci"]);
   assert.deepEqual(config.trusted_producers["quality.tests"].authority_traces, ["project-policy:main"]);
 
-  const evidenceDir = new URL("../examples/fixtures/surface-claims/evidence/", import.meta.url);
+  const evidenceDir = new URL("../examples/scenarios/surface-claims/evidence/", import.meta.url);
   const files = (await readdir(evidenceDir)).filter((file) => file.endsWith(".json")).sort();
   assert.deepEqual(files, [
     "fail-authority-gap.json",

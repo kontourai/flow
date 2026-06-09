@@ -10,8 +10,8 @@ These fixtures exercise the local-file-first Version Release Report artifact. Th
 ## Commands
 
 ```sh
-node dist/cli.js version-release-report examples/fixtures/version-release-report/complete.json --format json
-node dist/cli.js version-release-report examples/fixtures/version-release-report/missing-required-evidence.json --format markdown
+node dist/cli.js version-release-report examples/scenarios/version-release-report/complete.json --format json
+node dist/cli.js version-release-report examples/scenarios/version-release-report/missing-required-evidence.json --format markdown
 ```
 
 The report preserves Flow evidence entries, release-readiness lane statuses, `native_refs`, and `external_links` as data. Missing required verification evidence or required release lanes are represented as gaps and never as ready/pass decisions.

@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1",
   "id": "fixture-release-policy",
-  "description": "Local fixture policy for release-readiness lanes.",
+  "description": "Local scenario policy for release-readiness lanes.",
   "lanes": [
     {
       "id": "change-approval",

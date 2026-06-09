@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const screenshotPath = path.join(root, ".agents", "flow-agents", "flow-console-shell", "console-smoke.png");
 const server = await startFlowConsoleServer({
   runId: "console-projection-fixture",
-  cwd: path.join(root, "examples", "fixtures", "console-projection"),
+  cwd: path.join(root, "examples", "scenarios", "console-projection"),
   host: "127.0.0.1",
   port: 0
 });
