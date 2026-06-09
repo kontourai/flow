@@ -8,7 +8,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 
 | Area | Purpose | Status and policy |
 | --- | --- | --- |
-| `src/` | Flow TypeScript source for the package runtime, CLI, transition validation, gate evaluation, reports, release readiness, and local run store behavior. | Tracked source. New Flow-owned runtime behavior belongs here. Keep provider-specific orchestration out of Flow core. |
+| `src/` | Flow TypeScript source for the package runtime, CLI, transition validation, gate evaluation, reports, release readiness, and local run store behavior, organized by domain folders. | Tracked source. New Flow-owned runtime behavior belongs here. Keep provider-specific orchestration out of Flow core. |
 | `src/console-ui/` | Local Flow Console browser UI source. | Tracked source. UI changes for `flow console` belong here. |
 | `src/console-ui/vendor/console-kit/` | Vendored Console Kit styles and tokens used by the local console build. | Tracked vendor asset exception. Updated by `scripts/sync-console-kit-assets.mjs`; do not hand-edit generated copies without checking the sync script. |
 | `schemas/` | Public JSON schemas for Flow Definitions, Flow Runs, Gate Evidence, Flow Reports, project config, config merge reports, transition validation, release readiness, and version release reports. | Tracked public contract assets and included in the npm package. New Flow-owned schema contracts belong here. |
@@ -16,7 +16,8 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example and covered by the package contents check. |
 | `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
-| `scripts/` | Node support tooling for schema/runtime checks, console projection checks, Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source. |
+| `scripts/` | Operational Node tooling for Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
+| `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. | Tracked Node test lane. Node tests belong here instead of `scripts/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
 | `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
@@ -39,29 +40,30 @@ New Flow core behavior belongs in `src/`, with public exports preserved through 
 Flow core source is organized by runtime domain:
 
 - `src/index.ts` is the package-root public export surface. Keep it thin.
-- `src/flow-types.ts` owns public Flow contract types and schema/evidence constants.
-- `src/flow-files.ts` owns `.flow` path helpers and JSON persistence helpers.
-- `src/flow-utils.ts` owns shared labels, evidence-kind helpers, JSON cloning, and small type guards.
-- `src/flow-config.ts` owns project config loading, preview/apply merge semantics, and config merge rendering.
-- `src/flow-definition.ts` owns Flow Definition diagnostics, step/gate lookup, initial state, continuation, and route-back selection helpers.
-- `src/flow-transition.ts` owns proposed transition validation.
-- `src/flow-gates.ts` owns gate expectations, evidence matching, gate evaluation, and applying gate outcomes.
-- `src/flow-evaluation-transition.ts` owns the bridge from evaluated gate outcomes to transition validation.
-- `src/flow-release.ts` owns release readiness fixtures, lane evaluation, version release report projection, and version release Markdown rendering.
-- `src/flow-run-store.ts` owns local run lifecycle operations, evidence attachment, trust artifact normalization, run evaluation, exceptions, and run listing.
-- `src/flow-reports.ts` owns Flow Report JSON, Markdown report, summary, resume, and report file writing.
+- `src/contracts/flow-types.ts` owns public Flow contract types and schema/evidence constants.
+- `src/runtime/flow-files.ts` owns `.flow` path helpers and JSON persistence helpers.
+- `src/runtime/flow-run-store.ts` owns local run lifecycle operations, evidence attachment, trust artifact normalization, run evaluation, exceptions, and run listing.
+- `src/shared/flow-utils.ts` owns shared labels, evidence-kind helpers, JSON cloning, and small type guards.
+- `src/config/flow-config.ts` owns project config loading, preview/apply merge semantics, and config merge rendering.
+- `src/definition/flow-definition.ts` owns Flow Definition diagnostics, step/gate lookup, initial state, continuation, and route-back selection helpers.
+- `src/transition/flow-transition.ts` owns proposed transition validation.
+- `src/transition/flow-evaluation-transition.ts` owns the bridge from evaluated gate outcomes to transition validation.
+- `src/gates/flow-gates.ts` owns gate expectations, evidence matching, gate evaluation, and applying gate outcomes.
+- `src/release/flow-release.ts` owns release readiness fixtures, lane evaluation, version release report projection, and version release Markdown rendering.
+- `src/reports/flow-reports.ts` owns Flow Report JSON, Markdown report, summary, resume, and report file writing.
+- `src/console/` owns local console projection and server implementations, with root shims preserving package subpath exports.
 
 New CLI behavior belongs in `src/cli.ts` unless it becomes shared runtime behavior, in which case the shared logic should live in Flow-owned source and the CLI should remain a thin caller.
 
-New local console UI code belongs in `src/console-ui/`. New console projection or server behavior belongs in `src/console-projection.ts` or `src/console-server.ts` when it is part of Flow's local console boundary.
+New local console UI code belongs in `src/console-ui/`. New console projection or server behavior belongs in `src/console/` when it is part of Flow's local console boundary; root console files remain compatibility entrypoints for generated package subpaths.
 
 New schemas belong in `schemas/` and should be validated by the schema check lane. New schema shape should use Flow vocabulary and avoid importing Surface, Veritas, Flow Agents, or Builder Kit authority into Flow core.
 
 New docs belong in `docs/`. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations. Historical cleanup notes and one-time setup notes should be removed once their decisions are reflected in current docs or source.
 
-New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them. Any new published example or scenario must be documented and asserted by `scripts/check-package-contents.mjs`.
+New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them. Any new published example or scenario must be documented and asserted by `tests/node/check-package-contents.test.mjs`.
 
-New browser tests for the local console belong in `tests/browser/`. Node contract checks currently live in `scripts/check-*.mjs`; keep script moves separate from behavior changes because package scripts, hooks, and CI reference those paths.
+New browser tests for the local console belong in `tests/browser/`. New Node contract or package checks belong in `tests/node/`. Keep `scripts/` for operational tools that set up, build, copy, sync, or smoke-run repo behavior.
 
 New workflow planning, execution, review, or handoff artifacts belong under `.flow-agents/` and remain ignored. They are evidence for work coordination, not Flow runtime contracts.
 
@@ -87,9 +89,9 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 `npm run typecheck` checks Flow TypeScript without writing output. `npm run typecheck:console-ui` checks the console UI project without writing output.
 
-`npm test` runs the full local lane: build, Node check scripts, console smoke, and Playwright browser tests.
+`npm test` runs the full local lane: build, Node tests under `tests/node/`, console smoke, and Playwright browser tests.
 
-`npm run check:schemas` builds first, then runs schema and runtime contract checks in `scripts/check-schemas.mjs`.
+`npm run check:schemas` builds first, then runs schema and runtime contract checks in `tests/node/check-schemas.test.mjs`.
 
 `npm run check:console-kit-assets` verifies tracked vendored Console Kit assets match the installed package.
 
@@ -101,7 +103,7 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 Contributor setup lives in [contributing.md](contributing.md).
 
-`scripts/check-package-contents.mjs` runs `npm pack --dry-run --ignore-scripts --json` and asserts the package includes only the intended top-level surfaces plus documented public examples and scenarios.
+`tests/node/check-package-contents.test.mjs` runs `npm pack --dry-run --ignore-scripts --json` and asserts the package includes only the intended top-level surfaces plus documented public examples and scenarios.
 
 ## Boundary Reminders
 

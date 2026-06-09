@@ -1,4 +1,4 @@
-import { BUILTIN_EVIDENCE_KINDS } from "./flow-types.js";
+import { BUILTIN_EVIDENCE_KINDS } from "../contracts/flow-types.js";
 
 export const STATUS_ORDER = ["pass", "block", "route-back", "wait"];
 

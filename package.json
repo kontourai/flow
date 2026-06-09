@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -38,15 +38,18 @@
   ],
   "scripts": {
     "build": "node scripts/sync-console-kit-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
-    "test": "npm run build && node --test scripts/check-schemas.mjs scripts/check-repo-hooks.mjs scripts/check-console-projection.mjs scripts/check-package-contents.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
+    "test": "npm run build && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
+    "test:node": "node --test tests/node/*.test.mjs",
     "test:browser": "playwright test",
     "typecheck": "tsc --noEmit",
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
     "sync:console-kit": "node scripts/sync-console-kit-assets.mjs",
     "check:console-kit-assets": "node scripts/sync-console-kit-assets.mjs --check",
     "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
-    "check:schemas": "npm run build && node scripts/check-schemas.mjs",
-    "check:repo-hooks": "node --test scripts/check-repo-hooks.mjs",
+    "check:schemas": "npm run build && node --test tests/node/check-schemas.test.mjs",
+    "check:console-projection": "npm run build && node --test tests/node/check-console-projection.test.mjs",
+    "check:package-contents": "npm run build && node --test tests/node/check-package-contents.test.mjs",
+    "check:repo-hooks": "node --test tests/node/check-repo-hooks.test.mjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.mjs",
     "validate:repo-hooks": "node scripts/validate-repo-hooks.mjs",
     "prepack": "npm run typecheck && npm test"

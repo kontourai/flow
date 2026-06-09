@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import {
   projectFlowRun,
   projectFlowRunFromFiles
-} from "../dist/index.js";
-import * as packageProjection from "../dist/console-projection.js";
+} from "../../dist/index.js";
+import * as packageProjection from "../../dist/console-projection.js";
 import {
   FLOW_RUN_DEFINITION_FILE,
   FLOW_RUN_EVIDENCE_MANIFEST_PATH,
@@ -16,9 +16,9 @@ import {
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
   FLOW_RUN_STATE_FILE
-} from "../dist/flow-files.js";
+} from "../../dist/flow-files.js";
 
-const fixtureCwd = fileURLToPath(new URL("../examples/scenarios/console-projection", import.meta.url));
+const fixtureCwd = fileURLToPath(new URL("../../examples/scenarios/console-projection", import.meta.url));
 const fixtureRunId = "console-projection-fixture";
 const fixtureRunDir = path.join(fixtureCwd, ".flow", "runs", fixtureRunId);
 
@@ -27,7 +27,7 @@ async function readFixtureJson(name) {
 }
 
 async function readRepoJson(name) {
-  return JSON.parse(await readFile(new URL(`../${name}`, import.meta.url), "utf8"));
+  return JSON.parse(await readFile(new URL(`../../${name}`, import.meta.url), "utf8"));
 }
 
 function byId(values, id) {
@@ -133,19 +133,21 @@ test("AC3 projection runtime exports and declarations are available at package b
   assert.equal(typeof packageProjection.projectFlowRun, "function");
   assert.equal(typeof packageProjection.projectFlowRunFromFiles, "function");
 
-  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const packageJson = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.types, "./dist/index.d.ts");
   assert.equal(packageJson.exports["."].types, "./dist/index.d.ts");
   assert.equal(packageJson.exports["."].import, "./dist/index.js");
   assert.equal(packageJson.exports["./console-projection"].types, "./dist/console-projection.d.ts");
   assert.equal(packageJson.exports["./console-projection"].import, "./dist/console-projection.js");
 
-  const indexTypes = await readFile(new URL("../dist/index.d.ts", import.meta.url), "utf8");
-  const projectionTypes = await readFile(new URL("../dist/console-projection.d.ts", import.meta.url), "utf8");
+  const indexTypes = await readFile(new URL("../../dist/index.d.ts", import.meta.url), "utf8");
+  const projectionTypes = await readFile(new URL("../../dist/console-projection.d.ts", import.meta.url), "utf8");
+  const projectionImplementationTypes = await readFile(new URL("../../dist/console/console-projection.d.ts", import.meta.url), "utf8");
   assert.match(indexTypes, /export \* from "\.\/console-projection\.js"/);
-  assert.match(projectionTypes, /interface FlowConsoleProjection/);
-  assert.match(projectionTypes, /function projectFlowRun/);
-  assert.match(projectionTypes, /function projectFlowRunFromFiles/);
+  assert.match(projectionTypes, /export \* from "\.\/console\/console-projection\.js"/);
+  assert.match(projectionImplementationTypes, /interface FlowConsoleProjection/);
+  assert.match(projectionImplementationTypes, /function projectFlowRun/);
+  assert.match(projectionImplementationTypes, /function projectFlowRunFromFiles/);
 });
 
 test("AC5 projection preserves explicit external link refs without synthesizing missing refs", async () => {

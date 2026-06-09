@@ -1,6 +1,6 @@
-import { defaultFlowConfig } from "./flow-config.js";
-import { findGate, getStep } from "./flow-definition.js";
-import { validateRunTransition } from "./flow-transition.js";
+import { defaultFlowConfig } from "../config/flow-config.js";
+import { findGate, getStep } from "../definition/flow-definition.js";
+import { validateRunTransition } from "../transition/flow-transition.js";
 
 function proposedTransitionForOutcome(definition, gate, outcome, now = new Date().toISOString()) {
   const step = getStep(definition, gate.step);

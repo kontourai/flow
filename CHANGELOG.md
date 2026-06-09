@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.9
+
+- Organizes Flow runtime source into domain folders for contracts, runtime,
+  shared helpers, config, definitions, gates, transitions, reports, release
+  checks, and console implementation.
+- Keeps package-facing root shims for the CLI, console projection, console
+  server, and internal file helpers so generated package entrypoints remain
+  stable.
+- Moves Node test suites from `scripts/` to `tests/node/` and leaves
+  `scripts/` focused on operational repository tooling.
+
 ## 0.1.8
 
 - Documents the published `examples/` boundary with top-level and console

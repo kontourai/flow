@@ -1,6 +1,6 @@
-import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
-import type { FlowDiagnostic, MutableRecord } from "./flow-types.js";
-import { evidenceLabel, expectationLabel, isNonEmptyString, isObject, slugLabel } from "./flow-utils.js";
+import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
+import type { FlowDiagnostic, MutableRecord } from "../contracts/flow-types.js";
+import { evidenceLabel, expectationLabel, isNonEmptyString, isObject, slugLabel } from "../shared/flow-utils.js";
 
 const FLOW_DEFINITION_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_DEFINITION_RESOURCE_KIND = "FlowDefinition";

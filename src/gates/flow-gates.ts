@@ -1,5 +1,5 @@
-import type { GateOutcome, MutableRecord } from "./flow-types.js";
-import { defaultFlowConfig } from "./flow-config.js";
+import type { GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import { defaultFlowConfig } from "../config/flow-config.js";
 import {
   acceptedExceptionFor,
   attachedEvidenceFor,
@@ -8,7 +8,7 @@ import {
   nextActionForStep,
   routeBackDecision,
   routeReasonForFailedEvidence
-} from "./flow-definition.js";
+} from "../definition/flow-definition.js";
 import {
   evidenceLabel,
   evidenceMatchesRequirement,
@@ -16,7 +16,7 @@ import {
   missingSummary,
   passSummary,
   slugLabel
-} from "./flow-utils.js";
+} from "../shared/flow-utils.js";
 
 export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};

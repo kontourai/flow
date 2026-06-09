@@ -16,19 +16,19 @@ import {
   runDir,
   writeJson
 } from "./flow-files.js";
-import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
-import type { FlowEvidenceEntry, GateOutcome, MutableRecord } from "./flow-types.js";
-import { loadFlowConfig, defaultFlowConfig } from "./flow-config.js";
+import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
+import type { FlowEvidenceEntry, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
   initialState,
   openGates,
   validateDefinition
-} from "./flow-definition.js";
-import { applyEvaluation, evaluateGate } from "./flow-gates.js";
-import { validateEvaluationTransition } from "./flow-evaluation-transition.js";
-import { renderAndWriteReport } from "./flow-reports.js";
-import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "./flow-utils.js";
+} from "../definition/flow-definition.js";
+import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
+import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
+import { renderAndWriteReport } from "../reports/flow-reports.js";
+import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
 
 export async function ensureFlowLayout(cwd = process.cwd()) {
   const root = flowRoot(cwd);
