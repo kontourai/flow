@@ -182,7 +182,7 @@ flowchart LR
 
 Current implementation: Flow consumes Surface claim and trust evidence through Surface-shaped artifacts. Veritas governance evidence reaches Flow only when a Veritas tool emits or provides a compatible Surface-shaped artifact. Flow Agents can coordinate kits and adapters, but Flow core still decides gate outcomes and transition legality from Flow-owned contracts.
 
-Future Resource Contract alignment: durable Flow contracts should gradually align to Kontour Resource Contract shape where the audit recommends migration or mapping. Neutral Surface trust artifact projection remains an exception because wrapping it as a Flow-owned resource would blur product ownership.
+Future Resource Contract alignment: durable Flow contracts should gradually align to Kontour Resource Contract shape where migration or mapping improves clarity. Neutral Surface trust artifact projection remains an exception because wrapping it as a Flow-owned resource would blur product ownership.
 
 ## Ownership Boundaries
 
