@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5
+
+- Added Flow Project Config Resource Contract authoring support with
+  `apiVersion`, `kind`, `metadata`, and `spec`.
+- Preserved flat `.flow/config.json` compatibility while normalizing
+  Resource-shaped configs to the existing flat runtime config.
+- Added Resource-shaped project config merge coverage and a package-visible
+  example.
+
 ## 0.1.4
 
 - Made CLI `--cwd <path>` consistently scope run lifecycle commands and local

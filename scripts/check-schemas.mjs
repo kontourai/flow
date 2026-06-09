@@ -17,11 +17,13 @@ import {
   freezeStateFixtureAdapter,
   FLOW_SCHEMA_VERSION,
   initialState,
+  loadFlowConfig,
   loadRun,
   markdownText,
   normalizeTrustArtifact,
   projectVersionReleaseReport,
   previewFlowConfigMerge,
+  previewFlowConfigMergeFile,
   renderMarkdownReport,
   renderConfigMergeMarkdown,
   renderVersionReleaseReportMarkdown,
@@ -495,9 +497,31 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(reportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
-  assert.equal(configSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.deepEqual(configSchema.oneOf, [
+    { $ref: "#/$defs/flat_config" },
+    { $ref: "#/$defs/resource_config" }
+  ]);
+  assert.equal(configSchema.$defs.flat_config.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(configSchema.$defs.flat_config.properties.trusted_producers.$ref, "#/$defs/trusted_producers");
+  assert.equal(configSchema.$defs.flat_config.properties.gate_overrides.$ref, "#/$defs/gate_overrides");
+  assert.equal(configSchema.$defs.resource_config.properties.apiVersion.const, "flow.kontourai.io/v1alpha1");
+  assert.equal(configSchema.$defs.resource_config.properties.kind.const, "FlowProjectConfig");
+  assert.equal(configSchema.$defs.resource_config.properties.spec.$ref, "#/$defs/config_spec");
+  assert.equal(configSchema.$defs.resource_metadata.properties.name.$ref, "#/$defs/config_name");
+  assert.equal(configSchema.$defs.resource_metadata.properties.labels.$ref, "#/$defs/resource_string_map");
+  assert.equal(configSchema.$defs.resource_metadata.properties.annotations.$ref, "#/$defs/resource_string_map");
+  assert.equal(configSchema.$defs.config_spec.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(configSchema.$defs.config_spec.properties.trusted_producers.$ref, "#/$defs/trusted_producers");
+  assert.equal(configSchema.$defs.config_spec.properties.gate_overrides.$ref, "#/$defs/gate_overrides");
+  assert.deepEqual(configSchema.$defs.safe_map_key.not.enum, ["__proto__", "prototype", "constructor"]);
+  assert.equal(configSchema.$defs.resource_string_map.propertyNames.$ref, "#/$defs/safe_map_key");
+  assert.equal(configSchema.$defs.trusted_producers.propertyNames.$ref, "#/$defs/safe_map_key");
+  assert.equal(configSchema.$defs.gate_overrides.propertyNames.$ref, "#/$defs/safe_map_key");
+  assert.equal(configSchema.$defs.gate_override.properties.expectations.propertyNames.$ref, "#/$defs/safe_map_key");
   assert.equal(configMergeReportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(configMergeReportSchema.properties.merged_config.$ref, "flow-config.schema.json#/$defs/flat_config");
   assert.equal(transitionValidationRequestSchema.title, "Flow Transition Validation Request");
+  assert.equal(transitionValidationRequestSchema.properties.config.$ref, "flow-config.schema.json#/$defs/flat_config");
   assert.equal(transitionValidationResultSchema.title, "Flow Transition Validation Result");
   assert.equal(releaseReadinessPolicySchema.title, "Release Readiness Policy");
   assert.equal(releaseReadinessResultSchema.title, "Release Readiness Result");
@@ -547,7 +571,10 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaFields(runSchema, ["schema_version", "run_id", "definition_id", "status", "current_step", "gate_outcomes", "transitions", "exceptions"]);
   requireSchemaFields(evidenceSchema, ["schema_version", "evidence"]);
   requireSchemaFields(reportSchema, ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
-  requireSchemaFields(configSchema, ["schema_version"]);
+  requireSchemaDefFields(configSchema, "flat_config", ["schema_version"]);
+  requireSchemaDefFields(configSchema, "resource_config", ["apiVersion", "kind", "metadata", "spec"]);
+  requireSchemaDefFields(configSchema, "resource_metadata", ["name"]);
+  requireSchemaDefFields(configSchema, "config_spec", ["schema_version"]);
   requireSchemaFields(configMergeReportSchema, ["schema_version", "mode", "status", "local_config_path", "proposal_path", "proposed_changes", "accepted_changes", "rejected_changes", "conflicts", "unchanged", "exceptions", "merged_config", "summary"]);
   requireSchemaFields(transitionValidationRequestSchema, ["definition"]);
   requireSchemaFields(transitionValidationResultSchema, ["valid", "status", "diagnostics", "transition"]);
@@ -872,6 +899,19 @@ function proposedConfigFixture() {
   };
 }
 
+function resourceConfigFixture(config = localConfigFixture()) {
+  return {
+    apiVersion: "flow.kontourai.io/v1alpha1",
+    kind: "FlowProjectConfig",
+    metadata: {
+      name: "resource-project-config",
+      labels: { example: "resource-contract" },
+      annotations: { description: "Resource-shaped Flow Project Config example" }
+    },
+    spec: config
+  };
+}
+
 test("config merge preview reports accepted, rejected, conflicts, unchanged without mutating inputs", () => {
   const local = localConfigFixture();
   const before = JSON.stringify(local);
@@ -892,6 +932,100 @@ test("config merge preview reports accepted, rejected, conflicts, unchanged with
   assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
   assert.equal(report.merged_config.gate_overrides["verify-gate"].expectations["tests-passed"].required, true);
   assert.deepEqual(Object.keys(report.summary), ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"]);
+});
+
+test("Resource-shaped project config normalizes for load and merge workflows", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-resource-config-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(resourceConfigFixture(localConfigFixture()), null, 2)}\n`);
+  await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(resourceConfigFixture(proposedConfigFixture()), null, 2)}\n`);
+
+  const loaded = await loadFlowConfig(cwd);
+  assert.equal(loaded.schema_version, FLOW_SCHEMA_VERSION);
+  assert.equal(loaded.apiVersion, undefined);
+  assert.deepEqual(loaded.trusted_producers["quality.tests"].producers, ["ci/main"]);
+
+  const preview = await previewFlowConfigMergeFile("proposal.json", { cwd });
+  assert.equal(preview.status, "conflicts");
+  assert.deepEqual(preview.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
+  assert.equal(preview.merged_config.apiVersion, undefined);
+
+  const blocked = await applyFlowConfigMerge(cwd, "proposal.json");
+  assert.equal(blocked.status, "blocked");
+  let stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.equal(stored.kind, "FlowProjectConfig");
+
+  const applied = await applyFlowConfigMerge(cwd, "proposal.json", {
+    acceptConflicts: [
+      "$.trusted_producers.quality.tests",
+      "$.gate_overrides.verify-gate.expectations.tests-passed"
+    ],
+    exceptionReason: "accepted Resource-shaped project config proposal",
+    authority: "flow-maintainer"
+  });
+  assert.equal(applied.status, "applied");
+  stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.equal(stored.apiVersion, undefined);
+  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/kit"]);
+  assert.equal(stored.gate_overrides["verify-gate"].expectations["tests-passed"].required, false);
+});
+
+test("project config merge rejects unsafe map keys before object traversal", () => {
+  assert.equal({}.polluted, undefined);
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), JSON.parse(`{
+      "schema_version": "${FLOW_SCHEMA_VERSION}",
+      "trusted_producers": {
+        "__proto__": {
+          "polluted": true
+        }
+      }
+    }`)),
+    /unsafe config path segment: __proto__/
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), JSON.parse(`{
+      "apiVersion": "flow.kontourai.io/v1alpha1",
+      "kind": "FlowProjectConfig",
+      "metadata": { "name": "unsafe-config" },
+      "spec": {
+        "schema_version": "${FLOW_SCHEMA_VERSION}",
+        "trusted_producers": {
+          "__proto__": {
+            "polluted": true
+          }
+        }
+      }
+    }`)),
+    /unsafe config path segment: __proto__/
+  );
+  assert.equal({}.polluted, undefined);
+});
+
+test("Resource-shaped project config validates metadata before normalization", () => {
+  assert.throws(
+    () => previewFlowConfigMerge(resourceConfigFixture(), {
+      apiVersion: "flow.kontourai.io/v1alpha1",
+      kind: "FlowProjectConfig",
+      metadata: {
+        labels: { example: "missing-name" }
+      },
+      spec: proposedConfigFixture()
+    }),
+    /config.metadata.name/
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(resourceConfigFixture(), {
+      apiVersion: "flow.kontourai.io/v1alpha1",
+      kind: "FlowProjectConfig",
+      metadata: {
+        name: "invalid-metadata",
+        labels: { team: 42 }
+      },
+      spec: proposedConfigFixture()
+    }),
+    /config.metadata.labels.team must be a string/
+  );
 });
 
 test("config merge accepts conflicting authority only with explicit exception reason and authority", () => {
@@ -993,6 +1127,45 @@ test("CLI config preview and apply support JSON and Markdown reports", async () 
   const applyReport = JSON.parse(applied.stdout);
   assert.equal(applyReport.status, "applied");
   assert.ok(applyReport.exceptions.some((entry) => entry.authority === "cli-smoke"));
+});
+
+test("CLI config preview and apply accept Resource-shaped project config proposals", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-resource-config-merge-"));
+  const repoCwd = new URL("..", import.meta.url);
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
+  await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(resourceConfigFixture(proposedConfigFixture()), null, 2)}\n`);
+
+  const preview = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "json", "--cwd", cwd], { cwd: repoCwd });
+  const previewReport = JSON.parse(preview.stdout);
+  assert.equal(previewReport.status, "conflicts");
+  assert.equal(previewReport.merged_config.apiVersion, undefined);
+  assert.deepEqual(previewReport.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
+
+  const applied = await execFile(process.execPath, [
+    cli,
+    "config",
+    "apply",
+    "proposal.json",
+    "--format",
+    "json",
+    "--accept-conflict",
+    "$.trusted_producers.quality.tests",
+    "--accept-conflict",
+    "$.gate_overrides.verify-gate.expectations.tests-passed",
+    "--exception-reason",
+    "CLI accepted Resource-shaped project config proposal",
+    "--authority",
+    "cli-smoke",
+    "--cwd",
+    cwd
+  ], { cwd: repoCwd });
+  const applyReport = JSON.parse(applied.stdout);
+  const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.equal(applyReport.status, "applied");
+  assert.equal(stored.apiVersion, undefined);
+  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/kit"]);
 });
 
 test("example definition matches the v0.1 runtime shape", async () => {

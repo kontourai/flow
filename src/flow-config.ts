@@ -4,7 +4,12 @@ import path from "node:path";
 import { flowConfigPath, readJson, writeJson } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "./flow-types.js";
 import type { ConfigMergeReport, FlowConfig, MutableRecord } from "./flow-types.js";
-import { cloneJson, isObject, valueEquals } from "./flow-utils.js";
+import { cloneJson, isNonEmptyString, isObject, valueEquals } from "./flow-utils.js";
+
+const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
+const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";
+const FLOW_PROJECT_CONFIG_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+const UNSAFE_CONFIG_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 export function defaultFlowConfig(): FlowConfig {
   return {
@@ -15,6 +20,57 @@ export function defaultFlowConfig(): FlowConfig {
 }
 
 export const FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION = FLOW_SCHEMA_VERSION;
+
+function isFlowProjectConfigResource(config: any) {
+  return isObject(config)
+    && (
+      config.apiVersion !== undefined
+      || config.kind !== undefined
+      || config.metadata !== undefined
+      || config.spec !== undefined
+    );
+}
+
+function normalizeFlowConfig(config: any) {
+  if (!isFlowProjectConfigResource(config)) return config;
+  if (config.apiVersion !== FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION) {
+    throw new Error(`config.apiVersion must be ${FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION}`);
+  }
+  if (config.kind !== FLOW_PROJECT_CONFIG_RESOURCE_KIND) {
+    throw new Error(`config.kind must be ${FLOW_PROJECT_CONFIG_RESOURCE_KIND}`);
+  }
+  if (!isObject(config.metadata)) throw new Error("config.metadata must be an object");
+  if (!isObject(config.spec)) throw new Error("config.spec must be an object");
+  validateResourceMetadata(config.metadata);
+  if (config.spec.schema_version !== FLOW_SCHEMA_VERSION) throw new Error(`config.spec.schema_version must be ${FLOW_SCHEMA_VERSION}`);
+  return config.spec;
+}
+
+function assertSafeConfigKey(segment) {
+  if (UNSAFE_CONFIG_KEYS.has(segment)) throw new Error(`unsafe config path segment: ${segment}`);
+}
+
+function validateResourceStringMap(value: any, path: string) {
+  if (value === undefined) return;
+  if (!isObject(value)) throw new Error(`${path} must be an object with string values`);
+  for (const [key, entry] of Object.entries(value)) {
+    assertSafeConfigKey(key);
+    if (typeof entry !== "string") throw new Error(`${path}.${key} must be a string`);
+  }
+}
+
+function validateResourceMetadata(metadata: any) {
+  const allowed = new Set(["name", "labels", "annotations"]);
+  for (const key of Object.keys(metadata)) {
+    assertSafeConfigKey(key);
+    if (!allowed.has(key)) throw new Error(`config.metadata.${key} is not supported`);
+  }
+  if (!isNonEmptyString(metadata.name) || !FLOW_PROJECT_CONFIG_NAME_PATTERN.test(metadata.name)) {
+    throw new Error("config.metadata.name must match ^[a-z0-9][a-z0-9._-]*$");
+  }
+  validateResourceStringMap(metadata.labels, "config.metadata.labels");
+  validateResourceStringMap(metadata.annotations, "config.metadata.annotations");
+}
 
 function pathSegmentsToJsonPath(segments) {
   return `$${segments.map((segment) => `.${segment}`).join("")}`;
@@ -27,25 +83,34 @@ function mergeSectionForPath(pathValue) {
 }
 
 function getPathValue(root, segments) {
-  return segments.reduce((value, segment) => (isObject(value) ? value[segment] : undefined), root);
+  return segments.reduce((value, segment) => {
+    assertSafeConfigKey(segment);
+    return isObject(value) ? value[segment] : undefined;
+  }, root);
 }
 
 function setPathValue(root, segments, value) {
   let target = root;
   for (const segment of segments.slice(0, -1)) {
+    assertSafeConfigKey(segment);
     target[segment] ??= {};
     target = target[segment];
   }
-  target[segments.at(-1)] = cloneJson(value);
+  const finalSegment = segments.at(-1);
+  assertSafeConfigKey(finalSegment);
+  target[finalSegment] = cloneJson(value);
 }
 
 function collectMergePaths(value: any, segments: string[] = []): string[][] {
   if (!isObject(value) || Object.keys(value).length === 0) return [segments];
-  return Object.entries(value).flatMap(([key, entry]) => collectMergePaths(entry, [...segments, key]));
+  return Object.entries(value).flatMap(([key, entry]) => {
+    assertSafeConfigKey(key);
+    return collectMergePaths(entry, [...segments, key]);
+  });
 }
 
 function proposedConfigFromEnvelope(proposal) {
-  return proposal?.flow_config ?? proposal?.config ?? proposal;
+  return normalizeFlowConfig(proposal?.flow_config ?? proposal?.config ?? proposal);
 }
 
 function normalizeAcceptedConflictPaths(values: any[] | any = []) {
@@ -81,7 +146,7 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
 }
 
 export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeReport {
-  const local = { ...defaultFlowConfig(), ...(localConfig ?? {}) };
+  const local = { ...defaultFlowConfig(), ...(normalizeFlowConfig(localConfig) ?? {}) };
   const proposed = { ...defaultFlowConfig(), ...(proposedConfigFromEnvelope(kitProposal) ?? {}) };
   const merged = cloneJson(local);
   const acceptedPaths = normalizeAcceptedConflictPaths(options.acceptConflicts ?? options.acceptedConflicts);
@@ -263,5 +328,5 @@ export function renderConfigMergeSummary(report) {
 export async function loadFlowConfig(cwd = process.cwd()) {
   const file = flowConfigPath(cwd);
   if (!existsSync(file)) return defaultFlowConfig();
-  return { ...defaultFlowConfig(), ...(await readJson(file)) };
+  return { ...defaultFlowConfig(), ...normalizeFlowConfig(await readJson(file)) };
 }
