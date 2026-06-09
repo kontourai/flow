@@ -3,6 +3,7 @@ import { access, constants, readFile, stat } from "node:fs/promises";
 import { test } from "node:test";
 
 const hookPath = new URL("../.githooks/pre-push", import.meta.url);
+const contributingPath = new URL("../docs/contributing.md", import.meta.url);
 const packagePath = new URL("../package.json", import.meta.url);
 const readmePath = new URL("../README.md", import.meta.url);
 const setupPath = new URL("./setup-repo-hooks.mjs", import.meta.url);
@@ -71,24 +72,34 @@ test("setup and validation scripts use repo-local hooks path", async () => {
   assert.match(validate, /pre-push/);
 });
 
-test("README documents contributor hook setup and product boundary", async () => {
+test("README points contributors to repo-local setup docs", async () => {
   const readme = await text(readmePath);
 
-  assert.match(readme, /## Contributor Git Hooks/);
-  assert.match(readme, /npm run setup:repo-hooks/);
-  assert.match(readme, /npm run validate:repo-hooks/);
-  assert.match(readme, /contributor tooling/);
-  assert.match(readme, /not Flow Definition semantics/);
-  assert.match(readme, /not Flow Run state/);
-  assert.match(readme, /not gate evaluation/);
-  assert.match(readme, /not Flow Console behavior/);
-  assert.match(readme, /not CI or merge authority/);
+  assert.match(readme, /docs\/contributing\.md/);
+  assert.doesNotMatch(readme, /## Contributor Git Hooks/);
+  assert.doesNotMatch(readme, /npm run setup:repo-hooks/);
+});
+
+test("contributing docs cover hook setup and product boundary", async () => {
+  const contributing = await text(contributingPath);
+
+  assert.match(contributing, /## Optional Git Hooks/);
+  assert.match(contributing, /npm run setup:repo-hooks/);
+  assert.match(contributing, /npm run validate:repo-hooks/);
+  assert.match(contributing, /contributor tooling/);
+  assert.match(contributing, /not Flow Definition semantics/);
+  assert.match(contributing, /not Flow Run state/);
+  assert.match(contributing, /not gate evaluation/);
+  assert.match(contributing, /not Flow Console behavior/);
+  assert.match(contributing, /not CI or merge authority/);
+  assert.match(contributing, /\.flow-agents\//);
 });
 
 test("repo hook files do not mention downstream or private product names", async () => {
   const files = [
     ["package.json", await text(packagePath)],
     ["README.md", await text(readmePath)],
+    ["docs/contributing.md", await text(contributingPath)],
     [".githooks/pre-push", await text(hookPath)],
     ["scripts/setup-repo-hooks.mjs", await text(setupPath)],
     ["scripts/validate-repo-hooks.mjs", await text(validatePath)]

@@ -16,28 +16,9 @@ npx flow attach-evidence dev-1847 --gate verify-gate \
 npx flow report dev-1847
 ```
 
-## Contributor Git Hooks
-
-Flow includes optional repo-local Git hooks for contributors:
-
-```sh
-npm run setup:repo-hooks
-npm run validate:repo-hooks
-```
-
-Setup is idempotent and writes only this repository's local Git config: `core.hooksPath=.githooks`. The tracked `pre-push` hook runs the bounded local lane, `npm test` and `npm run check:schemas`.
-
-These hooks are contributor tooling. They are not Flow Definition semantics, not Flow Run state, not gate evaluation, not Flow Console behavior, and not CI or merge authority.
-
-## TypeScript Development
-
-Flow core runtime sources live in `src/*.ts`. `npm run typecheck` validates those sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
-
-The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and scenarios remain JSON/data assets rather than TypeScript modules.
-
-Repo structure guide: [docs/repo-structure.md](docs/repo-structure.md) explains where source, schemas, examples, scenarios, console assets, tests, scripts, generated output, and workflow artifacts belong.
-
 Release history: [CHANGELOG.md](CHANGELOG.md) records published package changes.
+
+Contributor setup and repo validation live in [docs/contributing.md](docs/contributing.md). Repo structure details live in [docs/repo-structure.md](docs/repo-structure.md).
 
 ## Status
 
