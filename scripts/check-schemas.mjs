@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import * as flowRuntime from "../dist/index.js";
 import {
   applyEvaluation,
   applyFlowConfigMerge,
@@ -16,6 +17,7 @@ import {
   freezeStateFixtureAdapter,
   FLOW_SCHEMA_VERSION,
   initialState,
+  markdownText,
   normalizeTrustArtifact,
   projectVersionReleaseReport,
   previewFlowConfigMerge,
@@ -99,6 +101,92 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.validateRunTransition, "function");
   assert.equal(typeof runtime.projectVersionReleaseReport, "function");
   assert.equal(typeof runtime.renderVersionReleaseReportMarkdown, "function");
+});
+
+test("package root exports stay stable across source-domain splits", () => {
+  const expectedRuntimeExports = [
+    "BUILTIN_EVIDENCE_KINDS",
+    "FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION",
+    "FLOW_SCHEMA_VERSION",
+    "acceptException",
+    "acceptedExceptionFor",
+    "applyEvaluation",
+    "applyFlowConfigMerge",
+    "assertSafeRunId",
+    "attachEvidence",
+    "attachedEvidenceFor",
+    "changeManagementFixtureAdapter",
+    "continuationLine",
+    "createDiagnostic",
+    "defaultFlowConfig",
+    "definitionDiagnostics",
+    "deploymentWindowFixtureAdapter",
+    "ensureFlowLayout",
+    "evaluateGate",
+    "evaluateReleaseReadiness",
+    "evaluateRun",
+    "evidenceLabel",
+    "evidenceMatchesExpectation",
+    "evidenceMatchesRequirement",
+    "evidenceProducerTrusted",
+    "examplePath",
+    "expectationLabel",
+    "expectationsForGate",
+    "findGate",
+    "flowConfigPath",
+    "flowReadme",
+    "flowRoot",
+    "freezeStateFixtureAdapter",
+    "gatesForStep",
+    "getStep",
+    "initialState",
+    "legacyEvaluateGate",
+    "listRuns",
+    "loadFlowConfig",
+    "loadReleaseReadinessInputs",
+    "loadRun",
+    "markdownText",
+    "mergeGateOutcome",
+    "missingSummary",
+    "moduleRoot",
+    "nextActionForStep",
+    "normalizeEvidenceKind",
+    "normalizeTrustArtifact",
+    "openGates",
+    "passSummary",
+    "previewFlowConfigMerge",
+    "previewFlowConfigMergeFile",
+    "projectFlowRun",
+    "projectFlowRunFromFiles",
+    "projectVersionReleaseReport",
+    "readJson",
+    "renderAndWriteReport",
+    "renderConfigMergeMarkdown",
+    "renderConfigMergeSummary",
+    "renderMarkdownReport",
+    "renderResume",
+    "renderSummary",
+    "renderVersionReleaseReportMarkdown",
+    "reportJson",
+    "routeBackAttempt",
+    "routeBackDecision",
+    "routeReasonForFailedEvidence",
+    "routeTargetForReason",
+    "runDir",
+    "saveRun",
+    "sha256File",
+    "slugLabel",
+    "sortStatus",
+    "startRun",
+    "validateDefinition",
+    "validateDefinitionWithDiagnostics",
+    "validateEvaluationTransition",
+    "validateRunTransition",
+    "validateTransitionRequest",
+    "writeJson"
+  ];
+
+  assert.deepEqual(Object.keys(flowRuntime).sort(), expectedRuntimeExports);
 });
 
 test("CLI version-release-report renders deterministic JSON and Markdown from local fixtures", async () => {
@@ -1770,6 +1858,79 @@ test("reports, summary, and resume expose route-back metadata", () => {
 
   const resume = renderResume(definition, state);
   assert.match(resume, /route backs: verify-gate implementation_defect -> recover attempt 2\/1, limit exceeded yes, recovery recover/);
+});
+
+test("Flow Markdown report escapes inline run data and normalizes line breaks", () => {
+  const definition = {
+    id: "report-<definition>",
+    version: "1",
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Tests passed.",
+            claim: { type: "quality.tests" }
+          }
+        ]
+      }
+    }
+  };
+  const state = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    run_id: "run-<script>",
+    definition_id: definition.id,
+    definition_version: definition.version,
+    subject: "ok\n# injected <script>",
+    status: "active",
+    current_step: "verify",
+    params: {},
+    gate_outcomes: [
+      {
+        gate_id: "verify-gate",
+        status: "block",
+        summary: "missing <b>evidence</b>\n## injected",
+        missing: ["tests-passed"],
+        optional_missing: [],
+        evidence_refs: ["ev.<bad>\n- injected"]
+      }
+    ],
+    transitions: [],
+    exceptions: [
+      {
+        gate_id: "verify-gate",
+        reason: "human\n# injected",
+        authority: "<owner>"
+      }
+    ],
+    next_action: "attach evidence\n# injected",
+    updated_at: "2026-06-09T00:00:00.000Z"
+  };
+  const manifest = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    evidence: [
+      {
+        id: "ev.<bad>\n- injected",
+        gate_id: "verify-gate",
+        kind: "file\n# injected",
+        sha256: "<sha>"
+      }
+    ]
+  };
+
+  const markdown = renderMarkdownReport(definition, state, manifest);
+  assert.equal(markdownText("ok\r\n# injected <script>"), "ok # injected &lt;script&gt;");
+  assert.match(markdown, /Subject: ok # injected &lt;script&gt;/);
+  assert.match(markdown, /Next action: attach evidence # injected/);
+  assert.match(markdown, /missing &lt;b&gt;evidence&lt;\/b&gt; ## injected/);
+  assert.match(markdown, /Evidence: ev\.&lt;bad&gt; - injected/);
+  assert.doesNotMatch(markdown, /^# injected/m);
+  assert.doesNotMatch(markdown, /^## injected/m);
+  assert.doesNotMatch(markdown, /<script>|<b>evidence<\/b>|<owner>|<sha>/);
 });
 
 test("CLI records route-back metadata and only route_reason selects the route", async () => {

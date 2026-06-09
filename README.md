@@ -35,6 +35,8 @@ Flow core runtime sources live in `src/*.ts`. `npm run typecheck` validates thos
 
 The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and fixtures remain JSON/data assets rather than TypeScript modules.
 
+Repo structure guide: [docs/repo-structure.md](docs/repo-structure.md) explains where source, schemas, examples, fixtures, console assets, tests, scripts, generated output, and workflow artifacts belong.
+
 ## Status
 
 Flow v0.1 is local and file-backed.
