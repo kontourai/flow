@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -38,10 +38,11 @@
   ],
   "scripts": {
     "build": "node scripts/sync-console-kit-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
-    "test": "npm run build && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
+    "test": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
     "test:node": "node --test tests/node/*.test.mjs",
     "test:browser": "playwright test",
     "typecheck": "tsc --noEmit",
+    "check:types:contracts": "tsc -p tsconfig.types.json --noEmit",
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
     "sync:console-kit": "node scripts/sync-console-kit-assets.mjs",
     "check:console-kit-assets": "node scripts/sync-console-kit-assets.mjs --check",
