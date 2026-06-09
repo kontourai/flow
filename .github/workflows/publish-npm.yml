@@ -90,7 +90,7 @@ jobs:
 
       - name: Verify tagged commit is on main
         run: |
-          git fetch origin main --depth=1
+          git fetch origin main
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" "FETCH_HEAD"; then
             echo "Tagged commit ${GITHUB_SHA} is not reachable from the fetched origin/main tip" >&2
             exit 1
