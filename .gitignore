@@ -6,7 +6,7 @@ dist/
 *.tgz
 .surface/
 .veritas/
-.agents/
+.flow-agents/
 test-results/
 playwright-report/
 .DS_Store

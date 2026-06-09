@@ -113,7 +113,14 @@ flowchart LR
 
 Current implementation: `projectFlowRunFromFiles` is read-only, local-file-first, deterministic, and Flow-owned. It reads local run files and preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in the run files. It does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
 
-Future Resource Contract alignment: console projection resources should likely start Resource Contract-shaped when they become durable provider-facing or console-facing contracts. The current v0.1 projection is an implementation API and read model, not a migrated schema.
+Run file authority is intentionally split:
+
+- `definition.json` is the normalized Flow Definition snapshot captured when the run starts.
+- `state.json` is the authoritative mutable continuation state and follows `schemas/flow-run.schema.json`.
+- `evidence/manifest.json` is the evidence metadata index for that run and points at copied evidence files under `evidence/`.
+- `report.md`, `report.json`, and console projections are derived explanations regenerated from the definition snapshot, run state, and evidence manifest.
+
+Future Resource Contract alignment: Flow Run state, evidence manifests, reports, and console projection resources should likely be evaluated for Resource Contract shape when they become durable provider-facing or console-facing contracts. The current v0.1 runtime keeps `.flow/runs/<run-id>/state.json` flat and schema-versioned; Resource Contract support is limited to authored Flow Definition and authored Flow Project Config inputs.
 
 ## Reports And Console Projection
 

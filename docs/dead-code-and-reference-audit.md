@@ -30,7 +30,7 @@ were edited by this audit.
 | Command | Concise result |
 | --- | --- |
 | `git status --short` | Clean before audit edits. |
-| `rg --files .agents/flow-agents/repo-sprawl-cleanup-plan context/contracts docs \| sort` | Found plan/session sidecars and docs; `context/contracts/*.md` files were absent. |
+| `rg --files .flow-agents/repo-sprawl-cleanup-plan context/contracts docs \| sort` | Found plan/session sidecars and docs; `context/contracts/*.md` files were absent. |
 | `find context evals -maxdepth 4 -print` | Initially found only empty local directories under `context/` and `evals/`; no files. Those empty local placeholders were removed with `rmdir`. |
 | `git ls-files \| sort` | Tracked source includes `src/`, `schemas/`, `examples/`, scripts, browser tests, docs, workflows, hooks, and hidden console `.flow` fixture files. |
 | `node -e "const p=require('./package.json'); ..."` | Package exposes root, `./console-projection`, `./console-server`, bin `flow`, files `dist/`, `schemas/`, `examples/`, `README.md`, `LICENSE`, and documented npm scripts. |
@@ -38,8 +38,8 @@ were edited by this audit.
 | `rg -n "examples/scenarios\|console-projection\|surface-claims\|release-readiness\|version-release-report\|\\.flow/runs" . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Scenario trees are referenced by README, scripts/checks, browser server/tests, and docs. |
 | `rg -n "console-kit\|vendor/console-kit\|tokens/\|copy-console-ui\|sync-console-kit-assets\|console-ui" . --glob '!node_modules/**' --glob '!dist/**' --glob '!package-lock.json'` | Vendored Console Kit assets are referenced by `src/console-ui/index.html`, sync/copy scripts, tsconfigs, package scripts, and dependency metadata. |
 | `rg -n "from ['\"]\|import\\(\|require\\(" src scripts tests --glob '!node_modules/**' --glob '!dist/**'` | Import map confirms public exports and tests rely on built `dist/*` plus source internals. |
-| `git status --short --ignored context evals dist test-results .agents .flow .surface .veritas node_modules \| head -200` | Ignored generated/local dirs present: `.agents/`, `dist/`, `node_modules/`, `test-results/`. `context/` and `evals/` were not tracked or ignored. |
-| `git ls-files context evals dist test-results .agents .flow .surface .veritas node_modules` | No tracked files in those top-level local/generated directories. Tracked `.flow` files live only under the explicit fixture exception path. |
+| `git status --short --ignored context evals dist test-results .flow-agents .flow .surface .veritas node_modules \| head -200` | Ignored generated/local dirs present: `.flow-agents/`, `dist/`, `node_modules/`, `test-results/`. `context/` and `evals/` were not tracked or ignored. |
+| `git ls-files context evals dist test-results .flow-agents .flow .surface .veritas node_modules` | No tracked files in those top-level local/generated directories. Tracked `.flow` files live only under the explicit fixture exception path. |
 | `npm pack --dry-run --ignore-scripts` | Failed because the user npm cache has root-owned files under `/Users/brian/.npm/_cacache/tmp`. |
 | `npm pack --dry-run --ignore-scripts --cache /private/tmp/flow-npm-cache` | Succeeded. Tarball includes `dist/`, `schemas/`, `examples/`, README, CHANGELOG, LICENSE, and the tracked `examples/scenarios/console-projection/.flow/...` scenario. |
 
@@ -103,7 +103,7 @@ are checked before copy, and would make the console dependent on package-manager
 | --- | --- | --- |
 | `dist/` | Ignored generated build output, but required package content via `package.json.files`. | Keep ignored; build/prepack must generate it before publish. |
 | `node_modules/` | Ignored dependency install output. | Keep ignored. |
-| `.agents/` | Ignored workflow artifact area. This task writes only session artifacts under `.agents/flow-agents/...`. | Keep ignored; not production Flow source. |
+| `.flow-agents/` | Ignored workflow artifact area. This task writes session artifacts under `.flow-agents/...`. | Keep ignored; not production Flow source. |
 | `.flow/` | Ignored local Flow run/config store. | Keep ignored, except tracked fixture exception. |
 | `examples/scenarios/console-projection/.flow/**` | Explicit tracked exception to `.flow/` ignore rule. | Keep tracked; package and tests depend on it. |
 | `.surface/` | Ignored local Surface state/artifacts. | Keep ignored; Flow does not own Surface authority. |
@@ -119,7 +119,7 @@ are checked before copy, and would make the console dependent on package-manager
 | Empty local `context/` directories | `find context evals -maxdepth 4 -print` found directories only; `git ls-files context` found none; referenced contract files were absent. | Safe local cleanup candidate. | Removed with `rmdir`; no tracked files were affected. |
 | Empty local `evals/` directories | `find` found directories only; `git ls-files evals` found none. | Safe local cleanup candidate. | Removed with `rmdir`; no tracked files were affected. |
 | Ignored local `dist/` | Ignored by `.gitignore`; package dry-run includes it because current workspace has built output and package files require it. | Generated output, not dead code. | Keep ignored; do not delete in cleanup unless explicitly doing local housekeeping after rebuild verification. |
-| Ignored `.agents/`, `test-results/`, `node_modules/` | `git status --short --ignored ...` reports ignored dirs; no tracked files in top-level query. | Generated/local artifacts. | Keep ignored. Do not classify as source. |
+| Ignored `.flow-agents/`, `test-results/`, `node_modules/` | `git status --short --ignored ...` reports ignored dirs; no tracked files in top-level query. | Generated/local artifacts. | Keep ignored. Do not classify as source. |
 | `examples/scenarios/console-projection/.flow/**` | Explicit `.gitignore` exception; referenced by projection/smoke/browser checks and included in package dry-run. | Not dead. | Keep. |
 | `src/console-ui/vendor/console-kit/**` | Referenced by HTML, sync/copy scripts, package scripts, and package dependency. | Not dead. | Keep. |
 | `scripts/*.mjs` | Every tracked script is referenced by package scripts, README, hook tests, or another script. | Not dead. | Keep; docs can group by purpose. |

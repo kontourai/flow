@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.6
+
+- Clarified the generated `.flow/runs/<run-id>/` layout and documented
+  `state.json` as the flat v0.1 Flow Run continuation authority.
+- Added run layout constants and drift checks for generated runs and the
+  package-visible console projection scenario.
+- Added run identity metadata to newly generated evidence manifests while
+  keeping Flow Run state, evidence manifests, and reports out of the current
+  Resource Contract migration.
+
 ## 0.1.5
 
 - Added Flow Project Config Resource Contract authoring support with

@@ -1030,7 +1030,88 @@
   "open_gates": [
     "verify-gate"
   ],
-  "report": null,
+  "report": {
+    "json": {
+      "accepted_exceptions": [
+        {
+          "accepted_at": "2026-06-07T14:10:00.000Z",
+          "authority": "fixture-owner",
+          "evidence_refs": [
+            "ev.scoped-diff"
+          ],
+          "gate_id": "build-gate",
+          "id": "ex.review-deferred",
+          "reason": "Reviewer approval deferred for fixture coverage."
+        }
+      ],
+      "continuation": "resume from verify, not chat memory",
+      "current_step": "verify",
+      "definition_id": "console-projection-flow",
+      "definition_version": "0.1",
+      "gate_summaries": [
+        {
+          "evidence_refs": [
+            "ev.scoped-diff"
+          ],
+          "gate_id": "build-gate",
+          "matched_expectations": [
+            {
+              "evidence_id": "ev.scoped-diff",
+              "expectation_id": "scoped-diff"
+            }
+          ],
+          "missing": [
+            "missing-review"
+          ],
+          "optional_missing": [],
+          "status": "pass",
+          "summary": "Implementation diff accepted by explicit exception."
+        },
+        {
+          "attempt": 1,
+          "evidence_refs": [
+            "ev.surface-tests",
+            "ev.veritas-readiness",
+            "ev.failed-tests"
+          ],
+          "expectation_ids": [
+            "tests-passed"
+          ],
+          "gate_id": "verify-gate",
+          "limit_exceeded": false,
+          "matched_expectations": [
+            {
+              "evidence_id": "ev.surface-tests",
+              "expectation_id": "tests-passed"
+            },
+            {
+              "evidence_id": "ev.veritas-readiness",
+              "expectation_id": "veritas-readiness"
+            }
+          ],
+          "max_attempts": 2,
+          "missing": [],
+          "optional_missing": [],
+          "recovery_step": "build",
+          "route_back_to": "build",
+          "route_reason": "implementation_defect",
+          "selected_route": "implementation_defect",
+          "status": "block",
+          "summary": "Tests failed; route back to build."
+        }
+      ],
+      "next_action": "Fix the test failure and rerun verification.",
+      "open_gates": [
+        "verify-gate"
+      ],
+      "run_id": "console-projection-fixture",
+      "schema_version": "0.1",
+      "status": "active",
+      "subject": "console-projection-fixture",
+      "summary": "console-projection-flow / console-projection-fixture"
+    },
+    "path": "report.json"
+  },
   "route_backs": [
     {
       "attempt": 1,

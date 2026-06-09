@@ -2,11 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kontourai.io/schemas/gate-evidence.schema.json",
   "title": "Gate Evidence Manifest",
+  "description": "Metadata for gate evidence entries. When generated under .flow/runs/<run-id>/evidence/manifest.json, the manifest carries local run and definition identity; standalone scenario manifests may omit that identity. This is not an authored Resource Contract.",
   "type": "object",
   "required": ["schema_version", "evidence"],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "type": "string", "const": "0.1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "definition_id": { "type": "string", "minLength": 1 },
+    "definition_version": { "type": "string" },
     "evidence": {
       "type": "array",
       "items": { "$ref": "#/$defs/evidence" }

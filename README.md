@@ -104,14 +104,16 @@ that read or write project state. For example, `flow start flow-definition.json
 
 Flow v0.1 is local and file-backed. A run is stored at `.flow/runs/<run-id>/`:
 
-- `definition.json` is the Flow Definition snapshot from run start.
-- `state.json` records the current step, transition history, gate outcomes, accepted exceptions, and next action.
-- `evidence/manifest.json` records attached gate evidence metadata.
-- `evidence/<id>.*` contains copied evidence files.
-- `report.md` is the human-readable Flow Report.
-- `report.json` is the machine-readable Flow Report.
+- `definition.json` is the normalized Flow Definition snapshot used by this run. It is copied from the authored definition at run start; if the authored input used the Resource Contract envelope, the persisted snapshot is the flat Flow Definition spec.
+- `state.json` is the authoritative mutable Flow Run state. It follows `schemas/flow-run.schema.json` and records `run_id`, definition identity, subject, status, current step, transition history, gate outcomes, accepted exceptions, next action, and update time.
+- `evidence/manifest.json` is the append/update evidence index for this run. It follows `schemas/gate-evidence.schema.json`, carries the run and definition identity, and points at copied evidence files.
+- `evidence/<id>.*` contains copied evidence artifacts attached through the CLI or compatible local adapters.
+- `report.md` is a derived human-readable Flow Report regenerated from `definition.json`, `state.json`, and `evidence/manifest.json`.
+- `report.json` is the derived machine-readable Flow Report regenerated from the same run files.
 
 The continuation contract is intentionally simple: `flow resume <run-id>` reads only the run directory and prints the current step, next action, open gates, accepted exceptions, and a one-line instruction for the next agent.
+
+`state.json` is the continuation authority. Reports and console projections are explanations of the current run files; they are not the source of truth for gate evaluation or resume.
 
 ## Console Projection
 
@@ -461,7 +463,7 @@ Resource-shaped Flow Definitions map to the same runtime model as flat v0.1 defi
 
 The flat v0.1 Flow Definition shape remains supported for compatibility. Existing definitions, examples, local run snapshots, reports, and workflows that use top-level `id`, `version`, `steps`, and `gates` do not need to migrate to the Resource Contract envelope.
 
-Resource Contract support currently covers authored Flow Definition and authored Flow Project Config inputs. It does not migrate Flow Run state, gate evidence manifests, reports, transition validation results, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters.
+Resource Contract support currently covers authored Flow Definition and authored Flow Project Config inputs. It does not migrate Flow Run state, gate evidence manifests, reports, transition validation results, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters. In v0.1, `.flow/runs/<run-id>/state.json` remains the flat Flow Run state contract described by `schemas/flow-run.schema.json`.
 
 `--json` emits a stable machine-readable payload:
 

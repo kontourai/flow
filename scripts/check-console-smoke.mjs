@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 import { startFlowConsoleServer } from "../dist/console-server.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const screenshotPath = path.join(root, ".agents", "flow-agents", "flow-console-shell", "console-smoke.png");
+const screenshotPath = path.join(root, ".flow-agents", "flow-console-shell", "console-smoke.png");
 const server = await startFlowConsoleServer({
   runId: "console-projection-fixture",
   cwd: path.join(root, "examples", "scenarios", "console-projection"),

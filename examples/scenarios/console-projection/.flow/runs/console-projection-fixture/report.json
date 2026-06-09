@@ -1,0 +1,79 @@
+{
+  "schema_version": "0.1",
+  "run_id": "console-projection-fixture",
+  "definition_id": "console-projection-flow",
+  "definition_version": "0.1",
+  "subject": "console-projection-fixture",
+  "status": "active",
+  "summary": "console-projection-flow / console-projection-fixture",
+  "current_step": "verify",
+  "next_action": "Fix the test failure and rerun verification.",
+  "continuation": "resume from verify, not chat memory",
+  "open_gates": [
+    "verify-gate"
+  ],
+  "accepted_exceptions": [
+    {
+      "id": "ex.review-deferred",
+      "gate_id": "build-gate",
+      "reason": "Reviewer approval deferred for fixture coverage.",
+      "authority": "fixture-owner",
+      "accepted_at": "2026-06-07T14:10:00.000Z",
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ]
+    }
+  ],
+  "gate_summaries": [
+    {
+      "gate_id": "build-gate",
+      "status": "pass",
+      "summary": "Implementation diff accepted by explicit exception.",
+      "evidence_refs": [
+        "ev.scoped-diff"
+      ],
+      "missing": [
+        "missing-review"
+      ],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "scoped-diff",
+          "evidence_id": "ev.scoped-diff"
+        }
+      ]
+    },
+    {
+      "gate_id": "verify-gate",
+      "status": "block",
+      "summary": "Tests failed; route back to build.",
+      "evidence_refs": [
+        "ev.surface-tests",
+        "ev.veritas-readiness",
+        "ev.failed-tests"
+      ],
+      "missing": [],
+      "optional_missing": [],
+      "matched_expectations": [
+        {
+          "expectation_id": "tests-passed",
+          "evidence_id": "ev.surface-tests"
+        },
+        {
+          "expectation_id": "veritas-readiness",
+          "evidence_id": "ev.veritas-readiness"
+        }
+      ],
+      "route_back_to": "build",
+      "selected_route": "implementation_defect",
+      "recovery_step": "build",
+      "route_reason": "implementation_defect",
+      "attempt": 1,
+      "max_attempts": 2,
+      "limit_exceeded": false,
+      "expectation_ids": [
+        "tests-passed"
+      ]
+    }
+  ]
+}
