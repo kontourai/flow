@@ -113,6 +113,16 @@ console.log(projection.gates);
 
 The root package also exports `projectFlowRun` and `projectFlowRunFromFiles` from `@kontourai/flow`. Type declarations are available from both package boundaries.
 
+Public package specifiers are limited to the package root and these two console subpaths:
+
+```js
+import { validateDefinition } from "@kontourai/flow";
+import { projectFlowRunFromFiles } from "@kontourai/flow/console-projection";
+import { startFlowConsoleServer } from "@kontourai/flow/console-server";
+```
+
+Generated `dist/` domain files are packaged implementation output. Do not import internal subpaths such as `@kontourai/flow/dist/runtime/flow-files.js`, `@kontourai/flow/dist/console/console-projection.js`, or `@kontourai/flow/flow-files`; they are not part of the npm package API.
+
 `projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
 
 This API is the Flow boundary for console consumers. Browser UI, hosted behavior, companion console startup, and `kontour-console` integration are outside this Flow issue.
