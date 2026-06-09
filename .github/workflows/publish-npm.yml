@@ -112,5 +112,5 @@ jobs:
 
       - name: Publish public package
         if: steps.published.outputs.published != 'true'
-        run: npm publish --access public --provenance
+        run: npm publish --access public
         working-directory: flow

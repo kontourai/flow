@@ -17,7 +17,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `examples/fixtures/console-projection/.flow/` | Intentionally tracked local-run fixture for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This fixture proves console projection behavior and must stay inspectable. |
 | `scripts/` | Node support tooling for schema/runtime checks, console projection checks, Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
-| `docs/` | Durable product, architecture, ADR, audit, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
+| `docs/` | Durable product, architecture, ADR, audit, release operations, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
 | `.github/` | GitHub Actions workflows for CI and package publishing. | Tracked repo operations. This is not Flow runtime behavior. |
 | `.githooks/` | Optional contributor Git hooks. | Tracked contributor tooling. Installed locally by `npm run setup:repo-hooks`. |
