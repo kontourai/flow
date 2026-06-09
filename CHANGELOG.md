@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.12
+
+- Adds a docs index so developers can find package, contributor, repo
+  structure, architecture, boundary, vision, positioning, example, and ADR
+  material from one place.
+- Points the README at the docs index instead of scattering contributor and
+  structure links in package-facing copy.
+- Keeps contributor docs focused on source layout, validation, hooks, local
+  product state, and release prep.
+
 ## 0.1.11
 
 - Splits the oversized Node schema/runtime suite into focused domain files

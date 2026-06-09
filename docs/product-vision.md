@@ -123,7 +123,7 @@ The first publishable version is a local npm package:
 - Markdown and JSON Flow Reports
 - continuation from `.flow/runs/<run-id>/` without chat memory
 
-Runtime hooks, hosted services, multi-agent dispatch, web UI, and Surface projection are intentionally outside v0.1.
+Runtime hooks, hosted services, multi-agent dispatch, hosted web UI, and Surface projection are intentionally outside v0.1. The loopback-only local Flow Console remains part of the local package boundary.
 
 ## Success Criteria
 

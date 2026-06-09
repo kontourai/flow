@@ -19,7 +19,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `scripts/` | Operational Node tooling for Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
 | `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. Domain files keep package runtime, CLI, config, definitions, transitions, release checks, Surface claim handling, route-back behavior, and reports separate. | Tracked Node test lane. Node tests belong here instead of `scripts/`. Shared test-only helpers belong in `tests/node/helpers/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
-| `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. New durable developer guidance belongs here; transient workflow notes do not. |
+| `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. Start with `docs/README.md` when deciding which guide to edit. New durable developer guidance belongs here; transient workflow notes do not. |
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
 | `.github/` | GitHub Actions workflows for CI and package publishing. | Tracked repo operations. This is not Flow runtime behavior. |
 | `.githooks/` | Optional contributor Git hooks. | Tracked contributor tooling. Installed locally by `npm run setup:repo-hooks`. |
@@ -59,7 +59,7 @@ New local console UI code belongs in `src/console-ui/`. New console projection o
 
 New schemas belong in `schemas/` and should be validated by the schema check lane. New schema shape should use Flow vocabulary and avoid importing Surface, Veritas, Flow Agents, or Builder Kit authority into Flow core.
 
-New docs belong in `docs/`. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations. Historical cleanup notes and one-time setup notes should be removed once their decisions are reflected in current docs or source.
+New docs belong in `docs/`. Update `docs/README.md` when adding, renaming, or retiring a durable guide. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations. Historical cleanup notes and one-time setup notes should be removed once their decisions are reflected in current docs or source.
 
 New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them. Any new published example or scenario must be documented and asserted by `tests/node/check-package-contents.test.mjs`.
 

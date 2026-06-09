@@ -61,9 +61,9 @@ Products such as Open Policy Agent own general policy-as-code. Security and gove
 
 Flow should not invent a broad policy language early. It should keep transition rules small, typed, and evidence-oriented, and allow external policy systems to serve as gate evaluators.
 
-### Provenance and attestations
+### Supply-chain attestations
 
-Supply-chain systems such as SLSA and in-toto show how useful provenance becomes when evidence is structured, comparable, and tied to expectations.
+Supply-chain systems such as SLSA and in-toto show how useful attestations become when evidence is structured, comparable, and tied to expectations.
 
 Flow should borrow this shape. Gate evidence should be explicit enough for another system to inspect later, not just a narrative summary from an agent.
 
@@ -205,7 +205,7 @@ These references shaped the positioning:
   https://github.com/arize-ai/phoenix
 - Open Policy Agent: general-purpose policy-as-code engine.
   https://www.openpolicyagent.org/docs
-- SLSA: provenance levels and expectations for supply-chain trust.
+- SLSA: levels and expectations for supply-chain trust.
   https://slsa.dev/spec/v1.0/levels
 - MCO/Hive lineage: neutral multi-agent CLI orchestration for coding agents.
   https://github.com/mco-org/mco

@@ -37,9 +37,7 @@ Node test suites live under domain files in `tests/node/`, shared Node test help
 
 For placement rules and generated artifact policy, see [repo-structure.md](repo-structure.md).
 
-## Workflow Artifacts
-
-Repo-local Flow Agents planning, execution, review, verification, screenshot, and handoff artifacts belong under `.flow-agents/`. That directory is ignored and production source must not depend on it.
+Workflow coordination artifacts, when present, stay under `.flow-agents/`; production source must not depend on them.
 
 Root `.flow/`, `.surface/`, and `.veritas/` are local product state and remain ignored. The tracked console projection scenario under `examples/scenarios/console-projection/.flow/` is the intentional exception.
 
