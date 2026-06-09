@@ -157,7 +157,7 @@ test("transition validator rejects gate skips and premature completion before re
   assert.ok(complete.diagnostics.some((diagnostic) => diagnostic.code === "transition.completion.premature"));
 });
 
-test("transition validator preserves legacy permissive route reasons unless route policy is closed", () => {
+test("transition validator preserves permissive route reasons unless route policy is closed", () => {
   const definitionSchemaPolicy = {
     max_attempts: 2,
     on_exceeded: "block",

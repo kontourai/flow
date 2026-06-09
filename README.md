@@ -418,7 +418,7 @@ Route reason ids are open strings. Flow documents these standard recommended ids
 - `plan_gap`: the plan or acceptance shape is insufficient and should return to planning.
 - `decision_gap`: the work needs a decision or clarification before it can proceed.
 
-Custom reason ids are allowed when a project, kit, or adapter needs narrower routing. Add custom ids to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If a failed evidence item has no `route_reason`, Flow uses `default` when present and otherwise preserves the legacy fallback to the gate's own `step`. Flow only infers `missing_evidence` when Flow itself detects missing required evidence.
+Custom reason ids are allowed when a project, kit, or adapter needs narrower routing. Add custom ids to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If a failed evidence item has no `route_reason`, Flow uses `default` when present and otherwise falls back to the gate's own `step`. Flow only infers `missing_evidence` when Flow itself detects missing required evidence.
 
 Route-back attempts are deterministic. Flow counts prior persisted `route_back` transitions with the same gate id, route reason or `default`, source step, and selected target step. Timestamps, classifier data, diagnostics, analytics metadata, and in-memory counters do not affect routing or attempt counts.
 
@@ -474,7 +474,7 @@ Resource Contract support currently covers authored Flow Definition and authored
 }
 ```
 
-Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, `claim.accepted_statuses`, and legacy `requires` entries. The legacy `validateDefinition(definition)` API is still pass/throw; it now uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
+Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, `claim.accepted_statuses`, and `requires` entries. `validateDefinition(definition)` remains the pass/throw validation API; it uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
 
 ## Library
 
