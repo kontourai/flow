@@ -81,6 +81,8 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(versionReleaseReportSchema.title, "Version Release Report");
 
   assert.ok(definitionSchema.$defs.gate.properties.on_route_back);
+  assert.ok(definitionSchema.$defs.gate.properties.expects);
+  assert.equal(definitionSchema.$defs.gate.properties.requires, undefined);
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
   assert.equal(definitionSchema.$defs.gate.properties.route_back_policy.properties.allow_unknown_reasons.type, "boolean");
   assert.ok(evidenceSchema.$defs.evidence.properties.route_reason);

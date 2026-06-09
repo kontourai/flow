@@ -20,11 +20,35 @@
     "gates": {
       "plan-gate": {
         "step": "plan",
-        "requires": ["acceptance-criteria"]
+        "expects": [
+          {
+            "id": "acceptance-criteria",
+            "kind": "surface.claim",
+            "required": true,
+            "description": "Acceptance criteria are ready for implementation.",
+            "claim": {
+              "type": "builder.acceptance",
+              "subject": "resource-contract-flow",
+              "accepted_statuses": ["trusted", "reviewed"]
+            }
+          }
+        ]
       },
       "implement-gate": {
         "step": "implement",
-        "requires": ["scoped-diff"]
+        "expects": [
+          {
+            "id": "scoped-diff",
+            "kind": "surface.claim",
+            "required": true,
+            "description": "The implementation diff is scoped to the planned change.",
+            "claim": {
+              "type": "implementation.scoped-diff",
+              "subject": "resource-contract-flow",
+              "accepted_statuses": ["trusted"]
+            }
+          }
+        ]
       },
       "verify-gate": {
         "step": "verify",
@@ -40,8 +64,7 @@
               "accepted_statuses": ["trusted"]
             }
           }
-        ],
-        "requires": ["tests"]
+        ]
       }
     }
   }

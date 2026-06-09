@@ -10,29 +10,17 @@ import {
   routeReasonForFailedEvidence
 } from "../definition/flow-definition.js";
 import {
-  evidenceLabel,
-  evidenceMatchesRequirement,
   expectationLabel,
   slugLabel
 } from "../shared/flow-utils.js";
 
 export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
-  if (gate.expects?.length) {
-    return gate.expects.map((expectation) => ({
-      ...expectation,
-      claim: expectation.claim ? { ...expectation.claim } : undefined,
-      ...(overrides[expectation.id] ?? {}),
-      id: expectation.id
-    }));
-  }
-  return (gate.requires ?? []).map((requiredKind) => ({
-    id: requiredKind,
-    kind: "evidence.kind",
-    required: true,
-    description: evidenceLabel(requiredKind),
-    evidence_kind: requiredKind,
-    ...(overrides[requiredKind] ?? {})
+  return (gate.expects ?? []).map((expectation) => ({
+    ...expectation,
+    claim: expectation.claim ? { ...expectation.claim } : undefined,
+    ...(overrides[expectation.id] ?? {}),
+    id: expectation.id
   }));
 }
 
@@ -74,9 +62,6 @@ function evidenceClaimDiagnostic(entry: any, expectation: any, config: MutableRe
 }
 
 export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
-  if (expectation.kind === "evidence.kind") {
-    return evidenceMatchesRequirement(entry, expectation.evidence_kind) && entry.status !== "failed";
-  }
   if (expectation.kind !== "surface.claim") return false;
   if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return false;
   if (entry.status === "failed") return false;
