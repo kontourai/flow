@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7
+
+- Made the README package-first by moving contributor hook and TypeScript
+  development details to `docs/contributing.md`.
+- Removed stale historical audit and one-time release setup notes now that
+  source control and current docs preserve the useful decisions.
+- Kept repo-local Flow Agents workflow artifacts under ignored `.flow-agents/`.
+
 ## 0.1.6
 
 - Clarified the generated `.flow/runs/<run-id>/` layout and documented

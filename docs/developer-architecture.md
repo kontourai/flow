@@ -215,7 +215,7 @@ Builder Kit owns packaged workflow intent:
 Kontour Resource Contracts own cross-product shape conventions:
 
 - New durable, agent-facing, provider-facing, CLI-facing, cross-product, or user-authored Kontour contracts should normally align to `apiVersion`, `kind`, `metadata`, `spec`, and `status`.
-- Flow has not migrated v0.1 schemas to that shape. The audit in `docs/resource-contract-audit.md` is planning guidance for follow-up slices, not current runtime behavior.
+- Flow has not migrated all v0.1 schemas to that shape. Current Resource Contract support is implemented only for authored Flow Definition and authored Flow Project Config inputs. Flow Run state, gate evidence manifests, reports, transition validation results, console projections, Flow Agents artifacts, and Builder Kit adapters remain flat or product-native contracts until a future migration slice changes them deliberately.
 
 ## Current Versus Future Summary
 
