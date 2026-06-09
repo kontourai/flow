@@ -191,7 +191,7 @@ This is narrow enough to build and broad enough to demonstrate the generic produ
 
 These references shaped the positioning:
 
-- Camunda 8: enterprise process orchestration with BPMN/DMN, human tasks, agentic process support, auditability, and operations views.
+- Camunda 8: enterprise process orchestration with BPMN/DMN, human tasks, agentic process support, traceability, and operations views.
   https://docs.camunda.io/docs/components/concepts/concepts-overview/
 - Temporal: durable execution, event history, resumable workflow executions, and runtime reliability.
   https://docs.temporal.io/temporal

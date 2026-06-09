@@ -1,10 +1,19 @@
 # Changelog
 
+## 0.1.8
+
+- Documents the published `examples/` boundary with top-level and console
+  projection scenario READMEs.
+- Keeps the console projection `.flow` run fixture in the package as a
+  deliberate local-file example for console consumers.
+- Adds npm pack contents assertions so package-visible examples, schemas, built
+  output, and excluded repo-only files cannot drift silently.
+
 ## 0.1.7
 
 - Made the README package-first by moving contributor hook and TypeScript
   development details to `docs/contributing.md`.
-- Removed stale historical audit and one-time release setup notes now that
+- Removed stale historical cleanup and one-time release setup notes now that
   source control and current docs preserve the useful decisions.
 - Kept repo-local Flow Agents workflow artifacts under ignored `.flow-agents/`.
 
@@ -50,7 +59,7 @@
 - Renamed published example data from `examples/fixtures/` to `examples/scenarios/`
   so package-visible examples read as developer scenarios rather than test-only
   fixtures.
-- Updated README, repo structure docs, audit docs, scripts, and browser test
+- Updated README, repo structure docs, scripts, and browser test
   support paths for the scenario layout.
 - Included the `Publish NPM` ancestry-check fix from PR #41 so future release
   workflow reruns can validate older tag commits after `main` advances.
@@ -59,8 +68,8 @@
 
 - Split Flow core runtime code into focused domain modules while preserving the
   package root export surface.
-- Added durable repo structure, architecture, product-boundary, and dead-code
-  audit documentation.
+- Added durable repo structure, architecture, product-boundary, and cleanup
+  documentation.
 - Hardened Markdown report rendering with escaping and line-break normalization.
 - Published `@kontourai/flow@0.1.1` to npm as `latest`.
 

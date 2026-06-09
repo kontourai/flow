@@ -12,8 +12,8 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `src/console-ui/` | Local Flow Console browser UI source. | Tracked source. UI changes for `flow console` belong here. |
 | `src/console-ui/vendor/console-kit/` | Vendored Console Kit styles and tokens used by the local console build. | Tracked vendor asset exception. Updated by `scripts/sync-console-kit-assets.mjs`; do not hand-edit generated copies without checking the sync script. |
 | `schemas/` | Public JSON schemas for Flow Definitions, Flow Runs, Gate Evidence, Flow Reports, project config, config merge reports, transition validation, release readiness, and version release reports. | Tracked public contract assets and included in the npm package. New Flow-owned schema contracts belong here. |
-| `examples/` | Published examples for authoring and using Flow Definitions. | Tracked package assets. New user-facing examples belong here. |
-| `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example. |
+| `examples/` | Published examples for authoring and using Flow contracts. | Tracked package assets. New user-facing examples belong here and must be documented in `examples/README.md`. |
+| `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example and covered by the package contents check. |
 | `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
 | `scripts/` | Node support tooling for schema/runtime checks, console projection checks, Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source. |
@@ -57,9 +57,9 @@ New local console UI code belongs in `src/console-ui/`. New console projection o
 
 New schemas belong in `schemas/` and should be validated by the schema check lane. New schema shape should use Flow vocabulary and avoid importing Surface, Veritas, Flow Agents, or Builder Kit authority into Flow core.
 
-New docs belong in `docs/`. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations. Historical audits and one-time setup notes should be removed once their decisions are reflected in current docs or source.
+New docs belong in `docs/`. Use ADRs for durable decisions that change product ownership, authority, or compatibility expectations. Historical cleanup notes and one-time setup notes should be removed once their decisions are reflected in current docs or source.
 
-New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them.
+New examples belong in `examples/`. New package-visible scenario data belongs in `examples/scenarios/`. Test-only fixtures should live with the tests that own them. Any new published example or scenario must be documented and asserted by `scripts/check-package-contents.mjs`.
 
 New browser tests for the local console belong in `tests/browser/`. Node contract checks currently live in `scripts/check-*.mjs`; keep script moves separate from behavior changes because package scripts, hooks, and CI reference those paths.
 
@@ -100,6 +100,8 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 `npm run check:repo-hooks`, `npm run setup:repo-hooks`, and `npm run validate:repo-hooks` cover contributor hook setup and validation. Hooks are repository tooling, not Flow gate semantics or merge authority.
 
 Contributor setup lives in [contributing.md](contributing.md).
+
+`scripts/check-package-contents.mjs` runs `npm pack --dry-run --ignore-scripts --json` and asserts the package includes only the intended top-level surfaces plus documented public examples and scenarios.
 
 ## Boundary Reminders
 
