@@ -217,7 +217,7 @@ function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
         } else {
           gate.requires.forEach((requiredKind, index) => {
             if (!isNonEmptyString(requiredKind)) {
-              diagnostics.push(createDiagnostic("definition.gate.requires.kind.invalid", `${gatePath}.requires[${index}]`, "legacy requires entries must be non-empty strings"));
+              diagnostics.push(createDiagnostic("definition.gate.requires.kind.invalid", `${gatePath}.requires[${index}]`, "requires entries must be non-empty strings"));
             }
           });
         }

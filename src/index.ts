@@ -91,7 +91,6 @@ export {
   evidenceMatchesExpectation,
   evidenceProducerTrusted,
   expectationsForGate,
-  legacyEvaluateGate,
   mergeGateOutcome
 } from "./gates/flow-gates.js";
 export {

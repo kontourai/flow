@@ -13,8 +13,6 @@ import {
   evidenceLabel,
   evidenceMatchesRequirement,
   expectationLabel,
-  missingSummary,
-  passSummary,
   slugLabel
 } from "../shared/flow-utils.js";
 
@@ -198,40 +196,6 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
     optional_missing: missingOptional,
     matched_expectations: matched,
     ...(diagnosticPayload ? { diagnostics: diagnosticPayload } : {})
-  };
-}
-
-export function legacyEvaluateGate(definition: any, state: any, manifest: any, gateId: string): GateOutcome {
-  const gate = findGate(definition, gateId);
-  const evidence = attachedEvidenceFor(manifest, gateId);
-  const missing = (gate.requires ?? []).filter((requiredKind) => {
-    return !evidence.some((entry) => evidenceMatchesRequirement(entry, requiredKind) && entry.status !== "failed");
-  });
-
-  if (missing.length) {
-    return {
-      gate_id: gateId,
-      status: "block",
-      summary: missingSummary(missing[0]),
-      missing,
-      evidence_refs: evidence.map((entry) => entry.id)
-    };
-  }
-
-  if (gate.requires.length === 0) {
-    return {
-      gate_id: gateId,
-      status: "wait",
-      summary: `${slugLabel(gate.id)} waiting for evidence`,
-      evidence_refs: evidence.map((entry) => entry.id)
-    };
-  }
-
-  return {
-    gate_id: gateId,
-    status: "pass",
-    summary: passSummary(gate.requires[0]),
-    evidence_refs: evidence.map((entry) => entry.id)
   };
 }
 

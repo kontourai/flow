@@ -297,7 +297,7 @@ test("missing required evidence may infer missing_evidence only when Flow detect
   assert.deepEqual(outcome.expectation_ids, ["tests-passed"]);
 });
 
-test("missing and unknown route reasons use default or legacy gate step fallback", () => {
+test("missing and unknown route reasons use default or gate step fallback", () => {
   const definition = routeBackDefinition();
   const state = initialState(definition, "fallbacks");
   state.current_step = "verify";
@@ -315,18 +315,18 @@ test("missing and unknown route reasons use default or legacy gate step fallback
   assert.equal(unknownReason.route_reason, "vendor_unknown");
   assert.equal(unknownReason.route_back_to, "implement");
 
-  const legacyDefinition = routeBackDefinition({ on_route_back: undefined, route_back_policy: undefined });
-  const legacyMissingReason = evaluateGate(legacyDefinition, state, routeBackManifest([
-    failedEvidence({ id: "ev.legacy-no-reason" })
+  const fallbackDefinition = routeBackDefinition({ on_route_back: undefined, route_back_policy: undefined });
+  const fallbackMissingReason = evaluateGate(fallbackDefinition, state, routeBackManifest([
+    failedEvidence({ id: "ev.fallback-no-reason" })
   ]), "verify-gate");
-  assert.equal(legacyMissingReason.route_back_to, "verify");
-  assert.equal(legacyMissingReason.reason, "default");
+  assert.equal(fallbackMissingReason.route_back_to, "verify");
+  assert.equal(fallbackMissingReason.reason, "default");
 
-  const legacyUnknownReason = evaluateGate(legacyDefinition, state, routeBackManifest([
-    failedEvidence({ id: "ev.legacy-unknown", route_reason: "vendor_unknown" })
+  const fallbackUnknownReason = evaluateGate(fallbackDefinition, state, routeBackManifest([
+    failedEvidence({ id: "ev.fallback-unknown", route_reason: "vendor_unknown" })
   ]), "verify-gate");
-  assert.equal(legacyUnknownReason.route_reason, "vendor_unknown");
-  assert.equal(legacyUnknownReason.route_back_to, "verify");
+  assert.equal(fallbackUnknownReason.route_reason, "vendor_unknown");
+  assert.equal(fallbackUnknownReason.route_back_to, "verify");
 });
 
 test("route-back attempts count only matching persisted transitions", () => {

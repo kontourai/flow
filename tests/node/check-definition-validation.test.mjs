@@ -161,9 +161,9 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   );
 });
 
-test("legacy definitions without route-back fields remain valid", () => {
-  const legacyDefinition = {
-    id: "legacy-flow",
+test("flat definitions without route-back fields remain valid", () => {
+  const flatDefinition = {
+    id: "flat-flow",
     version: "1",
     steps: [
       { id: "plan", next: "verify" },
@@ -173,18 +173,18 @@ test("legacy definitions without route-back fields remain valid", () => {
       "verify-gate": { step: "verify", requires: ["tests"] }
     }
   };
-  assert.doesNotThrow(() => validateDefinition(legacyDefinition));
+  assert.doesNotThrow(() => validateDefinition(flatDefinition));
 });
 
-test("diagnostic validation preserves valid Builder Kit and legacy definitions", async () => {
+test("diagnostic validation preserves valid Builder Kit and flat definitions", async () => {
   const builderKitDefinition = await json("examples/builder-kit-flow.json");
   const result = validateDefinitionWithDiagnostics(builderKitDefinition);
   assert.equal(result.valid, true);
   assert.deepEqual(result.diagnostics, []);
   assert.doesNotThrow(() => validateDefinition(builderKitDefinition));
 
-  const legacyDefinition = {
-    id: "legacy-flow",
+  const flatDefinition = {
+    id: "flat-flow",
     version: "1",
     steps: [
       { id: "plan", next: "verify" },
@@ -194,11 +194,11 @@ test("diagnostic validation preserves valid Builder Kit and legacy definitions",
       "verify-gate": { step: "verify", requires: ["tests", "lint"] }
     }
   };
-  assert.deepEqual(validateDefinitionWithDiagnostics(legacyDefinition), {
+  assert.deepEqual(validateDefinitionWithDiagnostics(flatDefinition), {
     valid: true,
     diagnostics: []
   });
-  assert.doesNotThrow(() => validateDefinition(legacyDefinition));
+  assert.doesNotThrow(() => validateDefinition(flatDefinition));
 });
 
 test("diagnostic validation reports invalid claim expectations and route targets", async () => {

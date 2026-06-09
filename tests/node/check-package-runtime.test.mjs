@@ -60,7 +60,6 @@ test("package root exports stay stable across source-domain splits", () => {
     "gatesForStep",
     "getStep",
     "initialState",
-    "legacyEvaluateGate",
     "listRuns",
     "loadFlowConfig",
     "loadReleaseReadinessInputs",
@@ -105,6 +104,6 @@ test("package root exports stay stable across source-domain splits", () => {
     "validateTransitionRequest",
     "writeJson"
   ];
-
   assert.deepEqual(Object.keys(flowRuntime).sort(), expectedRuntimeExports);
+  assert.equal(Object.hasOwn(flowRuntime, "evaluateGate"), true);
 });
