@@ -186,31 +186,14 @@ Future Resource Contract alignment: durable Flow contracts should gradually alig
 
 ## Ownership Boundaries
 
-Flow owns process semantics:
+The canonical product ownership summary lives in [product-boundaries.md](product-boundaries.md). This architecture guide keeps only the implementation-facing rules that affect Flow runtime behavior:
 
-- Definitions, runs, steps, gates, transitions, route-back policy, evidence manifests, accepted exceptions, reports, continuation, transition validation, config merge semantics, and the local console projection boundary.
-- Provider-neutral decisions about whether a gate passes, blocks, routes back, waits, or is allowed by accepted exception.
-- The local project authority model for trusted producers and gate overrides in `.flow/config.json`.
-
-Surface owns portable trust semantics:
-
-- Claims, evidence, policies, trust snapshots, freshness, gaps, producers, and trust-state vocabulary.
-- Flow may consume Surface-shaped artifacts, but Flow does not decide what Surface trust means globally or call Surface services in v0.1 gate evaluation.
-
-Veritas owns repo and change governance:
-
-- Repo standards, repo maps, requirements, evidence checks, verification authorities, merge readiness, change guidance, and standards feedback.
-- Flow can require Veritas readiness as evidence for a gate, but Flow must not duplicate Veritas policy semantics or copy Veritas requirements into Flow definitions.
-
-Flow Agents owns agent-facing distribution:
-
-- Work modes, skills, runtime adapters, native harness hooks, provider settings, project and global setup, agent-facing kit distribution, and cross-agent integration.
-- Flow Agents may author, adapt, install, or update Flow project config, but `.flow/config.json` is the Flow authority source used during gate evaluation.
-
-Builder Kit owns packaged workflow intent:
-
-- Builder Kit behavior is represented to Flow as normal Flow Definitions, Flow Kits, gate expectations, route-back maps, and config proposals.
-- Flow core does not add special behavior because a step is named `verify`, `publish-change`, `release-readiness`, or any other Builder Kit-like path.
+- Flow owns provider-neutral process semantics: definitions, runs, steps, gates, transitions, route-back policy, evidence manifests, accepted exceptions, reports, continuation, transition validation, config merge semantics, and local console projection.
+- Flow decides whether a gate passes, blocks, routes back, waits, or is allowed by accepted exception from Flow-owned contracts and local project config.
+- `.flow/config.json` is the Flow authority source for trusted producer mappings and gate overrides during gate evaluation.
+- Surface-shaped trust artifacts are evidence inputs; Flow does not decide global Surface trust meaning or call Surface services in v0.1 gate evaluation.
+- Veritas readiness can appear as compatible evidence; Flow does not import Veritas policy semantics.
+- Flow Agents and Builder Kit can package, install, adapt, or propose Flow definitions/config, but Flow core does not special-case agent runtimes or step names.
 
 Kontour Resource Contracts own cross-product shape conventions:
 

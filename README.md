@@ -18,7 +18,7 @@ npx flow report dev-1847
 
 Release history: [CHANGELOG.md](CHANGELOG.md) records published package changes.
 
-Contributor setup and repo validation live in [docs/contributing.md](docs/contributing.md). Repo structure details live in [docs/repo-structure.md](docs/repo-structure.md).
+Docs map: [docs/README.md](docs/README.md) points to product, architecture, contributor, repo structure, and ADR docs. Contributor setup lives in [docs/contributing.md](docs/contributing.md).
 
 ## Status
 
@@ -125,7 +125,7 @@ Generated `dist/` domain files are packaged implementation output. Do not import
 
 `projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
 
-This API is the Flow boundary for console consumers. Browser UI, hosted behavior, companion console startup, and `kontour-console` integration are outside this Flow issue.
+This API is the Flow boundary for console consumers. The packaged local console uses this projection; hosted behavior, companion console startup, and `kontour-console` integration remain outside the v0.1 package boundary.
 
 ## Local Flow Console
 
@@ -530,4 +530,4 @@ Runtime code and tests reference the JSON Schemas in `schemas/`:
 
 ## Boundaries
 
-Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Flow Agents owns agent-facing workflow distribution.
+Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or hosted web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Flow Agents owns agent-facing workflow distribution.

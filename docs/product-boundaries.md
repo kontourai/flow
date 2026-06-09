@@ -19,7 +19,7 @@ Veritas
 
 Flow Agents
   Agent-facing workflow distribution built with Flow.
-  Modes, skills, runtime adapters, provider settings, hooks, Console.
+  Modes, skills, runtime adapters, provider settings, hooks, agent-facing views.
 ```
 
 ## Surface Boundary
@@ -59,7 +59,7 @@ Flow Agents owns the agent-facing distribution:
 - Native harness hooks
 - Provider settings
 - Project/global setup
-- Console views
+- Agent-facing console views
 - Useful Flow Kits
 
 Flow core should remain agent-agnostic. Flow Agents is responsible for projecting Flow semantics into Codex, Claude Code, Kiro CLI, Pi, Droid, Hermes, MCO, GitHub Actions, or future agent harnesses.
@@ -85,4 +85,4 @@ Flow should become the small process transparency kernel those products can use 
 
 Flow v0.1 ships as `@kontourai/flow`, a local file-backed CLI and library. It owns `.flow/definitions/`, `.flow/runs/<run-id>/`, gate evaluation, evidence manifests, accepted exceptions, and Flow Reports.
 
-The v0.1 package deliberately does not include distributed execution, hosted auth, Surface projection, agent runtime hooks, multi-agent dispatch, Veritas policy semantics, or a web UI.
+The v0.1 package includes a loopback-only local Flow Console for inspecting local run files. It deliberately does not include distributed execution, hosted auth, Surface projection, agent runtime hooks, multi-agent dispatch, Veritas policy semantics, or a hosted web UI.
