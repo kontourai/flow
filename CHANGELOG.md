@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.10
+
+- Defines the public npm package API boundary as `@kontourai/flow`,
+  `@kontourai/flow/console-projection`, and `@kontourai/flow/console-server`.
+- Adds package-boundary tests that import the supported entrypoints as package
+  specifiers and reject representative generated implementation subpaths.
+- Clarifies that packaged `dist/` domain files are build output, not public
+  consumer subpaths.
+
 ## 0.1.9
 
 - Organizes Flow runtime source into domain folders for contracts, runtime,
