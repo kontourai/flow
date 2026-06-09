@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.15
+
+- Closes authored `FlowDefinition`, `FlowGate`, `FlowExpectation`, and
+  `FlowStep` public types so stale and unknown top-level Flow Definition fields
+  fail TypeScript excess-property checks.
+- Adds a focused public contract type fixture for typed gate `expects`,
+  gate-level `requires` rejection, and intentionally open evidence, diagnostic,
+  release, runtime, and config extension surfaces.
+- Removes stale ADR transition wording now that typed `expects` is the authored
+  gate expectation contract.
+
 ## 0.1.14
 
 - Makes typed gate `expects` the only authored Flow Definition expectation

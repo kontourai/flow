@@ -42,7 +42,7 @@ Positive:
 
 Trade-offs:
 
-- Flow must document both simple evidence kinds and typed expectations during the transition.
+- Flow documentation and kits must present typed `expects` entries as the authored gate expectation contract.
 - Kits need to be clear about subject vocabulary without treating examples as a closed enum.
 - Adapter-generated config must be easy to inspect because project config is authoritative.
 

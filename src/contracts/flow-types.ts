@@ -2,26 +2,25 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 export type JsonObject = { [key: string]: JsonValue };
 export type MutableRecord = Record<string, any>;
 
-export interface FlowStep extends MutableRecord {
+export interface FlowStep {
   id: string;
-  next?: string;
+  next: string | null;
 }
 
-export interface FlowExpectation extends MutableRecord {
+export interface FlowExpectation {
   id: string;
   kind: "surface.claim";
   required: boolean;
   description: string;
-  claim?: {
-    type?: string;
+  explore_hint?: string;
+  claim: {
+    type: string;
     subject?: string;
     accepted_statuses?: string[];
-    [key: string]: any;
   };
 }
 
-export interface FlowGate extends MutableRecord {
-  id?: string;
+export interface FlowGate {
   step: string;
   requires?: never;
   expects?: FlowExpectation[];
@@ -34,11 +33,10 @@ export interface FlowGate extends MutableRecord {
     closed_reasons?: boolean;
     closed_route_reasons?: boolean;
     allow_unknown_reasons?: boolean;
-    [key: string]: any;
   };
 }
 
-export interface FlowDefinition extends MutableRecord {
+export interface FlowDefinition {
   id: string;
   version: string;
   steps: FlowStep[];
