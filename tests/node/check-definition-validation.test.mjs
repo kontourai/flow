@@ -170,10 +170,43 @@ test("flat definitions without route-back fields remain valid", () => {
       { id: "verify", next: null }
     ],
     gates: {
-      "verify-gate": { step: "verify", requires: ["tests"] }
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Tests passed.",
+            claim: { type: "quality.tests", subject: "flat-flow", accepted_statuses: ["trusted"] }
+          }
+        ]
+      }
     }
   };
   assert.doesNotThrow(() => validateDefinition(flatDefinition));
+});
+
+test("gate-level requires is rejected in favor of typed expects", () => {
+  const flatDefinition = {
+    id: "flat-flow",
+    version: "1",
+    steps: [
+      { id: "plan", next: "verify" },
+      { id: "verify", next: null }
+    ],
+    gates: {
+      "verify-gate": { step: "verify", requires: ["tests"] }
+    }
+  };
+  const result = validateDefinitionWithDiagnostics(flatDefinition);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [
+    "definition.gate.field.unsupported"
+  ]);
+  assert.equal(result.diagnostics[0].path, "$.gates.verify-gate.requires");
+  assert.match(result.diagnostics[0].message, /use typed expects entries/);
+  assert.throws(() => validateDefinition(flatDefinition), /unsupported field requires; use typed expects entries/);
 });
 
 test("diagnostic validation preserves valid Builder Kit and flat definitions", async () => {
@@ -191,7 +224,25 @@ test("diagnostic validation preserves valid Builder Kit and flat definitions", a
       { id: "verify", next: null }
     ],
     gates: {
-      "verify-gate": { step: "verify", requires: ["tests", "lint"] }
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Tests passed.",
+            claim: { type: "quality.tests", subject: "flat-flow", accepted_statuses: ["trusted"] }
+          },
+          {
+            id: "lint-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Lint passed.",
+            claim: { type: "quality.lint", subject: "flat-flow", accepted_statuses: ["trusted"] }
+          }
+        ]
+      }
     }
   };
   assert.deepEqual(validateDefinitionWithDiagnostics(flatDefinition), {

@@ -11,7 +11,19 @@
   "gates": {
     "shape-gate": {
       "step": "shape",
-      "requires": ["problem-framing"]
+      "expects": [
+        {
+          "id": "problem-framing",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Problem framing is explicit enough to plan.",
+          "claim": {
+            "type": "builder.problem-framing",
+            "subject": "builder.shape",
+            "accepted_statuses": ["trusted", "reviewed"]
+          }
+        }
+      ]
     },
     "plan-gate": {
       "step": "plan",

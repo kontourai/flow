@@ -70,9 +70,14 @@ test("transition validator accepts Resource-shaped request definitions", async (
       {
         id: "ev.acceptance",
         gate_id: "plan-gate",
-        kind: "acceptance-criteria",
-        requested_kind: "acceptance-criteria",
+        kind: "surface.claim",
+        requested_kind: "surface.claim",
         status: "passed",
+        claim: {
+          type: "builder.acceptance",
+          subject: "resource-contract-flow",
+          status: "trusted"
+        },
         attached_at: "2026-06-09T00:00:00.000Z"
       }
     ])
@@ -247,11 +252,67 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
       { id: "merge", next: null }
     ],
     gates: {
-      "verify-gate": { step: "verify", requires: ["tests"], on_route_back: { missing_evidence: "verify", default: "plan" } },
-      "evidence-gate": { step: "evidence", requires: ["evidence-report"] },
-      "publish-gate": { step: "publish-change", requires: ["published-change"] },
-      "release-gate": { step: "release-readiness", requires: ["release-readiness"] },
-      "merge-gate": { step: "merge", requires: ["merged-change"] }
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Tests passed.",
+            claim: { type: "quality.tests", subject: "builder.verify", accepted_statuses: ["trusted"] }
+          }
+        ],
+        on_route_back: { missing_evidence: "verify", default: "plan" }
+      },
+      "evidence-gate": {
+        step: "evidence",
+        expects: [
+          {
+            id: "evidence-report",
+            kind: "surface.claim",
+            required: true,
+            description: "Evidence report is ready.",
+            claim: { type: "flow.evidence-report", subject: "builder.evidence", accepted_statuses: ["trusted"] }
+          }
+        ]
+      },
+      "publish-gate": {
+        step: "publish-change",
+        expects: [
+          {
+            id: "published-change",
+            kind: "surface.claim",
+            required: true,
+            description: "Change was published.",
+            claim: { type: "flow.published-change", subject: "builder.publish", accepted_statuses: ["trusted"] }
+          }
+        ]
+      },
+      "release-gate": {
+        step: "release-readiness",
+        expects: [
+          {
+            id: "release-readiness",
+            kind: "surface.claim",
+            required: true,
+            description: "Release readiness is complete.",
+            claim: { type: "release.readiness", subject: "builder.release", accepted_statuses: ["trusted"] }
+          }
+        ]
+      },
+      "merge-gate": {
+        step: "merge",
+        expects: [
+          {
+            id: "merged-change",
+            kind: "surface.claim",
+            required: true,
+            description: "Change was merged.",
+            claim: { type: "flow.merged-change", subject: "builder.merge", accepted_statuses: ["trusted"] }
+          }
+        ]
+      }
     }
   };
   const state = initialState(definition, "builder-like");

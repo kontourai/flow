@@ -1,6 +1,6 @@
 # Flow Developer Architecture
 
-Flow is the process transparency and gate enforcement kernel for required-path work. It records the path a run is expected to follow, the evidence each gate requires, the evidence that was actually attached, exceptions accepted by an authority, and the continuation state another person or agent needs to resume the run locally.
+Flow is the process transparency and gate enforcement kernel for required-path work. It records the path a run is expected to follow, the typed expectations each gate declares, the evidence that was actually attached, exceptions accepted by an authority, and the continuation state another person or agent needs to resume the run locally.
 
 This guide is self-contained for Flow developers. It explains the current v0.1 implementation, product ownership boundaries, runtime and evidence lifecycles, and the future Resource Contract alignment direction without requiring the Flow Agents cross-product guide.
 
@@ -15,7 +15,7 @@ Flow owns these primitives:
 - Flow Definitions: authored process shape with steps, gates, expectations, route-back maps, and route-back policy.
 - Flow Runs: local run state under `.flow/runs/<run-id>/`.
 - Steps and transitions: provider-neutral movement through the authored definition.
-- Gates and gate evidence: required evidence kinds, typed expectations, attached files, and copied evidence manifests.
+- Gates and gate evidence: typed expectations, attached files, and copied evidence manifests.
 - Accepted exceptions: explicit authority-bearing overrides that allow a gate to pass.
 - Flow Reports: deterministic JSON and Markdown explanation of run state, evidence, gaps, route-back outcomes, exceptions, and next action.
 - Continuation state: enough local state for `flow resume` and downstream agents to continue without chat memory.
@@ -49,7 +49,7 @@ Flow evaluates the gate for the current step and decides whether the run can adv
 
 ```mermaid
 flowchart TD
-  Gate["Current step gate"] --> Expectations["Read requires and expects"]
+  Gate["Current step gate"] --> Expectations["Read typed expects"]
   Expectations --> Evidence["Read evidence manifest and accepted exceptions"]
   Evidence --> Exception{"Accepted exception?"}
   Exception -->|yes| Pass["gate outcome: pass"]
@@ -144,7 +144,7 @@ Current implementation: reports and console projections are generated explanatio
 
 ## Surface Claim Evidence
 
-Flow supports simple evidence kinds and typed `expects` entries. Rich claim-backed expectations use `kind: "surface.claim"`.
+Flow gates are authored with typed `expects` entries. Rich claim-backed expectations use `kind: "surface.claim"`.
 
 ```mermaid
 flowchart TD

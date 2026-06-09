@@ -1,11 +1,19 @@
 # Changelog
 
+## 0.1.14
+
+- Makes typed gate `expects` the only authored Flow Definition expectation
+  field.
+- Removes gate-level `requires` from public examples, schemas, runtime
+  validation, fallback evaluation, docs, and tests.
+- Preserves gate behavior through typed `surface.claim` expectations, route-back
+  handling, reports, transitions, CLI validation, and package checks.
+
 ## 0.1.13
 
 - Removes the obsolete named gate evaluator from the package root API.
 - Keeps `evaluateGate` as the public gate evaluation entrypoint for flat v0.1
-  definitions, `requires`, typed expectations, route-back policy, and Surface
-  claim checks.
+  definitions, typed expectations, route-back policy, and Surface claim checks.
 - Locks the cleaned package root export boundary in runtime tests.
 
 ## 0.1.12

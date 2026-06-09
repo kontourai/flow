@@ -28,9 +28,6 @@
   "gates": {
     "build-gate": {
       "step": "build",
-      "requires": [
-        "file"
-      ],
       "expects": [
         {
           "id": "missing-review",
@@ -49,9 +46,6 @@
     },
     "verify-gate": {
       "step": "verify",
-      "requires": [
-        "veritas-readiness"
-      ],
       "expects": [
         {
           "id": "tests-passed",

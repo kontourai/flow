@@ -9,7 +9,7 @@ export interface FlowStep extends MutableRecord {
 
 export interface FlowExpectation extends MutableRecord {
   id: string;
-  kind: "surface.claim" | "evidence.kind" | string;
+  kind: "surface.claim";
   required: boolean;
   description: string;
   claim?: {
@@ -23,7 +23,7 @@ export interface FlowExpectation extends MutableRecord {
 export interface FlowGate extends MutableRecord {
   id?: string;
   step: string;
-  requires?: string[];
+  requires?: never;
   expects?: FlowExpectation[];
   on_route_back?: Record<string, string>;
   route_back_policy?: {

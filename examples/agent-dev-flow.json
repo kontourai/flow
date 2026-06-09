@@ -8,8 +8,38 @@
     { "id": "publish", "next": null }
   ],
   "gates": {
-    "plan-gate": { "step": "plan", "requires": ["acceptance-criteria"] },
-    "implement-gate": { "step": "implement", "requires": ["scoped-diff"] },
+    "plan-gate": {
+      "step": "plan",
+      "expects": [
+        {
+          "id": "acceptance-criteria",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Acceptance criteria are ready for implementation.",
+          "claim": {
+            "type": "builder.acceptance",
+            "subject": "builder.plan",
+            "accepted_statuses": ["trusted", "reviewed"]
+          }
+        }
+      ]
+    },
+    "implement-gate": {
+      "step": "implement",
+      "expects": [
+        {
+          "id": "scoped-diff",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "The implementation diff is scoped to the planned change.",
+          "claim": {
+            "type": "implementation.scoped-diff",
+            "subject": "builder.implement",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ]
+    },
     "verify-gate": {
       "step": "verify",
       "expects": [
@@ -47,8 +77,7 @@
       "route_back_policy": {
         "max_attempts": 3,
         "on_exceeded": "block"
-      },
-      "requires": ["tests", "lint", "browser-evidence", "veritas-readiness"]
+      }
     }
   }
 }

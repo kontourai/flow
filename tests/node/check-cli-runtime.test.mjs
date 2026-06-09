@@ -111,8 +111,12 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     "plan-gate",
     "--file",
     "acceptance.txt",
-    "--kind",
-    "acceptance-criteria",
+    "--claim-type",
+    "builder.acceptance",
+    "--claim-subject",
+    "resource-contract-flow",
+    "--claim-status",
+    "trusted",
     "--route-metadata",
     "route-metadata.json",
     "--cwd",
@@ -174,6 +178,12 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
   assert.match(resume.stdout, /current step: implement/);
   assert.match(list.stdout, /cwd-smoke\tactive\timplement\tresource-contract-flow \/ cwd-smoke/);
   assert.equal(manifest.evidence[0].original_path, "acceptance.txt");
+  assert.equal(manifest.evidence[0].kind, "surface.claim");
+  assert.deepEqual(manifest.evidence[0].claim, {
+    type: "builder.acceptance",
+    status: "trusted",
+    subject: "resource-contract-flow"
+  });
   assert.equal(manifest.evidence[0].route_reason, "plan_gap");
   assert.deepEqual(manifest.evidence[0].expectation_ids, ["plan-gate"]);
   assert.deepEqual(FLOW_RUN_LAYOUT, {
@@ -488,6 +498,32 @@ test("CLI validates arbitrary Flow Definition files with JSON diagnostics", asyn
       assert.equal(payload.error_count, 6);
       assert.equal(payload.diagnostics[0].code, "definition.expectation.claim.required");
       assert.equal(payload.diagnostics[0].path, "$.gates.verify-gate.expects[0].claim");
+      return true;
+    }
+  );
+
+  const requiresDefinitionPath = path.join(callerCwd, "requires-definition.json");
+  await writeFile(requiresDefinitionPath, `${JSON.stringify({
+    id: "requires-flow",
+    version: "1",
+    steps: [
+      { id: "verify", next: null }
+    ],
+    gates: {
+      "verify-gate": { step: "verify", requires: ["tests"] }
+    }
+  }, null, 2)}\n`);
+  await assert.rejects(
+    async () => execFile(process.execPath, [cli, "validate-definition", "requires-definition.json", "--json"], {
+      cwd: callerCwd
+    }),
+    (error) => {
+      const payload = JSON.parse(error.stdout);
+      assert.equal(error.code, 1);
+      assert.equal(payload.valid, false);
+      assert.equal(payload.error_count, 1);
+      assert.equal(payload.diagnostics[0].code, "definition.gate.field.unsupported");
+      assert.equal(payload.diagnostics[0].path, "$.gates.verify-gate.requires");
       return true;
     }
   );

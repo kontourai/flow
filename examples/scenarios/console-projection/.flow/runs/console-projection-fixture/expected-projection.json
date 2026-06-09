@@ -23,9 +23,6 @@
               "required": true
             }
           ],
-          "requires": [
-            "file"
-          ],
           "step": "build"
         },
         "verify-gate": {
@@ -48,9 +45,6 @@
             "default": "build",
             "implementation_defect": "build"
           },
-          "requires": [
-            "veritas-readiness"
-          ],
           "route_back_policy": {
             "max_attempts": 2,
             "on_exceeded": "block"
@@ -689,9 +683,6 @@
           }
         ],
         "id": "build-gate",
-        "requires": [
-          "file"
-        ],
         "step": "build"
       },
       "status": "pass",
@@ -1008,9 +999,6 @@
           "default": "build",
           "implementation_defect": "build"
         },
-        "requires": [
-          "veritas-readiness"
-        ],
         "route_back_policy": {
           "max_attempts": 2,
           "on_exceeded": "block"

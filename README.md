@@ -166,7 +166,7 @@ For nested metadata, pass `--route-metadata ./route-metadata.json`. The file may
 
 ## Gate Expectations
 
-Flow Definitions describe what each gate expects before a run can advance. The typed form is `expects`, an array of expectation entries. Use `kind: "surface.claim"` when a gate needs rich evidence backed by a Surface claim instead of a simple evidence-kind string.
+Flow Definitions describe what each gate expects before a run can advance. The authored form is `expects`, an array of typed expectation entries. In v0.1, authored expectations use `kind: "surface.claim"` so gate evidence carries an explicit claim shape.
 
 A `surface.claim` expectation includes:
 
@@ -329,10 +329,10 @@ Flow Agents kit install or activation may consume the JSON report to show instal
 
 For the current step, `flow evaluate` applies the v0.1 rules:
 
-- all required evidence kinds present and not failed: `pass`
-- any required evidence kind missing: `block`
-- any evidence marked failed: `route-back`
-- no required evidence and no decision: `wait`
+- all required typed expectations are satisfied: `pass`
+- any required typed expectation is missing: `block`
+- any attached gate evidence marked failed: `route-back`
+- no authored expectations and no decision: `wait`
 - an accepted exception on a gate counts as `pass`
 
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory.
@@ -474,7 +474,7 @@ Resource Contract support currently covers authored Flow Definition and authored
 }
 ```
 
-Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, `claim.accepted_statuses`, and `requires` entries. `validateDefinition(definition)` remains the pass/throw validation API; it uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
+Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, and `claim.accepted_statuses`. `validateDefinition(definition)` remains the pass/throw validation API; it uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
 
 ## Library
 

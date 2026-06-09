@@ -212,15 +212,11 @@ function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
         }
       }
       if (gate.requires !== undefined) {
-        if (!Array.isArray(gate.requires)) {
-          diagnostics.push(createDiagnostic("definition.gate.requires.invalid", `${gatePath}.requires`, `gate ${gateId} requires must be an array`));
-        } else {
-          gate.requires.forEach((requiredKind, index) => {
-            if (!isNonEmptyString(requiredKind)) {
-              diagnostics.push(createDiagnostic("definition.gate.requires.kind.invalid", `${gatePath}.requires[${index}]`, "requires entries must be non-empty strings"));
-            }
-          });
-        }
+        diagnostics.push(createDiagnostic(
+          "definition.gate.field.unsupported",
+          `${gatePath}.requires`,
+          `gate ${gateId} uses unsupported field requires; use typed expects entries`
+        ));
       }
       for (const [reason, targetStep] of Object.entries(gate.on_route_back ?? {})) {
         if (!stepIds.has(targetStep)) {

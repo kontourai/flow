@@ -92,11 +92,6 @@
           "items": { "$ref": "#/$defs/expectation" },
           "uniqueItems": true
         },
-        "requires": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/definition_name" },
-          "uniqueItems": true
-        },
         "on_route_back": {
           "type": "object",
           "propertyNames": {
