@@ -10,7 +10,7 @@ import {
 } from "../dist/index.js";
 import * as packageProjection from "../dist/console-projection.js";
 
-const fixtureCwd = fileURLToPath(new URL("../examples/fixtures/console-projection", import.meta.url));
+const fixtureCwd = fileURLToPath(new URL("../examples/scenarios/console-projection", import.meta.url));
 const fixtureRunId = "console-projection-fixture";
 const fixtureRunDir = path.join(fixtureCwd, ".flow", "runs", fixtureRunId);
 

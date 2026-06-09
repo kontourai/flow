@@ -37,7 +37,7 @@
       "external_links": [
         {
           "label": "test log",
-          "url": "file://fixtures/version-release-report/test-log.txt",
+          "url": "file://scenarios/version-release-report/test-log.txt",
           "provider": "local-file"
         }
       ],
@@ -46,7 +46,7 @@
           "system": "local-artifact",
           "id": "test-log",
           "native_type": "file",
-          "url": "file://fixtures/version-release-report/test-log.txt"
+          "url": "file://scenarios/version-release-report/test-log.txt"
         }
       ]
     },
@@ -190,7 +190,7 @@
   "external_links": [
     {
       "label": "release notes",
-      "url": "file://fixtures/version-release-report/release-notes.md"
+      "url": "file://scenarios/version-release-report/release-notes.md"
     }
   ],
   "native_refs": [
@@ -198,7 +198,7 @@
       "system": "local-artifact",
       "id": "release-notes",
       "native_type": "file",
-      "url": "file://fixtures/version-release-report/release-notes.md"
+      "url": "file://scenarios/version-release-report/release-notes.md"
     }
   ]
 }

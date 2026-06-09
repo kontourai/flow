@@ -33,9 +33,11 @@ These hooks are contributor tooling. They are not Flow Definition semantics, not
 
 Flow core runtime sources live in `src/*.ts`. `npm run typecheck` validates those sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
 
-The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and fixtures remain JSON/data assets rather than TypeScript modules.
+The remaining JavaScript/MJS files are intentional exceptions: `scripts/*.mjs` are Node support and verification scripts, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and scenarios remain JSON/data assets rather than TypeScript modules.
 
-Repo structure guide: [docs/repo-structure.md](docs/repo-structure.md) explains where source, schemas, examples, fixtures, console assets, tests, scripts, generated output, and workflow artifacts belong.
+Repo structure guide: [docs/repo-structure.md](docs/repo-structure.md) explains where source, schemas, examples, scenarios, console assets, tests, scripts, generated output, and workflow artifacts belong.
+
+Release history: [CHANGELOG.md](CHANGELOG.md) records published package changes.
 
 ## Status
 
@@ -133,7 +135,7 @@ This API is the Flow boundary for console consumers. Browser UI, hosted behavior
 
 ```sh
 npm run build
-node dist/cli.js console --run console-projection-fixture --cwd examples/fixtures/console-projection --port 0
+node dist/cli.js console --run console-projection-fixture --cwd examples/scenarios/console-projection --port 0
 ```
 
 The console shows the process graph, transition timeline, current run status, gate details, evidence, and links from the local projection. It does not start hosted services, authenticate users, collaborate across machines, or discover remote Surface/Veritas systems.
@@ -254,7 +256,7 @@ const result = evaluateReleaseReadiness(policy, {
 });
 ```
 
-Required lanes pass only when their Surface-shaped claim satisfies the policy. Missing, pending, rejected, stale, untrusted, or authority-gap evidence returns `decision: "hold"`. See `examples/fixtures/release-readiness/` for the fixture policy, adapter records, and equivalent Flow Definition expectation.
+Required lanes pass only when their Surface-shaped claim satisfies the policy. Missing, pending, rejected, stale, untrusted, or authority-gap evidence returns `decision: "hold"`. See `examples/scenarios/release-readiness/` for the scenario policy, adapter records, and equivalent Flow Definition expectation.
 
 ## Version Release Report
 
@@ -264,8 +266,8 @@ Generate from an explicit local fixture file:
 
 ```sh
 npm run build
-node dist/cli.js version-release-report examples/fixtures/version-release-report/complete.json --format json
-node dist/cli.js version-release-report examples/fixtures/version-release-report/missing-required-evidence.json --format markdown
+node dist/cli.js version-release-report examples/scenarios/version-release-report/complete.json --format json
+node dist/cli.js version-release-report examples/scenarios/version-release-report/missing-required-evidence.json --format markdown
 ```
 
 Use the library API when embedding the projection:
@@ -280,7 +282,7 @@ const report = projectVersionReleaseReport(fixtureJson);
 console.log(renderVersionReleaseReportMarkdown(report));
 ```
 
-`schemas/version-release-report.schema.json` describes the projected report. Missing required verification evidence or required release lanes become explicit `gaps` and set `decision: "hold"`; they are never summarized as ready. Provider-native ids and URLs are preserved as data in `native_refs` and `external_links`; Flow does not call hosted release portals, replace release managers, or invent provider-specific semantics for this artifact. See `examples/fixtures/version-release-report/` for complete and missing-evidence inputs.
+`schemas/version-release-report.schema.json` describes the projected report. Missing required verification evidence or required release lanes become explicit `gaps` and set `decision: "hold"`; they are never summarized as ready. Provider-native ids and URLs are preserved as data in `native_refs` and `external_links`; Flow does not call hosted release portals, replace release managers, or invent provider-specific semantics for this artifact. See `examples/scenarios/version-release-report/` for complete and missing-evidence inputs.
 
 ## Project Config Merge
 
