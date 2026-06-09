@@ -17,6 +17,7 @@ import {
   freezeStateFixtureAdapter,
   FLOW_SCHEMA_VERSION,
   initialState,
+  loadRun,
   markdownText,
   normalizeTrustArtifact,
   projectVersionReleaseReport,
@@ -30,7 +31,8 @@ import {
   validateEvaluationTransition,
   validateDefinition,
   validateDefinitionWithDiagnostics,
-  validateRunTransition
+  validateRunTransition,
+  startRun
 } from "../dist/index.js";
 
 const execFile = promisify(execFileCallback);
@@ -55,6 +57,10 @@ async function versionReleaseReportFixture(file) {
   return json(`examples/scenarios/version-release-report/${file}`);
 }
 
+async function resourceDefinitionFixture() {
+  return json("examples/flow-definition-resource-contract.json");
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -63,6 +69,15 @@ function requireSchemaFields(schema, fields) {
   for (const field of fields) {
     assert.ok(schema.required.includes(field), `${schema.title} must require ${field}`);
     assert.ok(schema.properties[field], `${schema.title} must define ${field}`);
+  }
+}
+
+function requireSchemaDefFields(schema, defName, fields) {
+  const def = schema.$defs[defName];
+  assert.ok(def, `${schema.title} must define ${defName}`);
+  for (const field of fields) {
+    assert.ok(def.required.includes(field), `${schema.title} ${defName} must require ${field}`);
+    assert.ok(def.properties[field], `${schema.title} ${defName} must define ${field}`);
   }
 }
 
@@ -101,6 +116,53 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.validateRunTransition, "function");
   assert.equal(typeof runtime.projectVersionReleaseReport, "function");
   assert.equal(typeof runtime.renderVersionReleaseReportMarkdown, "function");
+});
+
+test("CLI validate-definition accepts Resource-shaped definitions with stable JSON payload", async () => {
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const result = await execFile(process.execPath, [
+    cli,
+    "validate-definition",
+    "examples/flow-definition-resource-contract.json",
+    "--json"
+  ], {
+    cwd: new URL("..", import.meta.url)
+  });
+  const payload = JSON.parse(result.stdout);
+
+  assert.deepEqual(Object.keys(payload), ["valid", "path", "error_count", "diagnostics"]);
+  assert.equal(payload.valid, true);
+  assert.equal(payload.path, "examples/flow-definition-resource-contract.json");
+  assert.equal(payload.error_count, 0);
+  assert.deepEqual(payload.diagnostics, []);
+});
+
+test("CLI validate-definition rejects invalid Resource metadata string maps", async () => {
+  const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-resource-metadata-"));
+  const definition = await resourceDefinitionFixture();
+  definition.metadata.labels = { team: 42 };
+  definition.metadata.annotations = ["not", "a", "map"];
+  await writeFile(path.join(cwd, "flow-definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
+
+  await assert.rejects(
+    execFile(process.execPath, [
+      cli,
+      "validate-definition",
+      "flow-definition.json",
+      "--json"
+    ], { cwd }),
+    (error) => {
+      const payload = JSON.parse(error.stdout);
+      assert.equal(payload.valid, false);
+      assert.equal(payload.error_count, 2);
+      assert.deepEqual(payload.diagnostics.map((diagnostic) => diagnostic.path), [
+        "$.metadata.labels.team",
+        "$.metadata.annotations"
+      ]);
+      return true;
+    }
+  );
 });
 
 test("package root exports stay stable across source-domain splits", () => {
@@ -292,7 +354,24 @@ test("schemas describe the runtime contract", async () => {
   const releaseReadinessResultSchema = await json("schemas/release-readiness-result.schema.json");
   const versionReleaseReportSchema = await json("schemas/version-release-report.schema.json");
 
-  assert.equal(definitionSchema.properties.version.type, "string");
+  assert.deepEqual(definitionSchema.oneOf, [
+    { $ref: "#/$defs/flat_definition" },
+    { $ref: "#/$defs/resource_definition" }
+  ]);
+  assert.equal(definitionSchema.$defs.flat_definition.properties.version.type, "string");
+  assert.equal(definitionSchema.$defs.flat_definition.properties.steps.$ref, "#/$defs/steps");
+  assert.equal(definitionSchema.$defs.flat_definition.properties.gates.$ref, "#/$defs/gates");
+  assert.equal(definitionSchema.$defs.resource_definition.properties.apiVersion.const, "flow.kontourai.io/v1alpha1");
+  assert.equal(definitionSchema.$defs.resource_definition.properties.kind.const, "FlowDefinition");
+  assert.equal(definitionSchema.$defs.resource_definition.properties.spec.$ref, "#/$defs/resource_spec");
+  assert.equal(definitionSchema.$defs.resource_metadata.properties.name.$ref, "#/$defs/definition_name");
+  assert.equal(definitionSchema.$defs.resource_metadata.properties.labels.$ref, "#/$defs/resource_string_map");
+  assert.equal(definitionSchema.$defs.resource_metadata.properties.annotations.$ref, "#/$defs/resource_string_map");
+  assert.equal(definitionSchema.$defs.resource_spec.properties.version.type, "string");
+  assert.equal(definitionSchema.$defs.resource_spec.properties.steps.$ref, "#/$defs/steps");
+  assert.equal(definitionSchema.$defs.resource_spec.properties.gates.$ref, "#/$defs/gates");
+  assert.equal(definitionSchema.$defs.steps.items.$ref, "#/$defs/step");
+  assert.equal(definitionSchema.$defs.gates.additionalProperties.$ref, "#/$defs/gate");
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(reportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
@@ -341,7 +420,10 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.analytics);
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.analytics_loop_key);
 
-  requireSchemaFields(definitionSchema, ["id", "version", "steps", "gates"]);
+  requireSchemaDefFields(definitionSchema, "flat_definition", ["id", "version", "steps", "gates"]);
+  requireSchemaDefFields(definitionSchema, "resource_definition", ["apiVersion", "kind", "metadata", "spec"]);
+  requireSchemaDefFields(definitionSchema, "resource_metadata", ["name"]);
+  requireSchemaDefFields(definitionSchema, "resource_spec", ["version", "steps", "gates"]);
   requireSchemaFields(runSchema, ["schema_version", "run_id", "definition_id", "status", "current_step", "gate_outcomes", "transitions", "exceptions"]);
   requireSchemaFields(evidenceSchema, ["schema_version", "evidence"]);
   requireSchemaFields(reportSchema, ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
@@ -809,6 +891,47 @@ test("example definition matches the v0.1 runtime shape", async () => {
   assert.doesNotThrow(() => validateDefinition(definition));
 });
 
+test("Resource-shaped definition normalizes for runtime validation", async () => {
+  const definition = await resourceDefinitionFixture();
+  const normalized = validateDefinition(definition);
+
+  assert.deepEqual(normalized, {
+    id: "resource-contract-flow",
+    version: "1",
+    steps: definition.spec.steps,
+    gates: definition.spec.gates
+  });
+  assert.deepEqual(validateDefinitionWithDiagnostics(definition), {
+    valid: true,
+    diagnostics: []
+  });
+});
+
+test("startRun stores and loadRun returns flat-compatible snapshots for Resource-shaped definitions", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-resource-start-"));
+  const definition = await resourceDefinitionFixture();
+  await writeFile(path.join(cwd, "flow-definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
+
+  const started = await startRun("flow-definition.json", {
+    cwd,
+    runId: "resource-contract-smoke",
+    params: { subject: "resource-contract-smoke" }
+  });
+  const storedDefinition = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "definition.json"), "utf8"));
+  const storedState = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "state.json"), "utf8"));
+  const storedReport = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "resource-contract-smoke", "report.json"), "utf8"));
+  const loaded = await loadRun("resource-contract-smoke", cwd);
+
+  assert.equal(started.state.definition_id, "resource-contract-flow");
+  assert.equal(storedDefinition.id, "resource-contract-flow");
+  assert.equal(storedDefinition.version, "1");
+  assert.equal(storedDefinition.apiVersion, undefined);
+  assert.equal(storedState.definition_id, "resource-contract-flow");
+  assert.equal(storedReport.definition_id, "resource-contract-flow");
+  assert.equal(loaded.definition.id, "resource-contract-flow");
+  assert.equal(loaded.state.definition_id, "resource-contract-flow");
+});
+
 test("adversarial-pass reference definition validates and documents route targets", async () => {
   const definition = await json("examples/adversarial-pass-flow.json");
   assert.equal(definition.id, "adversarial-pass-flow");
@@ -957,6 +1080,37 @@ test("transition validator allows only legal forward transitions and keeps input
   });
   assert.equal(unknown.valid, false);
   assert.ok(unknown.diagnostics.some((diagnostic) => diagnostic.code === "transition.to_step.unknown"));
+});
+
+test("transition validator accepts Resource-shaped request definitions", async () => {
+  const definition = await resourceDefinitionFixture();
+  const state = initialState(definition, "resource-transition");
+  const result = validateRunTransition({
+    definition,
+    current_state: state,
+    proposed_transition: {
+      from_step: "plan",
+      to_step: "implement",
+      status: "allowed",
+      gate_id: "plan-gate"
+    },
+    manifest: routeBackManifest([
+      {
+        id: "ev.acceptance",
+        gate_id: "plan-gate",
+        kind: "acceptance-criteria",
+        requested_kind: "acceptance-criteria",
+        status: "passed",
+        attached_at: "2026-06-09T00:00:00.000Z"
+      }
+    ])
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.status, "allowed");
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.transition.from_step, "plan");
+  assert.equal(result.transition.to_step, "implement");
 });
 
 test("transition validator allows forward advancement through accepted exceptions", () => {

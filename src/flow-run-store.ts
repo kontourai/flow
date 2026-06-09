@@ -35,8 +35,8 @@ export function flowReadme() {
 
 export async function startRun(definitionPath: string, options: MutableRecord = {}) {
   const cwd = options.cwd ?? process.cwd();
-  const definition = await readJson(path.resolve(cwd, definitionPath));
-  validateDefinition(definition);
+  const rawDefinition = await readJson(path.resolve(cwd, definitionPath));
+  const definition = validateDefinition(rawDefinition);
   const runId = options.runId ?? `run.${Date.now()}`;
   const dir = runDir(runId, cwd);
   if (existsSync(dir)) throw new Error(`run already exists: ${runId}`);
@@ -51,8 +51,8 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
 
 export async function loadRun(runId, cwd = process.cwd()) {
   const dir = runDir(runId, cwd);
-  const definition = await readJson(path.join(dir, "definition.json"));
-  validateDefinition(definition);
+  const rawDefinition = await readJson(path.join(dir, "definition.json"));
+  const definition = validateDefinition(rawDefinition);
   const state = await readJson(path.join(dir, "state.json"));
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, "evidence", "manifest.json");

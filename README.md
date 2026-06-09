@@ -423,8 +423,27 @@ Validate arbitrary Flow Definition JSON before starting a run:
 
 ```sh
 npx flow validate-definition examples/builder-kit-flow.json
+npx flow validate-definition examples/flow-definition-resource-contract.json --json
 npx flow validate-definition examples/invalid-claim-expectation-flow.json --json
 ```
+
+Flow accepts two Flow Definition authoring shapes:
+
+- The v0.1 flat shape used by existing examples such as `examples/agent-dev-flow.json`, with top-level `id`, `version`, `steps`, and `gates`.
+- The Resource Contract shape shown in `examples/flow-definition-resource-contract.json`, with the Flow Definition `apiVersion`, `kind: "FlowDefinition"`, `metadata`, and `spec`.
+
+Resource-shaped Flow Definitions map to the same runtime model as flat v0.1 definitions:
+
+| Resource field | Runtime field |
+| --- | --- |
+| `metadata.name` | `id` |
+| `spec.version` | `version` |
+| `spec.steps` | `steps` |
+| `spec.gates` | `gates` |
+
+The flat v0.1 Flow Definition shape remains supported for compatibility. Existing definitions, examples, local run snapshots, reports, and workflows that use top-level `id`, `version`, `steps`, and `gates` do not need to migrate to the Resource Contract envelope.
+
+This Resource Contract slice is Flow Definition only. It does not migrate Flow Run state, Flow Project Config, gate evidence manifests, reports, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters.
 
 `--json` emits a stable machine-readable payload:
 

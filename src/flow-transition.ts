@@ -7,6 +7,7 @@ import {
   getStep,
   openGates,
   routeBackDecision,
+  validateDefinition,
   validateDefinitionWithDiagnostics
 } from "./flow-definition.js";
 import { evaluateGate } from "./flow-gates.js";
@@ -119,7 +120,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
     };
   }
 
-  const definition = request.definition;
+  let definition = request.definition;
   const currentState = currentStateFromTransitionRequest(request);
   const config = request.config ?? defaultFlowConfig();
   const manifest = manifestFromTransitionRequest(request);
@@ -142,6 +143,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
       transition: transition ? normalizeTransitionPreview(transition) : null
     };
   }
+  definition = validateDefinition(definition);
 
   const currentStepId = currentState.current_step;
   const currentStep = getStep(definition, currentStepId);

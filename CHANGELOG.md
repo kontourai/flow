@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.3
+
+- Added Flow Definition Resource Contract authoring support with
+  `apiVersion`, `kind`, `metadata`, and `spec`.
+- Preserved flat v0.1 Flow Definition compatibility for existing files and API
+  callers.
+- Normalized Resource-shaped definitions to flat runtime snapshots for start,
+  load, report, and transition flows.
+- Added a Resource-shaped Flow Definition example and README guidance that
+  explicitly limits this compatibility slice to Flow Definition resources.
+
 ## 0.1.2
 
 - Renamed published example data from `examples/fixtures/` to `examples/scenarios/`
