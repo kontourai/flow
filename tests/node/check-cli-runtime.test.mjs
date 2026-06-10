@@ -45,6 +45,74 @@ test("CLI init scaffolds .flow with the packaged sample definition", async () =>
   await access(path.join(cwd, ".flow", "README.md"), constants.R_OK);
 });
 
+test("CLI init --demo scaffolds a resumable demo run past the plan gate", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-init-demo-"));
+  const result = await execFile(process.execPath, [cliPath, "init", "--demo", "--cwd", cwd]);
+  assert.match(result.stdout, /demo run ready: demo/);
+  assert.match(result.stdout, /flow resume demo/);
+
+  const status = await execFile(process.execPath, [cliPath, "status", "demo", "--cwd", cwd]);
+  assert.match(status.stdout, /current step: implement/);
+  assert.match(status.stdout, /PASS\s+plan gate/);
+
+  const again = await execFile(process.execPath, [cliPath, "init", "--demo", "--cwd", cwd]);
+  assert.match(again.stdout, /demo run already exists: demo/);
+});
+
+test("CLI evaluate --exit-code fails on non-pass outcomes and list prints an empty state", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-exit-code-"));
+  const emptyList = await execFile(process.execPath, [cliPath, "list", "--cwd", cwd]);
+  assert.match(emptyList.stdout, /no flow runs found/);
+
+  await execFile(process.execPath, [cliPath, "init", "--demo", "--cwd", cwd]);
+  // demo run sits at implement with no evidence attached: block, so --exit-code exits 1
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "evaluate", "demo", "--exit-code", "--cwd", cwd]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /block implement-gate/);
+      return true;
+    }
+  );
+  // without --exit-code the same evaluation exits 0
+  const plain = await execFile(process.execPath, [cliPath, "evaluate", "demo", "--cwd", cwd]);
+  assert.match(plain.stdout, /block implement-gate/);
+});
+
+test("CLI status and resume surface explore_hint for missing expectations", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-hints-"));
+  await mkdir(path.join(cwd, "defs"), { recursive: true });
+  const definition = {
+    id: "hint-flow",
+    version: "1",
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "surface.claim",
+            required: true,
+            description: "Tests passed.",
+            explore_hint: "Run the suite and attach the CI trust report.",
+            claim: { type: "quality.tests", accepted_statuses: ["trusted"] }
+          }
+        ]
+      }
+    }
+  };
+  await writeFile(path.join(cwd, "defs", "hint-flow.json"), JSON.stringify(definition));
+  await execFile(process.execPath, [cliPath, "start", "defs/hint-flow.json", "--run-id", "hints-1", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "evaluate", "hints-1", "--cwd", cwd]);
+
+  const status = await execFile(process.execPath, [cliPath, "status", "hints-1", "--cwd", cwd]);
+  assert.match(status.stdout, /hint: Run the suite and attach the CI trust report\./);
+
+  const resume = await execFile(process.execPath, [cliPath, "resume", "hints-1", "--cwd", cwd]);
+  assert.match(resume.stdout, /hint \(verify-gate\): Run the suite and attach the CI trust report\./);
+});
+
 test("CLI validate-definition accepts Resource-shaped definitions with stable JSON payload", async () => {
   const cli = cliPath;
   const result = await execFile(process.execPath, [

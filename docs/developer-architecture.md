@@ -186,7 +186,7 @@ Future Resource Contract alignment: durable Flow contracts should gradually alig
 
 ## Ownership Boundaries
 
-The canonical product ownership summary lives in [product-boundaries.md](product-boundaries.md). This architecture guide keeps only the implementation-facing rules that affect Flow runtime behavior:
+The canonical product ownership summary lives in the Boundaries section of [product-vision.md](product-vision.md). This architecture guide keeps only the implementation-facing rules that affect Flow runtime behavior:
 
 - Flow owns provider-neutral process semantics: definitions, runs, steps, gates, transitions, route-back policy, evidence manifests, accepted exceptions, reports, continuation, transition validation, config merge semantics, and local console projection.
 - Flow decides whether a gate passes, blocks, routes back, waits, or is allowed by accepted exception from Flow-owned contracts and local project config.

@@ -123,6 +123,7 @@ export {
   loadRun,
   normalizeTrustArtifact,
   saveRun,
+  scaffoldDemoRun,
   sha256File,
   startRun
 } from "./runtime/flow-run-store.js";

@@ -134,7 +134,13 @@ export function renderSummary(definition, state) {
     const statusLabel = status === "pass" ? "PASS" : status === "block" ? "BLOCK" : status === "route-back" ? "ROUTE-BACK" : "WAIT";
     lines.push(`${statusLabel.padEnd(5)} ${slugLabel(gateId)}: ${outcome?.summary ?? `${slugLabel(gateId)} waiting`}`);
     if (outcome?.missing?.length) {
-      lines.push(`      expected: ${expectationsForGate(gate).filter((entry) => entry.required).map(expectationLabel).join(", ")}`);
+      const required = expectationsForGate(gate).filter((entry) => entry.required);
+      lines.push(`      expected: ${required.map(expectationLabel).join(", ")}`);
+      for (const entry of required) {
+        if (outcome.missing.includes(entry.id) && entry.explore_hint) {
+          lines.push(`      hint: ${entry.explore_hint}`);
+        }
+      }
     }
     if (outcome?.diagnostics?.claim_evaluation?.length) {
       lines.push(`      claim diagnostics: ${outcome.diagnostics.claim_evaluation.map((entry) => entry.reason).join(", ")}`);
@@ -171,6 +177,15 @@ export function renderResume(definition, state) {
     }).join("; ") : "none"}`,
     `guidance: continue from recorded Flow state; ${state.next_action}`
   ];
+  for (const gate of gates) {
+    const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gate.id);
+    if (!outcome?.missing?.length) continue;
+    for (const expectation of expectationsForGate(gate)) {
+      if (outcome.missing.includes(expectation.id) && expectation.explore_hint) {
+        lines.push(`hint (${gate.id}): ${expectation.explore_hint}`);
+      }
+    }
+  }
   return `${lines.join("\n")}\n`;
 }
 

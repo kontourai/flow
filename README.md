@@ -1,535 +1,181 @@
+<div align="center">
+
 # Kontour Flow
 
-Process transparency for any required-path work. Flow shows why a process was allowed to move forward — gate by gate, with the evidence behind each transition.
+**Proof, not promises. Flow shows why work was allowed to move forward.**
 
-Agents skip steps, accept weak evidence, summarize work as complete, and lose the thread after compaction. Flow is the small thing missing in the middle: a record of the required path, the evidence each gate expected, the evidence that was actually collected, and the exceptions that need explicit human trust. It does not run agents or replace CI. It does not replace the systems that run work. It explains why the work was allowed to advance.
+[![npm version](https://img.shields.io/npm/v/%40kontourai%2Fflow)](https://www.npmjs.com/package/@kontourai/flow)
+[![CI](https://github.com/kontourai/flow/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/flow/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+
+[Documentation](https://kontourai.github.io/flow/) · [Getting Started](docs/getting-started.md) · [Use Cases](docs/use-cases.md) · [CLI Reference](docs/cli.md)
+
+</div>
+
+---
+
+AI agents move faster than humans can inspect. They skip steps, accept weak evidence, declare work complete after partial verification, and lose the thread after context compaction. The work *looks* done — until you ask why it was allowed to advance, and nobody can answer.
+
+Flow is the missing record in the middle: **the required path, the evidence each gate expected, the evidence that was actually collected, and the exceptions a human explicitly accepted.** It does not run your agents and it does not replace CI. It explains — durably, locally, in plain files — why the work was allowed to advance.
+
+```text
+flow run: agent-dev-flow / feature-search-filters
+current step: implement
+
+PASS  plan gate: Acceptance criteria are ready for implementation. satisfied
+WAIT  implementation gate: implementation gate waiting
+WAIT  verify gate: verify gate waiting
+
+next action: attach evidence for implementation gate
+continuation: resume from implement, not chat memory
+report: .flow/runs/dev-1847/report.md
+```
+
+## Why teams adopt Flow
+
+- **Evidence-gated transitions.** A step is not complete because an agent says so. Gates declare typed expectations, and runs advance only when evidence satisfies them — or when a human accepts an explicit, attributable exception.
+- **Survives context loss.** Every run lives in plain files under `.flow/runs/<run-id>/`. A new agent session, a teammate, or a CI job can `flow resume` and continue from recorded state, not chat memory.
+- **Deterministic route-back.** Failed evidence routes work back to the right step (`implementation_defect` → implement, `plan_gap` → plan) with attempt budgets, so agents cannot loop silently forever.
+- **Audit-ready reports.** Every run regenerates a human-readable `report.md` and machine-readable `report.json` that explain what passed, what blocked, what was excepted, and what happens next.
+- **Local-first, zero lock-in.** v0.1 is a file-backed CLI and TypeScript library. No hosted service, no account, no telemetry. Your evidence stays in your repo.
+
+## See it
+
+The bundled local Flow Console (`flow console`) renders any run from its local files — the process graph, gate outcomes, evidence, route-backs, and the next action:
+
+![Flow Console showing a run blocked at the verify step with gate details and evidence](docs/assets/flow-console-desktop.png)
 
 ## Quickstart
 
 ```sh
 npm install -D @kontourai/flow
+
+# Scaffold .flow/ with a sample agent-dev definition
 npx flow init
-npx flow validate-definition examples/agent-dev-flow.json --json
-npx flow start examples/agent-dev-flow.json --run-id dev-1847
-npx flow attach-evidence dev-1847 --gate verify-gate \
-  --file ./test-output.json --kind command
-npx flow report dev-1847
-```
 
-Release history: [CHANGELOG.md](CHANGELOG.md) records published package changes.
+# Start a run for a concrete piece of work
+npx flow start .flow/definitions/agent-dev-flow.json \
+  --run-id dev-1847 --params subject=feature-search-filters
 
-Docs map: [docs/README.md](docs/README.md) points to product, architecture, contributor, repo structure, and ADR docs. Contributor setup lives in [docs/contributing.md](docs/contributing.md).
-
-## Status
-
-Flow v0.1 is local and file-backed.
-
-Developer architecture guide: [docs/developer-architecture.md](docs/developer-architecture.md) explains Flow lifecycle and enforcement diagrams, product ownership boundaries, and current versus future Resource Contract alignment.
-
-## First Wedge
-
-Agentic development workflows are the first wedge: plan, implementation, verification, publish, release, and learning gates with evidence that survives handoff and context compaction.
-
-## Example Summary
-
-```sh
-npx flow init
-npx flow start .flow/definitions/agent-dev-flow.json --run-id dev-1847 --params subject=feature-search-filters
-npx flow attach-evidence dev-1847 --gate plan-gate --file ./acceptance.md --kind acceptance-criteria
+# Attach evidence to the current gate, then evaluate
+npx flow attach-evidence dev-1847 --gate plan-gate \
+  --file ./acceptance-claim.json --trust-artifact
 npx flow evaluate dev-1847
-npx flow status dev-1847 --format summary
+
+# See where the run stands — from any session, any time
+npx flow status dev-1847
+npx flow resume dev-1847
 ```
 
-The summary output is designed for humans and agents:
+In a hurry? `npx flow init --demo` scaffolds a ready-made run named `demo` so `flow status demo` and `flow console --run demo` have something real to show immediately.
+
+The [Getting Started guide](docs/getting-started.md) walks this path end to end with real output, including what evidence files look like and how a blocked gate routes work back.
+
+## Where Flow fits
+
+Flow is the process-transparency layer of the Kontour product line: *Kontour shows the work behind AI.*
+
+| Product | Owns |
+| --- | --- |
+| **[Surface](https://github.com/kontourai/surface)** | Portable trust state: claims, evidence, policies, trust snapshots |
+| **Flow** | Process transparency: steps, gates, transitions, runs, exceptions, reports |
+| **[Veritas](https://github.com/kontourai/veritas)** | Code/change transparency: repo standards, merge readiness |
+| **[Flow Agents](https://kontourai.github.io/flow-agents/)** | Agent-facing distribution: kits, runtime adapters, hooks |
+
+Flow stands alone — you need none of the other products to use it. When they are present, Veritas can supply repo-readiness evidence to Flow gates, and Flow Agents can enforce Flow gates from inside Claude Code, Codex, Kiro, or GitHub Actions.
+
+Real teams use Flow for agentic development gates, regulated release decisions, platform golden paths, adversarial review loops, and audit-ready change evidence. [Use Cases](docs/use-cases.md) walks through each with definitions you can copy.
+
+## How it works
+
+1. **Author a Flow Definition** — JSON describing steps, gates, typed evidence expectations, and route-back policy. Validate it with `flow validate-definition`.
+2. **Start a Flow Run** — `flow start` snapshots the definition and creates authoritative run state under `.flow/runs/<run-id>/`.
+3. **Attach evidence** — test output, CI results, trust reports, human attestations. Files are copied into the run; nothing is synthesized.
+4. **Evaluate gates** — `flow evaluate` passes, blocks, routes back, or waits. Accepted exceptions are first-class, recorded with reason and authority.
+5. **Report and resume** — `report.md` / `report.json` explain the run; `flow resume` gives the next agent everything it needs without chat memory.
 
 ```text
-flow run: agent-dev-flow / feature-search-filters
-current step: verify
-
-PASS  plan gate: acceptance criteria linked
-PASS  implementation gate: scoped files changed
-BLOCK verify gate: browser evidence missing
-      expected: tests, lint, screenshot, Veritas readiness
-
-next action: run browser check before publish
-continuation: resume from verify, not chat memory
-report: .flow/runs/dev-1847/report.md
+.flow/runs/dev-1847/
+├── definition.json        # normalized definition snapshot from run start
+├── state.json             # authoritative run state (continuation authority)
+├── evidence/
+│   ├── manifest.json      # evidence index
+│   └── ev.<id>.json       # copied evidence artifacts
+├── report.md              # regenerated human-readable report
+└── report.json            # regenerated machine-readable report
 ```
 
 ## CLI
 
 ```text
-flow init [--cwd <path>]
-flow validate-definition <path> [--json] [--cwd <path>]
-flow validate-transition <request-json> [--cwd <path>]
-flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
-flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
-flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--route-reason <reason>] [--route-metadata <json-file>] [--cwd <path>]
-flow evaluate <run-id> [--gate <gate>] [--cwd <path>]
-flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
-flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
-flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
-flow report <run-id> [--format summary|markdown|json] [--cwd <path>]
-flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path>]
-flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
-flow resume <run-id> [--cwd <path>]
-flow list [--cwd <path>]
+flow init                          scaffold .flow/ with config and a sample definition
+flow validate-definition <path>    validate a Flow Definition, with --json diagnostics
+flow start <definition>            start a run from a definition
+flow status <run-id>               summary, json, or markdown run status
+flow attach-evidence <run-id>      copy an evidence file onto a gate
+flow evaluate <run-id>             evaluate gates and advance, block, or route back
+flow accept-exception <run-id>     pass a gate by explicit, attributed exception
+flow resume <run-id>               print continuation state for the next agent
+flow report <run-id>               regenerated run report in summary, markdown, or json
+flow list                          list local runs
+flow console --run <run-id>        loopback-only local console for a run
+flow config preview|apply <file>   preview and apply project config proposals
+flow validate-transition <file>    validate a proposed transition against run state
+flow version-release-report <file> project a versioned release report
 ```
 
-`--cwd <path>` scopes local Flow files and relative inputs for CLI commands
-that read or write project state. For example, `flow start flow-definition.json
---cwd /tmp/workspace` writes the run under `/tmp/workspace/.flow/` and resolves
-`flow-definition.json` from `/tmp/workspace`.
-
-## Local Run Store
-
-Flow v0.1 is local and file-backed. A run is stored at `.flow/runs/<run-id>/`:
-
-- `definition.json` is the normalized Flow Definition snapshot used by this run. It is copied from the authored definition at run start; if the authored input used the Resource Contract envelope, the persisted snapshot is the flat Flow Definition spec.
-- `state.json` is the authoritative mutable Flow Run state. It follows `schemas/flow-run.schema.json` and records `run_id`, definition identity, subject, status, current step, transition history, gate outcomes, accepted exceptions, next action, and update time.
-- `evidence/manifest.json` is the append/update evidence index for this run. It follows `schemas/gate-evidence.schema.json`, carries the run and definition identity, and points at copied evidence files.
-- `evidence/<id>.*` contains copied evidence artifacts attached through the CLI or compatible local adapters.
-- `report.md` is a derived human-readable Flow Report regenerated from `definition.json`, `state.json`, and `evidence/manifest.json`.
-- `report.json` is the derived machine-readable Flow Report regenerated from the same run files.
-
-The continuation contract is intentionally simple: `flow resume <run-id>` reads only the run directory and prints the current step, next action, open gates, accepted exceptions, and a one-line instruction for the next agent.
-
-`state.json` is the continuation authority. Reports and console projections are explanations of the current run files; they are not the source of truth for gate evaluation or resume.
-
-## Console Projection
-
-Downstream console code can project a local Flow Run into a deterministic read model:
-
-```js
-import { projectFlowRunFromFiles } from "@kontourai/flow";
-
-const projection = await projectFlowRunFromFiles("dev-1847", {
-  cwd: process.cwd()
-});
-
-console.log(projection.current_step);
-console.log(projection.gates);
-```
-
-The root package exports `projectFlowRun`, `projectFlowRunFromFiles`, and the local console server helpers from `@kontourai/flow`.
-
-Public package usage is limited to the package root and the `flow` CLI:
-
-```js
-import {
-  validateDefinition,
-  projectFlowRunFromFiles,
-  startFlowConsoleServer
-} from "@kontourai/flow";
-```
-
-Generated `dist/` domain files are packaged implementation output. Do not import internal package subpaths; they are not part of the npm package API.
-
-`projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
-
-This API is the Flow boundary for console consumers. The packaged local console uses this projection; hosted behavior, companion console startup, and `kontour-console` integration remain outside the v0.1 package boundary.
-
-## Local Flow Console
-
-`flow console --run <id>` starts a loopback-only local operator console for a run stored under `.flow/runs/<run-id>/`. The server reads the run through `projectFlowRunFromFiles`, serves static compiled UI assets, and exposes the projection at `/api/projection`.
-
-```sh
-npm run build
-node dist/cli.js console --run console-projection-fixture --cwd examples/scenarios/console-projection --port 0
-```
-
-The console shows the process graph, transition timeline, current run status, gate details, evidence, and links from the local projection. It does not start hosted services, authenticate users, collaborate across machines, or discover remote Surface/Veritas systems.
-
-Surface and Veritas refs keep normal HTTP(S) URLs when provided. Companion-scheme refs are mapped to deterministic local companion URLs: `surface://...` becomes `http://127.0.0.1:51231/...`, and `veritas://...` becomes `http://127.0.0.1:51232/...`. When a ref only has a local artifact path, the console links it through `/artifacts/<relative-path>` if the path stays inside the selected run directory; unsafe absolute or parent-traversal paths are displayed as fallback text instead of being served.
-
-## Evidence Kinds
-
-`flow attach-evidence --kind <kind>` accepts these documented kinds:
-
-- `command`
-- `file`
-- `ci`
-- `veritas-readiness`
-- `human-attestation`
-- `trace-link`
-
-Unknown kinds are accepted as `custom` and stored with the originally requested kind. The v0.1 CLI attaches evidence from files; richer adapters can write the same manifest shape.
-
-Failed evidence can carry route-back metadata:
-
-```sh
-flow attach-evidence dev-1847 --gate verify-gate --file ./test-output.json \
-  --kind command --status failed --route-reason implementation_defect \
-  --classifier-kind manual --classifier-source cli --classifier-confidence 0.75 \
-  --analytics-loop-key verify:implementation_defect --expectation-id tests-passed
-```
-
-For nested metadata, pass `--route-metadata ./route-metadata.json`. The file may contain `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics`. CLI flags override overlapping `route_reason`, `classifier`, `analytics.loop_key`, and `expectation_ids` values from the file. Flow uses only `route_reason`, the Flow Definition route map/policy, and persisted route-back transitions to select the route; classifier, diagnostics, and analytics are recorded for reports and learning but do not affect routing.
-
-## Gate Expectations
-
-Flow Definitions describe what each gate expects before a run can advance. The authored form is `expects`, an array of typed expectation entries. In v0.1, authored expectations use `kind: "surface.claim"` so gate evidence carries an explicit claim shape.
-
-A `surface.claim` expectation includes:
-
-- `id`
-- `kind: "surface.claim"`
-- `required`
-- `description`
-- `claim.type`
-- optional `claim.subject`
-- optional `claim.accepted_statuses`
-- optional `explore_hint`
-
-`claim.subject` is intentionally open so projects and kits can name their own process subjects. Common examples include `flow-run`, `flow-step`, `work-item`, `change`, `pull-request`, `release`, `decision`, and `artifact`.
-
-Project config owns trusted producer mappings and gate overrides. Flow Agents may author, adapt, or install that config as part of a kit or runtime adapter, but the authoritative source of truth is the Flow project config that Flow loads for the run.
-
-### Surface TrustReport Evidence
-
-A `surface.claim` evidence entry may be backed by a copied Surface TrustReport or Trust Snapshot JSON file:
-
-```sh
-npx flow attach-evidence <run-id> \
-  --gate verify-gate \
-  --file ./trust-report.json \
-  --trust-artifact
-```
-
-Flow consumes a neutral artifact shape:
-
-```json
-{
-  "schema_version": "0.1",
-  "artifact_type": "trust-report",
-  "subject": "builder.verify",
-  "producer": "ci/main",
-  "status": "trusted",
-  "issued_at": "2026-05-26T00:00:00.000Z",
-  "expires_at": "2026-06-02T00:00:00.000Z",
-  "authority_traces": ["github:main"],
-  "claims": [
-    { "type": "quality.tests", "status": "trusted" }
-  ]
-}
-```
-
-`artifact_type` is `trust-report` or `trust-snapshot`. Flow projects the first claim into the normal `claim.type`, `claim.subject`, and `claim.status` matching fields. Explicit `--claim-*`, `--producer`, and `--authority-trace` flags still work and can override the parsed projection for local workflows.
-
-Gate evaluation accepts only claims whose type, optional subject, accepted status, freshness, trusted producer or authority trace, and local integrity metadata satisfy the Flow expectation and `.flow/config.json`. Unsatisfied artifacts are not hidden as generic missing evidence: reports include claim diagnostic reason codes such as `stale`, `rejected`, `untrusted_producer`, `authority_gap`, `integrity_mismatch`, and `subject_mismatch`.
-
-This is a Surface-shaped Flow contract. Flow does not import Veritas internals or use Veritas-specific schema fields as the runtime contract. Veritas may produce evidence, but Flow evaluates only the neutral artifact fields above plus the Flow Definition and project config.
-
-## Release Readiness Lanes
-
-Release readiness is a local-file-first Flow contract for deciding whether a release should proceed or hold. It defines lane policy and adapter output shape; it does not replace ServiceNow, Jira, PagerDuty, deployment systems, freeze calendars, or approval systems.
-
-`schemas/release-readiness-policy.schema.json` describes:
-
-- open lane ids such as `change-approval`, `deployment-window`, and `freeze-state`
-- the `surface.claim` each lane requires
-- open risk classes such as `medium` or `high`
-- the required lanes for each risk class
-
-`schemas/release-readiness-result.schema.json` describes normalized output for later report rendering: `decision`, `risk_class`, `required_lanes`, lane outcomes, evidence refs, `external_links`, and `native_refs`.
-
-Fixture adapters map provider-shaped local JSON into Flow evidence, not opaque approval booleans. Each adapter emits `kind: "surface.claim"` with `claim.type`, `claim.subject`, `claim.status`, `producer`, `authority_traces`, copied `external_links`, and copied `native_refs`.
-
-```js
-import {
-  changeManagementFixtureAdapter,
-  deploymentWindowFixtureAdapter,
-  evaluateReleaseReadiness,
-  freezeStateFixtureAdapter
-} from "@kontourai/flow";
-
-const evidence = [
-  ...changeManagementFixtureAdapter(changeRecord, { subject: "kai-2026.06" }),
-  ...deploymentWindowFixtureAdapter(deploymentState, { subject: "kai-2026.06" }),
-  ...freezeStateFixtureAdapter(freezeState, { subject: "kai-2026.06" })
-];
-
-const result = evaluateReleaseReadiness(policy, {
-  subject: "kai-2026.06",
-  riskClass: "high",
-  evidence
-});
-```
-
-Required lanes pass only when their Surface-shaped claim satisfies the policy. Missing, pending, rejected, stale, untrusted, or authority-gap evidence returns `decision: "hold"`. See `examples/scenarios/release-readiness/` for the scenario policy, adapter records, and equivalent Flow Definition expectation.
-
-## Version Release Report
-
-The Version Release Report is a local-file-first artifact projection for a versioned release. It combines a changeset, Flow-shaped verification evidence, a `ReleaseReadinessResult`, accepted exceptions, accepted risks, `native_refs`, and `external_links` into deterministic JSON or Markdown.
-
-Generate from an explicit local fixture file:
-
-```sh
-npm run build
-node dist/cli.js version-release-report examples/scenarios/version-release-report/complete.json --format json
-node dist/cli.js version-release-report examples/scenarios/version-release-report/missing-required-evidence.json --format markdown
-```
-
-Use the library API when embedding the projection:
-
-```js
-import {
-  projectVersionReleaseReport,
-  renderVersionReleaseReportMarkdown
-} from "@kontourai/flow";
-
-const report = projectVersionReleaseReport(fixtureJson);
-console.log(renderVersionReleaseReportMarkdown(report));
-```
-
-`schemas/version-release-report.schema.json` describes the projected report. Missing required verification evidence or required release lanes become explicit `gaps` and set `decision: "hold"`; they are never summarized as ready. Provider-native ids and URLs are preserved as data in `native_refs` and `external_links`; Flow does not call hosted release portals, replace release managers, or invent provider-specific semantics for this artifact. See `examples/scenarios/version-release-report/` for complete and missing-evidence inputs.
-
-## Project Config Merge
-
-Kits can propose Flow project config, but local `.flow/config.json` remains authoritative. Preview a proposal before applying it:
-
-```sh
-npx flow config preview ./kit-flow-config.json --format json
-npx flow config preview ./kit-flow-config.json --format markdown
-```
-
-Preview is read-only. The JSON report includes stable buckets for `proposed_changes`, `accepted_changes`, `rejected_changes`, `conflicts`, `unchanged`, `exceptions`, `merged_config`, and `summary`. Each change records a machine-readable `path`, `section`, `operation`, `reason`, and source values when relevant.
-
-Flow accepts two authored Project Config shapes:
-
-- The v0.1 flat shape used by existing `.flow/config.json` files, with top-level
-  `schema_version`, `trusted_producers`, and `gate_overrides`.
-- The Resource Contract shape shown in
-  `examples/flow-project-config-resource-contract.json`, with
-  `apiVersion`, `kind: "FlowProjectConfig"`, `metadata`, and `spec`.
-
-Resource-shaped Project Config files map `spec` to the same flat runtime config.
-Config merge reports and applied `.flow/config.json` output stay flat, so
-existing tools that read `trusted_producers` and `gate_overrides` do not need to
-migrate.
-
-Apply is explicit:
-
-```sh
-npx flow config apply ./kit-flow-config.json --format json
-```
-
-Additive proposals under `trusted_producers` and `gate_overrides` are accepted when the local path is absent. Matching values are recorded as unchanged. Differing local trusted producer mappings or gate overrides are conflicts and are rejected by default, so Flow does not silently overwrite project authority.
-
-To accept a conflicting proposal, pass the exact conflict path or a parent path plus an exception reason and authority:
-
-```sh
-npx flow config apply ./kit-flow-config.json \
-  --accept-conflict '$.trusted_producers.quality.tests' \
-  --exception-reason 'project owner accepted kit producer update' \
-  --authority 'project-owner'
-```
-
-Flow Agents kit install or activation may consume the JSON report to show install logs, detect conflicts, and decide whether to ask for explicit exception acceptance. Flow Agents consumes this contract; it does not own the authority semantics. Flow core does not add UI Console behavior, remote trust or signature verification, hosted workflows, provider settings, or cross-repo Flow Agents implementation as part of config merge.
-
-## Gate Evaluation
-
-For the current step, `flow evaluate` applies the v0.1 rules:
-
-- all required typed expectations are satisfied: `pass`
-- any required typed expectation is missing: `block`
-- any attached gate evidence marked failed: `route-back`
-- no authored expectations and no decision: `wait`
-- an accepted exception on a gate counts as `pass`
-
-When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory.
-
-## Transition Validation
-
-Flow core owns provider-neutral transition legality. A runtime, adapter, or agent workflow can propose a transition, but Flow decides whether that transition matches the authored Flow Definition, current state, gate outcomes, route-back policy, and persisted transition history.
-
-Validate a proposed transition from a file:
-
-```sh
-npx flow validate-transition ./transition-request.json
-```
-
-The request shape is intentionally small and stable:
-
-```json
-{
-  "definition": { "id": "agent-dev-flow", "version": "0.1", "steps": [], "gates": {} },
-  "current_state": { "status": "active", "current_step": "verify", "transitions": [] },
-  "proposed_transition": {
-    "from_step": "verify",
-    "to_step": "publish",
-    "status": "allowed",
-    "gate_id": "verify-gate"
-  },
-  "manifest": { "schema_version": "0.1", "evidence": [] }
-}
-```
-
-The result is machine-readable:
-
-```json
-{
-  "valid": false,
-  "status": "route-back",
-  "diagnostics": [
-    {
-      "code": "transition.gate.route-back",
-      "severity": "error",
-      "path": "$.proposed_transition",
-      "message": "gate verify-gate returned route-back"
-    }
-  ],
-  "transition": {
-    "from_step": "verify",
-    "to_step": "implement",
-    "status": "blocked",
-    "gate_id": "verify-gate"
-  }
-}
-```
-
-Definitions that do not declare stricter route or gate policy keep the permissive v0.1 behavior. Route reason ids remain open unless a gate declares a closed route policy such as `route_back_policy.allow_unknown_reasons: false`. Attempt counting is deterministic: Flow derives attempts from persisted `state.transitions`, not caller-supplied counters.
-
-Flow Agents consumes this contract downstream when writing its own workflow state, but Flow does not know about Flow Agents sidecars, GitHub pull requests, boards, or any other provider. A Builder Kit-like path such as `verify -> evidence -> publish-change -> release-readiness -> merge` is just a Flow Definition with steps and gates; Flow rejects jumps across required gates because the proposed transition does not match the definition and evidence state, not because those names are special.
-
-## Route Back
-
-A gate can route failed evidence back to a specific step by adding `on_route_back` to the gate definition:
-
-```json
-{
-  "step": "verify",
-  "on_route_back": {
-    "missing_evidence": "verify",
-    "implementation_defect": "implement",
-    "plan_gap": "plan",
-    "decision_gap": "plan",
-    "default": "implement"
-  },
-  "route_back_policy": {
-    "max_attempts": 2,
-    "on_exceeded": "block"
-  }
-}
-```
-
-Route reason ids are open strings. Flow documents these standard recommended ids but does not enforce a closed enum:
-
-- `missing_evidence`: Flow or an evidence producer found that required gate evidence is absent.
-- `implementation_defect`: the implementation failed the gate and should return to implementation.
-- `plan_gap`: the plan or acceptance shape is insufficient and should return to planning.
-- `decision_gap`: the work needs a decision or clarification before it can proceed.
-
-Custom reason ids are allowed when a project, kit, or adapter needs narrower routing. Add custom ids to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If a failed evidence item has no `route_reason`, Flow uses `default` when present and otherwise falls back to the gate's own `step`. Flow only infers `missing_evidence` when Flow itself detects missing required evidence.
-
-Route-back attempts are deterministic. Flow counts prior persisted `route_back` transitions with the same gate id, route reason or `default`, source step, and selected target step. Timestamps, classifier data, diagnostics, analytics metadata, and in-memory counters do not affect routing or attempt counts.
-
-When `route_back_policy.max_attempts` is exceeded, `on_exceeded` decides the outcome. A step id routes the run to that recovery step and records both the selected route and recovery step. The special value `block` blocks the run at the current step while recording the exceeded route-back attempt. Flow validates new route targets against defined step ids; `block` is only special for `route_back_policy.on_exceeded`.
-
-Flow Run state and reports expose route-back details for continuation and analysis: selected route, final route target, route reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, classifier, diagnostics, analytics loop key, and recovery step. The CLI records these metadata fields through `flow attach-evidence`, but Flow core remains neutral: Builder Kit or Flow Agents policy can choose reason ids and mappings, while Flow itself only applies the authored Flow Definition, `route_reason`, and persisted transition history.
-
-For an adversarial-review pattern, see the reference definition in `examples/adversarial-pass-flow.json` and the boundary notes in [docs/adversarial-pass.md](docs/adversarial-pass.md). The example models `produce -> adversarial-review -> resolve`, routes adversarial defect reasons back to the documented steps, and treats external Survey escalation records as per-round evidence while Flow owns only orchestration, route-back policy, and transition accounting.
-
-## Definition Validation
-
-Validate arbitrary Flow Definition JSON before starting a run:
-
-```sh
-npx flow validate-definition examples/builder-kit-flow.json
-npx flow validate-definition examples/flow-definition-resource-contract.json --json
-npx flow validate-definition examples/invalid-claim-expectation-flow.json --json
-```
-
-Flow accepts two Flow Definition authoring shapes:
-
-- The v0.1 flat shape used by existing examples such as `examples/agent-dev-flow.json`, with top-level `id`, `version`, `steps`, and `gates`.
-- The Resource Contract shape shown in `examples/flow-definition-resource-contract.json`, with the Flow Definition `apiVersion`, `kind: "FlowDefinition"`, `metadata`, and `spec`.
-
-Resource-shaped Flow Definitions map to the same runtime model as flat v0.1 definitions:
-
-| Resource field | Runtime field |
-| --- | --- |
-| `metadata.name` | `id` |
-| `spec.version` | `version` |
-| `spec.steps` | `steps` |
-| `spec.gates` | `gates` |
-
-The flat v0.1 Flow Definition shape remains supported for compatibility. Existing definitions, examples, local run snapshots, reports, and workflows that use top-level `id`, `version`, `steps`, and `gates` do not need to migrate to the Resource Contract envelope.
-
-Resource Contract support currently covers authored Flow Definition and authored Flow Project Config inputs. It does not migrate Flow Run state, gate evidence manifests, reports, transition validation results, Surface-shaped evidence semantics, Flow Agents workflow artifacts, or Builder Kit adapters. In v0.1, `.flow/runs/<run-id>/state.json` remains the flat Flow Run state contract described by `schemas/flow-run.schema.json`.
-
-`--json` emits a stable machine-readable payload:
-
-```json
-{
-  "valid": false,
-  "path": "examples/invalid-claim-expectation-flow.json",
-  "error_count": 6,
-  "diagnostics": [
-    {
-      "code": "definition.expectation.claim.required",
-      "severity": "error",
-      "path": "$.gates.verify-gate.expects[0].claim",
-      "message": "surface.claim expectations must include claim"
-    }
-  ]
-}
-```
-
-Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects`, invalid `kind: "surface.claim"` entries, missing `claim.type`, optional expectations, `claim.subject`, and `claim.accepted_statuses`. `validateDefinition(definition)` remains the pass/throw validation API; it uses the same diagnostics internally and throws the first diagnostic message for invalid definitions.
+Every command accepts `--cwd <path>` to scope local Flow files. Full flags, formats, and exit behavior: [CLI Reference](docs/cli.md).
 
 ## Library
 
-The package also exports the runtime primitives used by the CLI:
+The same primitives the CLI uses are exported from the package root, fully typed:
 
-```js
+```ts
 import {
   startRun,
   attachEvidence,
   evaluateRun,
   loadRun,
+  validateDefinitionWithDiagnostics,
   validateRunTransition,
-  validateDefinitionWithDiagnostics
+  projectFlowRunFromFiles
 } from "@kontourai/flow";
 
 const result = validateDefinitionWithDiagnostics(definition);
 if (!result.valid) console.error(result.diagnostics);
 
-const transitionResult = validateRunTransition({
-  definition,
-  current_state: state,
-  proposed_transition: { from_step: "verify", to_step: "publish", gate_id: "verify-gate" },
-  manifest
-});
-if (!transitionResult.valid) console.error(transitionResult.diagnostics);
+const projection = await projectFlowRunFromFiles("dev-1847", { cwd: process.cwd() });
+console.log(projection.current_step, projection.gates);
 ```
 
-Config merge helpers are exported for local installers and adapters:
+Public usage is limited to the package root and the `flow` CLI; `dist/` subpaths are not part of the npm API. The [Library guide](docs/library.md) covers run lifecycle, projections, release readiness evaluation, and config merge helpers.
 
-```js
-import {
-  previewFlowConfigMerge,
-  applyFlowConfigMerge,
-  renderConfigMergeMarkdown
-} from "@kontourai/flow";
+## Documentation
 
-const report = previewFlowConfigMerge(localConfig, proposedConfig);
-console.log(renderConfigMergeMarkdown(report));
-```
+| Guide | What it covers |
+| --- | --- |
+| [Getting Started](docs/getting-started.md) | install → first run → evidence → route-back → resume, with real output |
+| [Use Cases](docs/use-cases.md) | realistic team scenarios with copyable definitions |
+| [Evidence](docs/evidence.md) | evidence kinds, `surface.claim` expectations, trust artifacts, diagnostics |
+| [Gates & Route-Back](docs/gates-and-route-back.md) | gate evaluation rules, transitions, route-back policy, exceptions |
+| [Agent Hooks](docs/agent-hooks.md) | enforcing gates from Claude Code hooks, GitHub Actions, Git hooks |
+| [Project Config](docs/project-config.md) | trusted producers, gate overrides, config merge preview/apply |
+| [Release Readiness](docs/release-readiness.md) | release lanes, hold/proceed decisions, version release reports |
+| [CLI Reference](docs/cli.md) | every command, flag, format, and exit code |
+| [Library](docs/library.md) | typed API for embedding Flow |
+| [Developer Architecture](docs/developer-architecture.md) | lifecycle and enforcement internals, ownership boundaries |
+
+The docs map lives at [docs/README.md](docs/README.md). Contributor setup lives in [docs/contributing.md](docs/contributing.md). Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Schemas
 
-Runtime code and tests reference the JSON Schemas in `schemas/`:
-
-- `flow-definition.schema.json`
-- `flow-run.schema.json`
-- `gate-evidence.schema.json`
-- `flow-report.schema.json`
-- `flow-transition-validation-request.schema.json`
-- `flow-transition-validation-result.schema.json`
-
-`npm test` and `npm pack` fail if the checked schemas drift from the v0.1 runtime contract.
+Flow's contracts are public JSON Schemas under [`schemas/`](schemas/): Flow Definitions, Flow Runs, gate evidence, reports, transition validation, release readiness, and version release reports. `npm test` fails if the runtime drifts from the published schemas.
 
 ## Boundaries
 
-Flow is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or hosted web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Flow Agents owns agent-facing workflow distribution.
+Flow is deliberately small. It is not an agent runtime, multi-agent orchestrator, task board, repo standards engine, hosted service, or hosted web UI. Surface owns portable trust state, Veritas owns repo readiness semantics, and Flow Agents owns agent-facing workflow distribution. Flow owns one thing: the evidence-backed record of why a required path was allowed to advance.
+
+## License
+
+[Apache-2.0](LICENSE) © Kontour AI

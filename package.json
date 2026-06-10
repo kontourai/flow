@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -37,6 +37,8 @@
     "typecheck": "tsc --noEmit",
     "check:types:contracts": "tsc -p tsconfig.types.json --noEmit",
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
+    "docs:build": "node scripts/docs-site/build.ts",
+    "docs:check": "npm run docs:build && node scripts/docs-site/check-links.ts",
     "sync:console-kit": "node scripts/sync-console-kit-assets.mjs",
     "check:console-kit-assets": "node scripts/sync-console-kit-assets.mjs --check",
     "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
@@ -50,9 +52,14 @@
   },
   "keywords": [
     "agents",
+    "ai-agents",
     "workflow",
     "process-transparency",
-    "evidence"
+    "evidence",
+    "gates",
+    "audit-trail",
+    "claude-code",
+    "ci"
   ],
   "engines": {
     "node": ">=18"
@@ -65,6 +72,7 @@
     "@kontourai/console-kit": "^0.1.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
+    "marked": "^16.4.2",
     "playwright": "^1.60.0",
     "typescript": "^6.0.3"
   }

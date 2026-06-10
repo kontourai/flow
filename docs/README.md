@@ -1,20 +1,31 @@
-# Flow Docs
+# Flow Documentation
 
-Use this page as the map for durable Flow documentation.
+Flow shows why a process was allowed to move forward — gate by gate, with the evidence behind each transition. This page is the map.
 
-## Start Here
+## Learn Flow
 
-- [README](../README.md): package usage, CLI surface, local run store, evidence, gates, reports, and library exports.
-- [Contributing](contributing.md): local setup, validation commands, optional repo hooks, source layout, and release prep.
-- [Repo Structure](repo-structure.md): where source, schemas, examples, tests, docs, generated output, and local runtime state belong.
+- [Getting Started](getting-started.md) — install → first run → evidence → route-back → resume, with real CLI output.
+- [Use Cases](use-cases.md) — realistic team scenarios: agent guardrails, regulated releases, platform golden paths, adversarial review, audit evidence.
 
-## Product And Architecture
+## Reference
 
-- [Developer Architecture](developer-architecture.md): implementation lifecycle, gate evaluation, transition enforcement, route-back behavior, run files, reports, console projection, and ownership boundaries.
-- [Product Boundaries](product-boundaries.md): what Flow owns versus Surface, Veritas, Flow Agents, and Builder Kit.
-- [Product Vision](product-vision.md): why Flow exists and the v0.1 product shape.
-- [Market Positioning](market-positioning.md): category, differentiation, competitive framing, and near-term wedge.
-- [Adversarial-Pass Flow Definition](adversarial-pass.md): the adversarial review example and its boundary with reasoning systems.
+- [CLI Reference](cli.md) — every command, flag, format, and exit code.
+- [Library](library.md) — the typed API for embedding Flow: run lifecycle, validation, projections.
+- [Evidence](evidence.md) — evidence kinds, `surface.claim` expectations, trust artifacts, claim diagnostics.
+- [Gates & Route-Back](gates-and-route-back.md) — evaluation rules, exceptions, route-back policy, transition validation.
+- [Agent Hooks](agent-hooks.md) — enforcing Flow gates from Claude Code hooks, GitHub Actions, and Git hooks.
+- [Project Config](project-config.md) — trusted producers, gate overrides, config merge preview/apply.
+- [Release Readiness](release-readiness.md) — release lanes, pass/hold decisions, version release reports.
+
+## Product and architecture
+
+- [Product Vision](product-vision.md) — why Flow exists, differentiation, product-line fit, and ownership boundaries.
+- [Developer Architecture](developer-architecture.md) — lifecycle and enforcement internals, run files, console projection, Resource Contract direction.
+
+## Contributing
+
+- [Contributing](contributing.md) — local setup, validation lanes, optional repo hooks, release prep.
+- [Repo Structure](repo-structure.md) — where source, schemas, examples, tests, docs, and generated output belong.
 
 ## Decisions
 
@@ -22,14 +33,10 @@ Use this page as the map for durable Flow documentation.
 - [ADR 0002: Gate Expectations And Project Authority](adr/0002-gate-expectations-and-project-authority.md)
 - [ADR 0003: Project Config Merge Semantics](adr/0003-project-config-merge-semantics.md)
 
-## Placement Rules
+## Placement rules
 
-- Runtime and CLI behavior belongs in `src/`.
-- Public schemas belong in `schemas/`.
-- Published examples and scenarios belong in `examples/`.
-- Node tests belong in domain files under `tests/node/`; shared test helpers belong in `tests/node/helpers/`.
-- Browser tests belong in `tests/browser/`.
-- Operational repo tooling belongs in `scripts/`.
-- Durable product, architecture, contributor, and decision records belong in `docs/`.
+- Runtime and CLI behavior belongs in `src/`; public schemas in `schemas/`; published examples and scenarios in `examples/`.
+- Node tests belong in domain files under `tests/node/`; browser tests in `tests/browser/`; operational tooling in `scripts/`.
+- Durable product, architecture, contributor, and decision records belong in `docs/`. Update this map when adding, renaming, or retiring a guide.
 
 Generated output and local runtime state stay out of source control unless a tracked fixture explicitly documents the exception.
