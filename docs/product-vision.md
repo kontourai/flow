@@ -70,7 +70,7 @@ Flow Agents   Agent-facing workflow distribution.
               Modes, skills, runtime adapters, hooks, providers, console.
 ```
 
-Each product stands alone, and they cohere: Flow is built with Surface, but normal Flow users never operate Surface directly. Veritas can supply repo-readiness evidence when a process gate needs it. Flow Agents consumes Flow when agent work needs stateful gates across Codex, Claude Code, Kiro, GitHub Actions, and future runtimes.
+Each product stands alone, and they cohere: Flow is built with [Surface](https://kontourai.io/surface), but normal Flow users never operate Surface directly. [Veritas](https://kontourai.io/veritas) can supply repo-readiness evidence when a process gate needs it. [Flow Agents](https://kontourai.io/flow-agents) consumes Flow when agent work needs stateful gates across Codex, Claude Code, Kiro, GitHub Actions, and future runtimes.
 
 ## Boundaries
 

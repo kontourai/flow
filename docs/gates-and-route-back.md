@@ -114,7 +114,7 @@ The request carries the definition, current state, evidence manifest, and the pr
 
 `flow validate-transition` exits non-zero when the result status is `invalid`. Definitions that do not declare stricter policy keep permissive v0.1 behavior; a gate can close its reason vocabulary with `route_back_policy.allow_unknown_reasons: false`.
 
-There is nothing special about step names. A Builder Kit-like path such as `verify → evidence → publish-change → release-readiness → merge` is just a Flow Definition — Flow rejects jumps across required gates because the proposed transition does not match the definition and evidence state, not because the names mean anything to Flow core.
+There is nothing special about step names. A [Builder Kit](https://kontourai.github.io/flow-agents/workflow-usage-guide.html)-like path such as `verify → evidence → publish-change → release-readiness → merge` is just a Flow Definition — Flow rejects jumps across required gates because the proposed transition does not match the definition and evidence state, not because the names mean anything to Flow core.
 
 ## Pattern: adversarial review with a defect budget
 
@@ -129,7 +129,7 @@ There is nothing special about step names. A Builder Kit-like path such as `veri
 | `missing_evidence` | `adversarial-review` | required gate evidence is absent |
 | `default` | `resolve` | unmapped or omitted reasons |
 
-`max_attempts: 2` is the per-case adversarial budget; the third matching route-back exceeds it and `on_exceeded: "block"` stops the run with the exceeded state recorded. External systems own the actual review reasoning and may attach their records as per-round evidence — Flow owns only the orchestration, route accounting, and the budget.
+`max_attempts: 2` is the per-case adversarial budget; the third matching route-back exceeds it and `on_exceeded: "block"` stops the run with the exceeded state recorded. External systems own the actual review reasoning and may attach their records as per-round evidence — [Kontour Survey](https://kontourai.io/survey)'s [adversarial-pass records](https://kontourai.github.io/survey/adversarial-and-learning.html) are built for exactly this slot — while Flow owns only the orchestration, route accounting, and the budget.
 
 ## Validating definitions
 

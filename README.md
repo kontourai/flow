@@ -44,7 +44,7 @@ report: .flow/runs/dev-1847/report.md
 
 Thirty seconds, four commands — and a gate an agent cannot talk its way past:
 
-![Terminal recording: flow init --demo, flow status, flow evaluate --exit-code blocking, and flow resume](docs/assets/flow-demo.gif)
+![Terminal recording: flow init --demo, flow status, flow evaluate --exit-code (blocked), and flow resume](docs/assets/flow-demo.gif)
 
 The bundled local Flow Console (`flow console`) renders any run from its local files — the process graph, gate outcomes, evidence, route-backs, and the next action:
 
@@ -82,9 +82,10 @@ Flow is the process-transparency layer of the Kontour product line: *Kontour sho
 
 | Product | Owns |
 | --- | --- |
-| **[Surface](https://github.com/kontourai/surface)** | Portable trust state: claims, evidence, policies, trust snapshots |
+| **[Survey](https://kontourai.io/survey)** | Producer evidence: source → extraction → candidate → review → claim |
+| **[Surface](https://kontourai.io/surface)** | Portable trust state: claims, evidence, policies, trust snapshots |
 | **Flow** | Process transparency: steps, gates, transitions, runs, exceptions, reports |
-| **[Veritas](https://github.com/kontourai/veritas)** | Code/change transparency: repo standards, merge readiness |
+| **[Veritas](https://kontourai.io/veritas)** | Code/change transparency: repo standards, merge readiness |
 | **[Flow Agents](https://kontourai.github.io/flow-agents/)** | Agent-facing distribution: kits, runtime adapters, hooks |
 
 Flow stands alone — you need none of the other products to use it. When they are present, Veritas can supply repo-readiness evidence to Flow gates, and Flow Agents can enforce Flow gates from inside Claude Code, Codex, Kiro, or GitHub Actions.
@@ -105,7 +106,7 @@ Real teams use Flow for agentic development gates, regulated release decisions, 
 ├── state.json             # authoritative run state (continuation authority)
 ├── evidence/
 │   ├── manifest.json      # evidence index
-│   └── ev.<id>.json       # copied evidence artifacts
+│   └── ev.<id>.<ext>     # copied evidence artifacts (original extension preserved)
 ├── report.md              # regenerated human-readable report
 └── report.json            # regenerated machine-readable report
 ```

@@ -2,7 +2,7 @@
 
 Flow's promise is that agents cannot silently skip required gates — but Flow does not run agents, so the enforcement point lives in the agent runtime. This guide shows minimal, copyable recipes for wiring Flow gates into the harnesses teams already use. Everything here uses only the stock CLI; the wrapper script below was verified against a real run.
 
-These are hand-rolled recipes by design. [Flow Agents](https://github.com/kontourai/flow-agents) is the Kontour product that packages this pattern properly — kits, runtime adapters, and managed hooks across harnesses. Use these recipes when you want the contract today with zero extra dependencies.
+These are hand-rolled recipes by design. [Flow Agents](https://kontourai.io/flow-agents) is the Kontour product that packages this pattern properly — kits, runtime adapters, and managed hooks across harnesses. Use these recipes when you want the contract today with zero extra dependencies.
 
 ## The one-liner that makes it work
 
@@ -46,13 +46,13 @@ fi
 With an open gate, the blocked stop looks like this to the agent (real output):
 
 ```text
-flow run: agent-dev-flow / demo-checkout-banner
+flow run: agent-dev-flow / feature-search-filters
 current step: implement
-next action: attach scoped files before continuing
+next action: attach evidence for implementation gate
 open gates: implement-gate
 accepted exceptions: none
 route backs: none
-guidance: continue from recorded Flow state; attach scoped files before continuing
+guidance: continue from recorded Flow state; attach evidence for implementation gate
 ```
 
 The agent cannot summarize its way past the gate: it either attaches the evidence the gate expects, or a human records an explicit exception with `flow accept-exception`.
@@ -114,4 +114,4 @@ npx flow evaluate "$FLOW_RUN_ID" --exit-code || {
 
 ## Boundaries
 
-These recipes deliberately stay inside Flow's v0.1 boundary: the hook scripts are project tooling you own, Flow only evaluates its recorded contracts, and nothing here dispatches agents or calls hosted services. When you outgrow hand-rolled hooks — multiple harnesses, kit distribution, managed installs — that is exactly the surface [Flow Agents](https://github.com/kontourai/flow-agents) owns.
+These recipes deliberately stay inside Flow's v0.1 boundary: the hook scripts are project tooling you own, Flow only evaluates its recorded contracts, and nothing here dispatches agents or calls hosted services. When you outgrow hand-rolled hooks — multiple harnesses, kit distribution, managed installs — that is exactly the surface [Flow Agents](https://kontourai.io/flow-agents) owns.

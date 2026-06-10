@@ -33,7 +33,7 @@ initialized .flow
 └── runs/                              # one directory per Flow Run
 ```
 
-> **Shortcut:** `npx flow init --demo` additionally scaffolds a ready-made run named `demo` — plan gate already passed, sitting at `implement` — so every command in this guide has something to show before you author anything.
+> **Shortcut:** `npx flow init --demo` additionally scaffolds a ready-made run named `demo` — plan gate already passed, sitting at `implement` — so `flow status demo`, `flow resume demo`, and `flow console --run demo` have something real to show immediately.
 
 The sample definition models the first-wedge agentic development path — `plan → implement → verify → publish` — with a gate on each working step. Open `.flow/definitions/agent-dev-flow.json` and look at one gate:
 
