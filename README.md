@@ -42,6 +42,10 @@ report: .flow/runs/dev-1847/report.md
 
 ## See it
 
+Thirty seconds, four commands — and a gate an agent cannot talk its way past:
+
+![Terminal recording: flow init --demo, flow status, flow evaluate --exit-code blocking, and flow resume](docs/assets/flow-demo.gif)
+
 The bundled local Flow Console (`flow console`) renders any run from its local files — the process graph, gate outcomes, evidence, route-backs, and the next action:
 
 ![Flow Console showing a run blocked at the verify step with gate details and evidence](docs/assets/flow-console-desktop.png)
