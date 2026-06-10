@@ -299,6 +299,12 @@ continuation: resume from implement, not chat memory</code></pre>
 </section>
 
 <section class="showcase">
+  <h2>Watch the gate hold</h2>
+  <p>Four commands: scaffold a demo run, check status, watch <code>flow evaluate --exit-code</code> refuse to pass without evidence, and resume from recorded state.</p>
+  <img src="assets/flow-demo.gif" alt="Terminal recording of flow init --demo, status, a blocked evaluate, and resume" loading="lazy">
+</section>
+
+<section class="showcase">
   <h2>Inspect any run, locally</h2>
   <p>The bundled loopback-only console renders a run from its local files: process graph, transition timeline, gate outcomes, evidence, and the next action.</p>
   <img src="assets/flow-console-desktop.png" alt="Flow Console showing a run blocked at the verify step with gate details and evidence" loading="lazy">
