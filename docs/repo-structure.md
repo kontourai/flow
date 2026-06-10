@@ -1,6 +1,6 @@
 # Flow Repo Structure
 
-This guide documents where work belongs in the Flow repo and how to distinguish source, public contracts, examples, scenario data, tooling, generated output, and workflow artifacts.
+This guide documents where work belongs in the Flow repo and how to distinguish source, public contracts, examples, scenario data, tooling, and generated output.
 
 Flow is the process transparency and gate enforcement kernel. The repo structure must preserve that boundary: Flow is not an agent runtime, not Surface authority, not Veritas policy ownership, and not the Builder Kit adapter layer.
 
@@ -19,23 +19,21 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `scripts/` | Operational Node tooling for Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
 | `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. Domain files keep package runtime, CLI, config, definitions, transitions, release checks, Surface claim handling, route-back behavior, and reports separate. | Tracked Node test lane. Node tests belong here instead of `scripts/`. Shared test-only helpers belong in `tests/node/helpers/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
-| `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. Start with `docs/README.md` when deciding which guide to edit. New durable developer guidance belongs here; transient workflow notes do not. |
+| `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. Start with `docs/README.md` when deciding which guide to edit. New durable developer guidance belongs here. |
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
 | `.github/` | GitHub Actions workflows for CI and package publishing. | Tracked repo operations. This is not Flow runtime behavior. |
 | `.githooks/` | Optional contributor Git hooks. | Tracked contributor tooling. Installed locally by `npm run setup:repo-hooks`. |
-| `.flow-agents/` | Flow Agents workflow artifacts for planning, execution, review, verification, screenshots, and handoff. | Ignored workflow artifacts. Current task artifacts may live here, but production source must not depend on them. |
 | `.flow/` | Local Flow project config and run store used by the CLI. | Ignored local runtime state at the repo root. The only tracked `.flow` tree is the console projection scenario under `examples/scenarios/console-projection/`. |
 | `.surface/` | Local Surface state or artifacts. | Ignored local product state. Flow may consume Surface-shaped evidence files, but Surface owns trust semantics. |
 | `.veritas/` | Local Veritas state or artifacts. | Ignored local product state. Veritas owns repo standards and merge readiness policy. |
 | `dist/` | Build output for the npm package runtime, declarations, and compiled console assets. | Ignored generated output, but included by `package.json.files` after `npm run build` and `prepack`. Do not edit by hand. |
 | `node_modules/` | Installed dependencies. | Ignored generated dependency install output. |
 | `test-results/` | Playwright and local test output. | Ignored generated validation output. |
-| `context/` | Optional local workflow context directories. | Not present in the clean repo. Do not make production code depend on it unless a future tracked contract is added deliberately. |
 | `evals/` | Optional local evaluation workspace. | Not present in the clean repo. Treat future local eval material as untracked until tracked files define ownership. |
 
 ## Placement Rules
 
-New Flow core behavior belongs in `src/`, with public exports preserved through the package root or explicit package subpath exports.
+New Flow core behavior belongs in `src/`, with public exports preserved through the package root.
 
 Flow core source is organized by runtime domain:
 
@@ -51,11 +49,11 @@ Flow core source is organized by runtime domain:
 - `src/gates/flow-gates.ts` owns gate expectations, evidence matching, gate evaluation, and applying gate outcomes.
 - `src/release/flow-release.ts` owns release readiness fixtures, lane evaluation, version release report projection, and version release Markdown rendering.
 - `src/reports/flow-reports.ts` owns Flow Report JSON, Markdown report, summary, resume, and report file writing.
-- `src/console/` owns local console projection and server implementations, with root shims preserving package subpath exports.
+- `src/console/` owns local console projection and server implementations.
 
 New CLI behavior belongs in `src/cli.ts` unless it becomes shared runtime behavior, in which case the shared logic should live in Flow-owned source and the CLI should remain a thin caller.
 
-New local console UI code belongs in `src/console-ui/`. New console projection or server behavior belongs in `src/console/` when it is part of Flow's local console boundary; root console files remain compatibility entrypoints for generated package subpaths.
+New local console UI code belongs in `src/console-ui/`. New console projection or server behavior belongs in `src/console/` when it is part of Flow's local console boundary.
 
 New schemas belong in `schemas/` and should be validated by the schema check lane. New schema shape should use Flow vocabulary and avoid importing Surface, Veritas, Flow Agents, or Builder Kit authority into Flow core.
 
@@ -65,8 +63,6 @@ New examples belong in `examples/`. New package-visible scenario data belongs in
 
 New browser tests for the local console belong in `tests/browser/`. New Node contract or package checks belong in the closest domain file under `tests/node/`, with reusable setup in `tests/node/helpers/`. Keep `scripts/` for operational tools that set up, build, copy, sync, or smoke-run repo behavior.
 
-New workflow planning, execution, review, or handoff artifacts belong under `.flow-agents/` and remain ignored. They are evidence for work coordination, not Flow runtime contracts.
-
 ## Generated And Exported Artifacts
 
 Generated local output stays ignored:
@@ -74,7 +70,7 @@ Generated local output stays ignored:
 - `dist/` is generated by `npm run build`. It is ignored in git but exported in the npm package through `package.json.files`.
 - `node_modules/` is dependency install output.
 - `test-results/` and `playwright-report/` are browser validation output.
-- Root `.flow/`, `.surface/`, `.veritas/`, and `.flow-agents/` are local product or workflow state.
+- Root `.flow/`, `.surface/`, and `.veritas/` are local product state.
 
 Tracked exceptions are intentional:
 

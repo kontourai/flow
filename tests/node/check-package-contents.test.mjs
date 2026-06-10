@@ -63,6 +63,28 @@ test("npm package publishes only the intended top-level surfaces", async () => {
   }
 });
 
+test("npm package does not publish stale root compatibility entrypoint files", async () => {
+  const files = await packFiles();
+  const staleRootEntrypoints = [
+    "dist/console-projection.d.ts",
+    "dist/console-projection.d.ts.map",
+    "dist/console-projection.js",
+    "dist/console-projection.js.map",
+    "dist/console-server.d.ts",
+    "dist/console-server.d.ts.map",
+    "dist/console-server.js",
+    "dist/console-server.js.map",
+    "dist/flow-files.d.ts",
+    "dist/flow-files.d.ts.map",
+    "dist/flow-files.js",
+    "dist/flow-files.js.map"
+  ];
+
+  for (const file of staleRootEntrypoints) {
+    assert.equal(files.has(file), false, `${file} must not be included in the package`);
+  }
+});
+
 test("npm package includes exactly the tracked public examples", async () => {
   const files = await packFiles();
   const expected = await trackedExampleFiles();

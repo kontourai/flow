@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { startFlowConsoleServer } from "../../dist/console-server.js";
+import { startFlowConsoleServer } from "../../dist/index.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const server = await startFlowConsoleServer({

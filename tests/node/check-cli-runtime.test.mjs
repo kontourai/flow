@@ -11,7 +11,7 @@ import {
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
   FLOW_RUN_STATE_FILE
-} from "../../dist/flow-files.js";
+} from "../../dist/index.js";
 import { cliPath, execFile, repoRootPath, repoRootUrl } from "./helpers/cli.mjs";
 import { resourceDefinitionFixture } from "./helpers/fixtures.mjs";
 import { localConfigFixture, proposedConfigFixture, resourceConfigFixture } from "./helpers/config-fixtures.mjs";
@@ -33,6 +33,16 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.validateRunTransition, "function");
   assert.equal(typeof runtime.projectVersionReleaseReport, "function");
   assert.equal(typeof runtime.renderVersionReleaseReportMarkdown, "function");
+});
+
+test("CLI init scaffolds .flow with the packaged sample definition", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-init-"));
+  const result = await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
+  assert.match(result.stdout, /initialized /);
+
+  const sample = JSON.parse(await readFile(path.join(cwd, ".flow", "definitions", "agent-dev-flow.json"), "utf8"));
+  assert.equal(sample.id, "agent-dev-flow");
+  await access(path.join(cwd, ".flow", "README.md"), constants.R_OK);
 });
 
 test("CLI validate-definition accepts Resource-shaped definitions with stable JSON payload", async () => {

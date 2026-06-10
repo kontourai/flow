@@ -23,7 +23,7 @@ import {
   validateRunTransition,
   validateDefinitionWithDiagnostics
 } from "./index.js";
-import { startFlowConsoleServer } from "./console-server.js";
+import { startFlowConsoleServer } from "./console/console-server.js";
 
 type CliFlags = Record<string, any>;
 

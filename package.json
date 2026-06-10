@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -16,20 +16,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./console-projection": {
-      "types": "./dist/console-projection.d.ts",
-      "import": "./dist/console-projection.js",
-      "default": "./dist/console-projection.js"
-    },
-    "./console-server": {
-      "types": "./dist/console-server.d.ts",
-      "import": "./dist/console-server.js",
-      "default": "./dist/console-server.js"
     }
   },
   "files": [
     "dist/",
+    "!dist/console-projection.*",
+    "!dist/console-server.*",
+    "!dist/flow-files.*",
     "schemas/",
     "examples/",
     "README.md",

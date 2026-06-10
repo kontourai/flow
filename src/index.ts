@@ -35,6 +35,14 @@ export type {
 export {
   assertSafeRunId,
   examplePath,
+  FLOW_RUN_DEFINITION_FILE,
+  FLOW_RUN_EVIDENCE_DIR,
+  FLOW_RUN_EVIDENCE_MANIFEST_FILE,
+  FLOW_RUN_EVIDENCE_MANIFEST_PATH,
+  FLOW_RUN_LAYOUT,
+  FLOW_RUN_REPORT_JSON_FILE,
+  FLOW_RUN_REPORT_MARKDOWN_FILE,
+  FLOW_RUN_STATE_FILE,
   flowConfigPath,
   flowRoot,
   moduleRoot,
@@ -126,4 +134,31 @@ export {
   reportJson,
   sortStatus
 } from "./reports/flow-reports.js";
-export * from "./console-projection.js";
+export {
+  projectFlowRun,
+  projectFlowRunFromFiles
+} from "./console/console-projection.js";
+export type {
+  FlowConsoleDefinitionProjection,
+  FlowConsoleEvidenceProjection,
+  FlowConsoleExceptionProjection,
+  FlowConsoleExpectationProjection,
+  FlowConsoleExternalLinkKind,
+  FlowConsoleExternalLinkRef,
+  FlowConsoleGateProjection,
+  FlowConsoleProjection,
+  FlowConsoleProjectionOptions,
+  FlowConsoleReportProjection,
+  FlowConsoleRouteBackProjection,
+  FlowConsoleRunIdentity,
+  FlowConsoleRunParts,
+  FlowConsoleStepProjection,
+  FlowConsoleTransitionProjection
+} from "./console/console-projection.js";
+export {
+  startFlowConsoleServer
+} from "./console/console-server.js";
+export type {
+  FlowConsoleServerHandle,
+  FlowConsoleServerOptions
+} from "./console/console-server.js";

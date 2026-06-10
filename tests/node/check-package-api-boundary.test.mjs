@@ -2,31 +2,25 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const publicEntrypoints = [
-  ".",
-  "./console-projection",
-  "./console-server"
-];
+const publicEntrypoints = ["."];
 
 const publicImports = [
   {
     specifier: "@kontourai/flow",
     exportName: "validateDefinition"
-  },
-  {
-    specifier: "@kontourai/flow/console-projection",
-    exportName: "projectFlowRunFromFiles"
-  },
-  {
-    specifier: "@kontourai/flow/console-server",
-    exportName: "startFlowConsoleServer"
   }
 ];
 
 const internalImports = [
+  "@kontourai/flow/console-projection",
+  "@kontourai/flow/console-server",
+  "@kontourai/flow/flow-files",
+  "@kontourai/flow/dist/console-projection.js",
+  "@kontourai/flow/dist/console-server.js",
+  "@kontourai/flow/dist/flow-files.js",
   "@kontourai/flow/dist/runtime/flow-files.js",
   "@kontourai/flow/dist/console/console-projection.js",
-  "@kontourai/flow/flow-files"
+  "@kontourai/flow/dist/console/console-server.js"
 ];
 
 async function readPackageJson() {
@@ -38,8 +32,6 @@ test("package exports declare exactly the public consumer entrypoints", async ()
 
   assert.deepEqual(Object.keys(packageJson.exports).sort(), publicEntrypoints.sort());
   assert.equal(packageJson.exports["."].import, "./dist/index.js");
-  assert.equal(packageJson.exports["./console-projection"].import, "./dist/console-projection.js");
-  assert.equal(packageJson.exports["./console-server"].import, "./dist/console-server.js");
 });
 
 test("public package entrypoints import successfully as package specifiers", async () => {

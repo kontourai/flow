@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright";
-import { startFlowConsoleServer } from "../dist/console-server.js";
+import { startFlowConsoleServer } from "../dist/index.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const screenshotPath = path.join(root, ".flow-agents", "flow-console-shell", "console-smoke.png");

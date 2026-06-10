@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.16
+
+- Collapses the npm package API to the `@kontourai/flow` root import plus the
+  `flow` CLI, removing console package subpaths.
+- Removes root compatibility source shims for console projection, console
+  server, and runtime file helpers while keeping those APIs available from the
+  package root.
+- Adds package contents coverage so stale root generated entrypoint files cannot
+  be included in the published package.
+- Updates tests and docs to use the root package API and the `src/console/` and
+  `src/runtime/` implementation homes.
+
 ## 0.1.15
 
 - Closes authored `FlowDefinition`, `FlowGate`, `FlowExpectation`, and
@@ -84,7 +96,7 @@
   development details to `docs/contributing.md`.
 - Removed stale historical cleanup and one-time release setup notes now that
   source control and current docs preserve the useful decisions.
-- Kept repo-local Flow Agents workflow artifacts under ignored `.flow-agents/`.
+- Kept transient workflow artifacts out of the published package surface.
 
 ## 0.1.6
 

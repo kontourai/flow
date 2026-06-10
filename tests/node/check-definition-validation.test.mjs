@@ -16,7 +16,7 @@ import {
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
   FLOW_RUN_STATE_FILE
-} from "../../dist/flow-files.js";
+} from "../../dist/index.js";
 import { json, resourceDefinitionFixture } from "./helpers/fixtures.mjs";
 import { routeBackDefinition } from "./helpers/route-back-fixtures.mjs";
 
