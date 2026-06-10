@@ -293,7 +293,7 @@ continuation: resume from implement, not chat memory</code></pre>
     </div>
     <div class="feature">
       <h3>Built to compose</h3>
-      <p><a href="https://github.com/kontourai/veritas" rel="noopener">Veritas</a> can supply repo-readiness evidence, <a href="https://kontourai.github.io/flow-agents/" rel="noopener">Flow Agents</a> can enforce gates from agent harnesses — and Flow stands alone without either.</p>
+      <p><a href="https://kontourai.io/veritas" rel="noopener">Veritas</a> can supply repo-readiness evidence, <a href="https://kontourai.github.io/flow-agents/" rel="noopener">Flow Agents</a> can enforce gates from agent harnesses — and Flow stands alone without either.</p>
     </div>
   </div>
 </section>

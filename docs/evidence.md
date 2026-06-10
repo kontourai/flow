@@ -12,7 +12,7 @@ Evidence is what makes a Flow gate mean something. A gate that passes on an agen
 | `file` | any file artifact: a diff, a plan document, a screenshot |
 | `ci` | CI job results |
 | `surface.claim` | claim-backed evidence evaluated against typed gate expectations |
-| `veritas-readiness` | repo/change readiness produced by a Veritas tool |
+| `veritas-readiness` | repo/change readiness produced by a [Veritas](https://kontourai.io/veritas) tool |
 | `human-attestation` | a recorded human statement or sign-off |
 | `trace-link` | a pointer to an external trace or observability record |
 
@@ -53,7 +53,7 @@ Gates declare what they expect *before* work runs, as typed `expects` entries. I
 
 ## Trust artifacts
 
-A `surface.claim` evidence entry can be backed by a copied Surface TrustReport or Trust Snapshot JSON file:
+A `surface.claim` evidence entry can be backed by a copied [Surface](https://kontourai.io/surface) TrustReport or Trust Snapshot JSON file:
 
 ```sh
 flow attach-evidence dev-1847 --gate verify-gate \

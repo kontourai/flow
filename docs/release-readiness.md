@@ -53,7 +53,7 @@ flow version-release-report examples/scenarios/version-release-report/complete.j
 flow version-release-report examples/scenarios/version-release-report/missing-required-evidence.json --format json
 ```
 
-Missing required verification evidence or required release lanes become explicit `gaps` and force `decision: "hold"` — never a summarized "ready." Real output from the bundled missing-evidence fixture:
+Missing required verification evidence or required release lanes become explicit `gaps` and force `decision: "hold"` — never a summarized "ready." Key sections from the real output (bundled missing-evidence fixture):
 
 ```text
 # Version Release Report: kai-2026.06

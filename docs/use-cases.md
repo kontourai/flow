@@ -100,7 +100,7 @@ When a service launches without a passing capacity check, that is an `accept-exc
 - `citation_defect` → forward to `resolve` (repairable without regeneration)
 - `route_back_policy.max_attempts` is the per-case adversarial budget; exceeding it blocks the run rather than burning tokens forever
 
-Attempt counting is derived from persisted transitions, so neither the producer nor the reviewer can fudge the round count. External reasoning systems own the actual review content; Flow owns only orchestration, route accounting, and the budget.
+Attempt counting is derived from persisted transitions, so neither the producer nor the reviewer can fudge the round count. External reasoning systems own the actual review content — [Kontour Survey](https://kontourai.io/survey) records per-round [adversarial passes](https://kontourai.github.io/survey/adversarial-and-learning.html) in exactly the shape this gate consumes — while Flow owns only orchestration, route accounting, and the budget.
 
 **What they get:** adversarial review as a measurable process — rounds, reasons, and budgets on the record — instead of an unaccountable loop.
 
