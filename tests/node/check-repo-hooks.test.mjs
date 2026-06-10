@@ -95,7 +95,7 @@ test("contributing docs cover hook setup and product boundary", async () => {
   assert.match(contributing, /not gate evaluation/);
   assert.match(contributing, /not Flow Console behavior/);
   assert.match(contributing, /not CI or merge authority/);
-  assert.match(contributing, /\.flow-agents\//);
+  assert.doesNotMatch(contributing, /\.flow-agents\//);
 });
 
 test("repo hook files do not mention downstream or private product names", async () => {

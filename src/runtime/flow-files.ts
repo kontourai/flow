@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,7 +54,16 @@ export async function writeJson(file, value) {
 }
 
 export function moduleRoot() {
-  return path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  // Compiled location is dist/runtime/flow-files.js; the package root is the
+  // nearest ancestor with package.json so packaged assets resolve regardless
+  // of how deep this module sits under dist/.
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  while (!existsSync(path.join(dir, "package.json"))) {
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error("unable to locate the @kontourai/flow package root");
+    dir = parent;
+  }
+  return dir;
 }
 
 export function examplePath(file) {

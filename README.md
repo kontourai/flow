@@ -101,7 +101,7 @@ The continuation contract is intentionally simple: `flow resume <run-id>` reads 
 Downstream console code can project a local Flow Run into a deterministic read model:
 
 ```js
-import { projectFlowRunFromFiles } from "@kontourai/flow/console-projection";
+import { projectFlowRunFromFiles } from "@kontourai/flow";
 
 const projection = await projectFlowRunFromFiles("dev-1847", {
   cwd: process.cwd()
@@ -111,17 +111,19 @@ console.log(projection.current_step);
 console.log(projection.gates);
 ```
 
-The root package also exports `projectFlowRun` and `projectFlowRunFromFiles` from `@kontourai/flow`. Type declarations are available from both package boundaries.
+The root package exports `projectFlowRun`, `projectFlowRunFromFiles`, and the local console server helpers from `@kontourai/flow`.
 
-Public package specifiers are limited to the package root and these two console subpaths:
+Public package usage is limited to the package root and the `flow` CLI:
 
 ```js
-import { validateDefinition } from "@kontourai/flow";
-import { projectFlowRunFromFiles } from "@kontourai/flow/console-projection";
-import { startFlowConsoleServer } from "@kontourai/flow/console-server";
+import {
+  validateDefinition,
+  projectFlowRunFromFiles,
+  startFlowConsoleServer
+} from "@kontourai/flow";
 ```
 
-Generated `dist/` domain files are packaged implementation output. Do not import internal subpaths such as `@kontourai/flow/dist/runtime/flow-files.js`, `@kontourai/flow/dist/console/console-projection.js`, or `@kontourai/flow/flow-files`; they are not part of the npm package API.
+Generated `dist/` domain files are packaged implementation output. Do not import internal package subpaths; they are not part of the npm package API.
 
 `projectFlowRunFromFiles` reads local `.flow/runs/<run-id>/definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`. It is read-only, local-file-first, deterministic, and Flow-owned. It preserves explicit external refs for Surface, Veritas, artifacts, pull requests, CI, and release reports when those refs already exist in local run files; it does not synthesize refs from git, network calls, hosted services, or Markdown report parsing.
 

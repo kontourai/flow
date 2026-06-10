@@ -29,15 +29,13 @@ These hooks are contributor tooling. They are not Flow Definition semantics, not
 
 ## Source Layout
 
-Flow core runtime sources live under domain folders in `src/`: contracts, runtime storage, shared helpers, config, definitions, gates, transitions, reports, release checks, console implementation, and console UI. The root `src/index.ts`, `src/cli.ts`, `src/console-projection.ts`, `src/console-server.ts`, and `src/flow-files.ts` files are compatibility entrypoints for generated package paths.
+Flow core runtime sources live under domain folders in `src/`: contracts, runtime storage, shared helpers, config, definitions, gates, transitions, reports, release checks, console implementation, and console UI. The root `src/index.ts` is the package public API surface, and `src/cli.ts` is the `flow` CLI entrypoint.
 
-`npm run typecheck` validates runtime sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use `dist/index.js`, `dist/index.d.ts`, package subpath exports, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
+`npm run typecheck` validates runtime sources without writing output, and `npm run build` emits the package runtime to `dist/` with `.d.ts` declarations. Package consumers use the package root, root declarations, and the `dist/cli.js` bin; `prepack` runs the typecheck and local tests so the published package is built from the TypeScript sources.
 
 Node test suites live under domain files in `tests/node/`, shared Node test helpers live under `tests/node/helpers/`, and browser tests live under `tests/browser/`. The remaining JavaScript/MJS files in `scripts/` are operational repository tools, `.githooks/pre-push` is shell contributor tooling, and schemas, examples, and scenarios remain JSON/data assets rather than TypeScript modules.
 
 For placement rules and generated artifact policy, see [repo-structure.md](repo-structure.md).
-
-Workflow coordination artifacts, when present, stay under `.flow-agents/`; production source must not depend on them.
 
 Root `.flow/`, `.surface/`, and `.veritas/` are local product state and remain ignored. The tracked console projection scenario under `examples/scenarios/console-projection/.flow/` is the intentional exception.
 

@@ -6,17 +6,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   projectFlowRun,
-  projectFlowRunFromFiles
-} from "../../dist/index.js";
-import * as packageProjection from "../../dist/console-projection.js";
-import {
+  projectFlowRunFromFiles,
   FLOW_RUN_DEFINITION_FILE,
   FLOW_RUN_EVIDENCE_MANIFEST_PATH,
   FLOW_RUN_LAYOUT,
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
   FLOW_RUN_STATE_FILE
-} from "../../dist/flow-files.js";
+} from "../../dist/index.js";
+import * as implementationProjection from "../../dist/console/console-projection.js";
 
 const fixtureCwd = fileURLToPath(new URL("../../examples/scenarios/console-projection", import.meta.url));
 const fixtureRunId = "console-projection-fixture";
@@ -130,21 +128,18 @@ test("AC2 projection preserves missing evidence, failed evidence, accepted excep
 test("AC3 projection runtime exports and declarations are available at package boundaries", async () => {
   assert.equal(typeof projectFlowRun, "function");
   assert.equal(typeof projectFlowRunFromFiles, "function");
-  assert.equal(typeof packageProjection.projectFlowRun, "function");
-  assert.equal(typeof packageProjection.projectFlowRunFromFiles, "function");
+  assert.equal(typeof implementationProjection.projectFlowRun, "function");
+  assert.equal(typeof implementationProjection.projectFlowRunFromFiles, "function");
 
   const packageJson = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.types, "./dist/index.d.ts");
   assert.equal(packageJson.exports["."].types, "./dist/index.d.ts");
   assert.equal(packageJson.exports["."].import, "./dist/index.js");
-  assert.equal(packageJson.exports["./console-projection"].types, "./dist/console-projection.d.ts");
-  assert.equal(packageJson.exports["./console-projection"].import, "./dist/console-projection.js");
+  assert.equal(packageJson.exports["./console-projection"], undefined);
 
   const indexTypes = await readFile(new URL("../../dist/index.d.ts", import.meta.url), "utf8");
-  const projectionTypes = await readFile(new URL("../../dist/console-projection.d.ts", import.meta.url), "utf8");
   const projectionImplementationTypes = await readFile(new URL("../../dist/console/console-projection.d.ts", import.meta.url), "utf8");
-  assert.match(indexTypes, /export \* from "\.\/console-projection\.js"/);
-  assert.match(projectionTypes, /export \* from "\.\/console\/console-projection\.js"/);
+  assert.match(indexTypes, /from "\.\/console\/console-projection\.js"/);
   assert.match(projectionImplementationTypes, /interface FlowConsoleProjection/);
   assert.match(projectionImplementationTypes, /function projectFlowRun/);
   assert.match(projectionImplementationTypes, /function projectFlowRunFromFiles/);
