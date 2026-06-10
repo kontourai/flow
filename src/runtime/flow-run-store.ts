@@ -41,8 +41,38 @@ export async function ensureFlowLayout(cwd = process.cwd()) {
   return root;
 }
 
+export async function scaffoldDemoRun(cwd = process.cwd()) {
+  const root = await ensureFlowLayout(cwd);
+  const runId = "demo";
+  if (existsSync(runDir(runId, cwd))) return { runId, created: false };
+  const demoDir = path.join(root, "demo");
+  const claimFile = path.join(demoDir, "acceptance-claim.json");
+  await writeJson(claimFile, {
+    schema_version: FLOW_SCHEMA_VERSION,
+    artifact_type: "trust-report",
+    subject: "builder.plan",
+    producer: "demo/reviewer",
+    status: "trusted",
+    issued_at: new Date().toISOString(),
+    claims: [{ type: "builder.acceptance", subject: "builder.plan", status: "trusted" }]
+  });
+  await startRun(path.join(root, "definitions", "agent-dev-flow.json"), {
+    cwd,
+    runId,
+    params: { subject: "demo-checkout-banner" }
+  });
+  await attachEvidence(runId, {
+    cwd,
+    gate: "plan-gate",
+    file: claimFile,
+    trustArtifact: true
+  });
+  const result = await evaluateRun(runId, { cwd });
+  return { runId, created: true, state: result.state };
+}
+
 export function flowReadme() {
-  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains authored Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- runs/<run-id>/ is generated run state, not an authored Resource Contract.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.definition} is the Flow Definition snapshot from run start.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.state} is the authoritative mutable run state.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceManifest} records attached evidence metadata for this run.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceDirectory}/<id>.* contains copied evidence files.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.reportMarkdown} and runs/<run-id>/${FLOW_RUN_LAYOUT.reportJson} are generated reports.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
+  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains authored Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- demo/ contains evidence fixtures written by \`flow init --demo\`.\n- runs/<run-id>/ is generated run state, not an authored Resource Contract.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.definition} is the Flow Definition snapshot from run start.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.state} is the authoritative mutable run state.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceManifest} records attached evidence metadata for this run.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceDirectory}/<id>.* contains copied evidence files.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.reportMarkdown} and runs/<run-id>/${FLOW_RUN_LAYOUT.reportJson} are generated reports.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
 }
 
 export function initialEvidenceManifest(definition, state) {

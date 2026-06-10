@@ -101,6 +101,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "routeTargetForReason",
     "runDir",
     "saveRun",
+    "scaffoldDemoRun",
     "sha256File",
     "slugLabel",
     "sortStatus",

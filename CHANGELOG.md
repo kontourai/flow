@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.17
+
+- Fixes `flow init` failing to copy the bundled sample definition after the
+  `src/runtime/` move: `moduleRoot()` now resolves the package root by locating
+  `package.json` instead of assuming a fixed directory depth, and CLI runtime
+  tests cover the init scaffold path.
+- Adds `flow init --demo`, which scaffolds a ready-made `demo` run (plan gate
+  passed, sitting at implement) so status, resume, and the console have real
+  state to show immediately; `scaffoldDemoRun` is exported from the package
+  root.
+- Adds `flow evaluate --exit-code` for CI and agent-hook enforcement: exits
+  non-zero unless every evaluated gate passed.
+- Surfaces gate expectation `explore_hint` text on blocked gates in `flow
+  status` summaries and `flow resume` output.
+- Prints a friendly empty state from `flow list` when no runs exist.
+- Restructures documentation: focused guides for getting started, use cases,
+  evidence, gates and route-back, agent hooks, project config, release
+  readiness, the CLI, and the library; merges product boundaries and market
+  positioning into the product vision; retires the standalone adversarial-pass
+  note into the gates guide.
+- Adds a Kontour-branded, mobile-optimized GitHub Pages docs site built by
+  `npm run docs:build` (`scripts/docs-site/build.ts`), checked by
+  `npm run docs:check` in CI, and deployed by the `Docs` workflow.
+
 ## 0.1.16
 
 - Collapses the npm package API to the `@kontourai/flow` root import plus the

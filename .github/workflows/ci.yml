@@ -47,3 +47,23 @@ jobs:
       - name: Check package readiness
         run: npm pack --dry-run
         working-directory: flow
+
+  docs:
+    name: Docs site build and links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build docs site and check links
+        run: npm run docs:check

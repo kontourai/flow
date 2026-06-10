@@ -39,6 +39,16 @@ For placement rules and generated artifact policy, see [repo-structure.md](repo-
 
 Root `.flow/`, `.surface/`, and `.veritas/` are local product state and remain ignored. The tracked console projection scenario under `examples/scenarios/console-projection/.flow/` is the intentional exception.
 
+## Docs Site
+
+The GitHub Pages site is generated from `README.md` content and `docs/` by `scripts/docs-site/build.ts` (TypeScript, run directly with Node >= 22.18 native type stripping):
+
+```sh
+npm run docs:build
+```
+
+Output lands in `site/` (ignored). The `Docs` GitHub workflow builds and deploys the site on pushes to `main` that touch `docs/` or `scripts/docs-site/`. When adding, renaming, or retiring a guide, update both `docs/README.md` and the page list in `scripts/docs-site/build.ts`.
+
 ## Release Prep
 
 Before a release PR, update `package.json`, `package-lock.json`, and `CHANGELOG.md`, then run:

@@ -19,6 +19,7 @@ import {
   renderVersionReleaseReportMarkdown,
   reportJson,
   runDir,
+  scaffoldDemoRun,
   startRun,
   validateRunTransition,
   validateDefinitionWithDiagnostics
@@ -29,13 +30,13 @@ type CliFlags = Record<string, any>;
 
 function usage() {
   return `Usage:
-  flow init [--cwd <path>]
+  flow init [--demo] [--cwd <path>]
   flow validate-definition <path> [--json] [--cwd <path>]
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
-  flow evaluate <run-id> [--gate <gate>] [--cwd <path>]
+  flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
   flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
@@ -210,6 +211,14 @@ async function main() {
   if (command === "init") {
     const root = await ensureFlowLayout(cwd);
     console.log(`initialized ${path.relative(process.cwd(), root) || root}`);
+    if (flags.demo) {
+      const demo = await scaffoldDemoRun(cwd);
+      console.log(demo.created ? `demo run ready: ${demo.runId}` : `demo run already exists: ${demo.runId}`);
+      console.log("try:");
+      console.log(`  flow status ${demo.runId}`);
+      console.log(`  flow resume ${demo.runId}`);
+      console.log(`  flow console --run ${demo.runId}`);
+    }
     return;
   }
 
@@ -310,6 +319,9 @@ async function main() {
     }
     console.log(`current step: ${result.state.current_step}`);
     console.log(`next action: ${result.state.next_action}`);
+    if (flags["exit-code"] && result.outcomes.some((outcome) => outcome.status !== "pass")) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -389,6 +401,10 @@ async function main() {
 
   if (command === "list") {
     const runs = await listRuns(cwd);
+    if (!runs.length) {
+      console.log("no flow runs found; start one with: flow start <definition> --run-id <id>");
+      return;
+    }
     for (const run of runs) {
       console.log(`${run.run_id}\t${run.status}\t${run.current_step}\t${run.definition_id} / ${run.subject}`);
     }
