@@ -79,6 +79,8 @@ current step: implement
 next action: return to implement and replace failing evidence attempt 1/3
 ```
 
+**Recovering** from a route-back means replacing the failing evidence: attach the new evidence with `--supersede <failed-evidence-id>`. The superseded entry stays in the manifest (reports still show the failed round happened) but stops driving the gate, so the next evaluation can pass on the replacement. The [adversarial-survey scenario](https://github.com/kontourai/flow/blob/main/examples/scenarios/adversarial-survey/README.md) walks the full loop with real output.
+
 Run state and reports expose the full route-back record for continuation and analysis: selected route, final target, reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, and any recorded classifier/diagnostics/analytics metadata.
 
 ## Transition validation

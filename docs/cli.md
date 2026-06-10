@@ -72,7 +72,7 @@ continuation: resume from implement, not chat memory
 
 ```sh
 flow attach-evidence <run-id> --gate <gate> --file <file>
-  [--kind <kind>] [--status failed]
+  [--kind <kind>] [--status failed] [--supersede <evidence-id> ...]
   [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>]
   [--producer <id>] [--authority-trace <trace>]
   [--route-reason <reason>] [--expectation-id <id> ...]
@@ -86,6 +86,7 @@ Copies the file into the run's `evidence/` directory and records it in the manif
 - `--kind` is one of the [documented evidence kinds](evidence.md#evidence-kinds); unknown kinds are stored as `custom` with the original name preserved.
 - `--trust-artifact` parses the file as a Surface-shaped trust report/snapshot and projects its first claim into the matching fields; the `--claim-*`, `--producer`, and `--authority-trace` flags override the parsed projection.
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).
+- `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
 
 ## flow evaluate

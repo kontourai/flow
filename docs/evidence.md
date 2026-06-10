@@ -129,4 +129,6 @@ flow attach-evidence dev-1847 --gate verify-gate \
 
 For nested metadata, pass `--route-metadata ./route-metadata.json` with any of `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics`; explicit CLI flags override overlapping values from the file.
 
+To recover after failed evidence routed work back, attach the replacement with `--supersede <evidence-id>`: the failed entry stays in the manifest for audit but no longer drives the gate.
+
 The v0.1 CLI attaches evidence from files. Richer adapters — CI jobs, agent harness hooks, release tooling — can write the same manifest shape directly through the [library API](library.md).

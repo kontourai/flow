@@ -260,6 +260,19 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   if (options.classifier) entry.classifier = options.classifier;
   if (options.diagnostics) entry.diagnostics = options.diagnostics;
   if (options.analytics) entry.analytics = options.analytics;
+  const supersedeIds: string[] = Array.isArray(options.supersede)
+    ? options.supersede
+    : options.supersede
+      ? [options.supersede]
+      : [];
+  for (const supersededId of supersedeIds) {
+    const superseded = run.manifest.evidence.find((existing) => existing.id === supersededId);
+    if (!superseded) throw new Error(`cannot supersede unknown evidence: ${supersededId}`);
+    if (superseded.gate_id !== options.gate) {
+      throw new Error(`cannot supersede evidence ${supersededId}: it belongs to gate ${superseded.gate_id}, not ${options.gate}`);
+    }
+    superseded.superseded_by = id;
+  }
   run.manifest.evidence.push(entry);
   await saveRun(run);
   return entry;
