@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.18
 
+- Completed runs now report "run complete; no further action required"
+  instead of repeating the final gate's attach-evidence instruction.
+- Commits the VHS demo tape and a regeneration script
+  (`scripts/docs-site/record-demo.sh`) so the README recording can be
+  refreshed when CLI output changes.
 - Adds evidence supersession: `flow attach-evidence --supersede <evidence-id>`
   marks earlier same-gate evidence as replaced. Superseded entries stay in the
   manifest for audit but no longer drive gate outcomes, making the route-back

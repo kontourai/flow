@@ -79,6 +79,27 @@ test("CLI evaluate --exit-code fails on non-pass outcomes and list prints an emp
   assert.match(plain.stdout, /block implement-gate/);
 });
 
+test("completed runs report completion instead of a stale next action", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-complete-"));
+  const scenario = new URL("../../examples/scenarios/adversarial-survey/", import.meta.url).pathname;
+  const definition = new URL("../../examples/adversarial-pass-flow.json", import.meta.url).pathname;
+  await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "done-1", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "adversarial-review-gate",
+    "--file", path.join(scenario, "producer-output.trust.json"), "--trust-artifact", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "adversarial-review-gate",
+    "--file", path.join(scenario, "review-round-2-trusted.trust.json"), "--trust-artifact", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "resolve-gate",
+    "--file", path.join(scenario, "resolution.trust.json"), "--trust-artifact", "--cwd", cwd]);
+  const final = await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--cwd", cwd]);
+  assert.match(final.stdout, /next action: run complete; no further action required/);
+
+  const state = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "done-1", "state.json"), "utf8"));
+  assert.equal(state.status, "completed");
+  assert.equal(state.next_action, "run complete; no further action required");
+});
+
 test("CLI supersede replaces failed evidence so a route-back can recover", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-supersede-"));
   const scenario = new URL("../../examples/scenarios/adversarial-survey/", import.meta.url).pathname;

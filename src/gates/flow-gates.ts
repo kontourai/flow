@@ -270,6 +270,8 @@ export function applyEvaluation(definition, state, outcome) {
     state.status = "active";
   }
 
-  state.next_action = nextActionForStep(definition, state.current_step, outcome);
+  state.next_action = state.status === "completed"
+    ? "run complete; no further action required"
+    : nextActionForStep(definition, state.current_step, outcome);
   state.updated_at = new Date().toISOString();
 }

@@ -49,6 +49,14 @@ npm run docs:build
 
 Output lands in `site/` (ignored). The `Docs` GitHub workflow builds and deploys the site on pushes to `main` that touch `docs/` or `scripts/docs-site/`. When adding, renaming, or retiring a guide, update both `docs/README.md` and the page list in `scripts/docs-site/build.ts`.
 
+## Demo Recording
+
+`docs/assets/flow-demo.gif` is recorded from the committed tape with [VHS](https://github.com/charmbracelet/vhs). Regenerate it after CLI output changes:
+
+```sh
+sh scripts/docs-site/record-demo.sh
+```
+
 ## Release Prep
 
 Before a release PR, update `package.json`, `package-lock.json`, and `CHANGELOG.md`, then run:
