@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/kontourai/flow/compare/v0.1.18...v0.1.19) (2026-06-11)
+
+
+### Documentation
+
+* AGENTS.md — small map with links for fresh agents ([#63](https://github.com/kontourai/flow/issues/63)) ([f7a3692](https://github.com/kontourai/flow/commit/f7a3692f74ee5c6e5d3c9e73feea904b3f1d87a1))
+
 ## 0.1.18
 
 - Completed runs now report "run complete; no further action required"
