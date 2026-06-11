@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Adds evidence supersession: `flow attach-evidence --supersede <evidence-id>`
+  marks earlier same-gate evidence as replaced. Superseded entries stay in the
+  manifest for audit but no longer drive gate outcomes, making the route-back
+  "replace failing evidence" instruction executable.
+- Adds the `examples/scenarios/adversarial-survey/` scenario: the adversarial
+  route-back pattern run end to end with Survey-shaped per-round review
+  evidence, including recovery through supersession.
+- Cross-links the Kontour family throughout the docs and adds a Survey row to
+  the product table.
+
 ## 0.1.17
 
 - Fixes `flow init` failing to copy the bundled sample definition after the

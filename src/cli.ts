@@ -35,7 +35,7 @@ function usage() {
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
@@ -65,7 +65,7 @@ function parseArgs(argv: string[]) {
       }
       continue;
     }
-    if (key === "expectation-id" || key === "accept-conflict") {
+    if (key === "expectation-id" || key === "accept-conflict" || key === "supersede") {
       flags[key] ??= [];
       const next = argv[i + 1];
       if (!next || next.startsWith("--")) throw new Error(`--${key} requires a value`);
@@ -294,6 +294,7 @@ async function main() {
       kind: flags.kind,
       trustArtifact: Boolean(flags["trust-artifact"]),
       status: flags.status,
+      supersede: flags.supersede,
       claimType: flags["claim-type"],
       claimSubject: flags["claim-subject"],
       claimStatus: flags["claim-status"],

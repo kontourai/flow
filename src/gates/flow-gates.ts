@@ -102,7 +102,9 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
     };
   }
 
-  const evidence = attachedEvidenceFor(manifest, gateId);
+  // Superseded entries stay in the manifest for audit but no longer drive
+  // gate outcomes: replacing failing evidence is how a route-back recovers.
+  const evidence = attachedEvidenceFor(manifest, gateId).filter((entry) => !entry.superseded_by);
   const failed = evidence.filter((entry) => entry.status === "failed");
   if (failed.length) {
     const routeReason = routeReasonForFailedEvidence(failed[0]);

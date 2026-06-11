@@ -79,6 +79,42 @@ test("CLI evaluate --exit-code fails on non-pass outcomes and list prints an emp
   assert.match(plain.stdout, /block implement-gate/);
 });
 
+test("CLI supersede replaces failed evidence so a route-back can recover", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-supersede-"));
+  const scenario = new URL("../../examples/scenarios/adversarial-survey/", import.meta.url).pathname;
+  const definition = new URL("../../examples/adversarial-pass-flow.json", import.meta.url).pathname;
+  await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "adv-1", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
+    "--file", path.join(scenario, "producer-output.trust.json"), "--trust-artifact", "--cwd", cwd]);
+  const failed = await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
+    "--file", path.join(scenario, "review-round-1-completeness-defect.trust.json"),
+    "--trust-artifact", "--status", "failed", "--route-reason", "completeness_defect", "--cwd", cwd]);
+  const failedId = failed.stdout.match(/attached evidence: (\S+)/)[1];
+
+  const routeBack = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
+  assert.match(routeBack.stdout, /route-back adversarial-review-gate/);
+
+  await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
+    "--file", path.join(scenario, "review-round-2-trusted.trust.json"),
+    "--trust-artifact", "--supersede", failedId, "--cwd", cwd]);
+  const pass = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
+  assert.match(pass.stdout, /pass adversarial-review-gate/);
+  assert.match(pass.stdout, /current step: resolve/);
+
+  // superseded entry stays in the manifest for audit
+  const manifest = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "adv-1", "evidence", "manifest.json"), "utf8"));
+  const superseded = manifest.evidence.find((entry) => entry.id === failedId);
+  assert.ok(superseded.superseded_by, "failed evidence records superseded_by");
+
+  // superseding evidence on another gate is rejected
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "resolve-gate",
+      "--file", path.join(scenario, "resolution.trust.json"), "--trust-artifact", "--supersede", failedId, "--cwd", cwd]),
+    /cannot supersede evidence/
+  );
+});
+
 test("CLI status and resume surface explore_hint for missing expectations", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-hints-"));
   await mkdir(path.join(cwd, "defs"), { recursive: true });
