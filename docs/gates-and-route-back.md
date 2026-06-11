@@ -53,10 +53,13 @@ A gate routes failed evidence back to a specific step via `on_route_back`:
 
 Route reason ids are open strings. Flow documents four standard ids without enforcing a closed enum:
 
-- `missing_evidence` — required gate evidence is absent (the only reason Flow itself infers)
-- `implementation_defect` — the work failed the gate and should return to implementation
-- `plan_gap` — the plan or acceptance shape is insufficient
-- `decision_gap` — the work needs a decision or clarification before proceeding
+| Reason id | Meaning | Inferred by Flow? |
+| --- | --- | --- |
+| `missing_evidence` | Required gate evidence is absent | Yes — Flow infers this when evidence is missing |
+| `implementation_defect` | Work failed the gate; return to implementation | No — producer or agent sets this |
+| `plan_gap` | Plan or acceptance shape is insufficient | No — producer or agent sets this |
+| `decision_gap` | Work needs a decision or clarification | No — producer or agent sets this |
+| `default` | Fallback when reason is absent or unmapped | Special — not a reason id, used in `on_route_back` |
 
 Custom ids are allowed: add them to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If failed evidence has no `route_reason`, Flow uses `default` when present, otherwise the gate's own `step`.
 
