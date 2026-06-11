@@ -57,6 +57,10 @@ Output lands in `site/` (ignored). The `Docs` GitHub workflow builds and deploys
 sh scripts/docs-site/record-demo.sh
 ```
 
+## Releases
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please): merges to main accumulate into a release PR, and merging that PR tags the version and dispatches the npm publish workflow. For the automation to infer versions, use conventional commit prefixes on main-bound changes: `feat:` (minor), `fix:` (patch), `feat!:`/`BREAKING CHANGE` (major), and `docs:`/`chore:`/`refactor:` for no-release changes.
+
 ## Release Prep
 
 Before a release PR, update `package.json`, `package-lock.json`, and `CHANGELOG.md`, then run:
