@@ -1,4 +1,13 @@
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
+
+const FIXTURE_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../examples/scenarios/console-projection/.flow/runs/console-projection-fixture"
+);
+const STATE_FILE = path.join(FIXTURE_ROOT, "state.json");
 
 test("renders the Flow console projection with gates, graph, and links", async ({ page }) => {
   const consoleErrors = await loadFlowConsole(page);
@@ -163,6 +172,101 @@ test("keeps the console layout inside the mobile viewport", async ({ page }) => 
 
   expect(consoleErrors).toEqual([]);
 });
+
+// ---------------------------------------------------------------------------
+// Live update tests
+// ---------------------------------------------------------------------------
+
+test("live indicator shows connected after SSE stream connects", async ({ page }) => {
+  test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
+  const consoleErrors = await loadFlowConsole(page);
+
+  // Wait for SSE to connect and indicator to go live
+  const indicator = page.getByTestId("live-indicator");
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveAttribute("data-connected", "true", { timeout: 5000 });
+  await expect(indicator.locator(".live-label")).toContainText("live");
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("live update: mutating run state file updates header status and timeline without reload", async ({ page }) => {
+  test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
+  const consoleErrors = await loadFlowConsole(page);
+
+  // Wait for SSE to connect
+  const indicator = page.getByTestId("live-indicator");
+  await expect(indicator).toHaveAttribute("data-connected", "true", { timeout: 5000 });
+
+  // Read and mutate the fixture state
+  const originalState = await readFile(STATE_FILE, "utf8");
+  try {
+    const state = JSON.parse(originalState);
+    // Add a transition to make the timeline grow
+    const newTransition = {
+      id: "tr.live-test",
+      type: "step",
+      from_step: "build",
+      to_step: "verify",
+      status: "allowed",
+      gate_id: null,
+      reason: "live update test",
+      at: new Date().toISOString()
+    };
+    state.transitions = [...(state.transitions ?? []), newTransition];
+    await writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+
+    // Assert timeline count updates (was 2, now should be 3)
+    await expect(page.getByTestId("flow-console-timeline").locator(".timeline-row")).toHaveCount(3, { timeout: 5000 });
+
+    // Status badge should still be visible (header re-rendered)
+    await expect(page.getByTestId("flow-console-status")).toBeVisible();
+  } finally {
+    await writeFile(STATE_FILE, originalState);
+  }
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("live update: open drawer stays open and re-renders with updated gate data", async ({ page }) => {
+  test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
+  const consoleErrors = await loadFlowConsole(page);
+
+  // Wait for SSE to connect
+  const indicator = page.getByTestId("live-indicator");
+  await expect(indicator).toHaveAttribute("data-connected", "true", { timeout: 5000 });
+
+  // Open the drawer for the current (verify) step gate
+  const currentNode = page.locator('[data-testid="flow-console-graph"] .is-current[role="button"]');
+  await currentNode.click();
+  const drawer = page.locator(".drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText("verify-gate");
+
+  // Mutate the fixture to change verify-gate summary
+  const originalState = await readFile(STATE_FILE, "utf8");
+  try {
+    const state = JSON.parse(originalState);
+    const verifyOutcome = state.gate_outcomes.find((o: { gate_id: string }) => o.gate_id === "verify-gate");
+    if (verifyOutcome) {
+      verifyOutcome.summary = "Live update drawer test summary";
+    }
+    await writeFile(STATE_FILE, JSON.stringify(state, null, 2));
+
+    // Drawer should stay open and show updated summary
+    await expect(drawer).toBeVisible({ timeout: 5000 });
+    await expect(drawer).toContainText("verify-gate");
+    await expect(drawer).toContainText("Live update drawer test summary", { timeout: 5000 });
+  } finally {
+    await writeFile(STATE_FILE, originalState);
+  }
+
+  expect(consoleErrors).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 async function loadFlowConsole(page: Page): Promise<string[]> {
   const consoleErrors: string[] = [];

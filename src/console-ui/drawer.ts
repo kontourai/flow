@@ -3,6 +3,31 @@ import type { ConsoleGate, ConsoleProjection } from "./types.js";
 
 let _currentProjection: ConsoleProjection | null = null;
 let _drawerEl: HTMLElement | null = null;
+let _openGateId: string | null = null;
+
+// ---------------------------------------------------------------------------
+// State accessors for live-update restore
+// ---------------------------------------------------------------------------
+
+export function getOpenGateId(): string | null {
+  return _openGateId;
+}
+
+export function isDrawerOpen(): boolean {
+  return Boolean(_drawerEl && _drawerEl.classList.contains("drawer-open"));
+}
+
+export function getDrawerScrollTop(): number {
+  if (!_drawerEl) return 0;
+  const body = _drawerEl.querySelector<HTMLElement>(".drawer-body");
+  return body ? body.scrollTop : 0;
+}
+
+export function setDrawerScrollTop(value: number): void {
+  if (!_drawerEl) return;
+  const body = _drawerEl.querySelector<HTMLElement>(".drawer-body");
+  if (body) body.scrollTop = value;
+}
 
 function clampedText(text: string, className: string): HTMLElement {
   const wrapper = document.createElement("div");
@@ -272,6 +297,7 @@ export function renderDrawer(projection: ConsoleProjection): HTMLElement {
 
 export function openDrawer(gate: ConsoleGate, projection: ConsoleProjection): void {
   _currentProjection = projection;
+  _openGateId = gate.id;
   if (!_drawerEl) return;
   renderDrawerContent(gate);
   _drawerEl.setAttribute("aria-hidden", "false");
@@ -286,6 +312,7 @@ export function openDrawer(gate: ConsoleGate, projection: ConsoleProjection): vo
 }
 
 export function closeDrawer(): void {
+  _openGateId = null;
   if (!_drawerEl) return;
   _drawerEl.setAttribute("aria-hidden", "true");
   _drawerEl.classList.remove("drawer-open");

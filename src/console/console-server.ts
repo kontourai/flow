@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, watch as fsWatch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,9 @@ const MIME_TYPES: Record<string, string> = {
   ".md": "text/markdown; charset=utf-8",
   ".txt": "text/plain; charset=utf-8"
 };
+
+const SSE_DEBOUNCE_MS = 250;
+const SSE_POLL_INTERVAL_MS = 2000;
 
 function uiAssetRoot() {
   return path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "console-ui");
@@ -93,7 +96,116 @@ async function serveStatic(urlPath: string, response: ServerResponse) {
   send(response, 200, await readFile(filePath), contentType);
 }
 
-function routeRequest(options: Required<Pick<FlowConsoleServerOptions, "runId" | "cwd">>) {
+// ---------------------------------------------------------------------------
+// SSE broadcaster — watches the run directory and notifies subscribers
+// ---------------------------------------------------------------------------
+
+type SseSubscriber = (data: string) => void;
+
+export interface RunWatcher {
+  subscribe: (fn: SseSubscriber) => () => void;
+  close: () => void;
+}
+
+export function createRunWatcher(runId: string, cwd: string): RunWatcher {
+  const watchDir = runDir(runId, cwd);
+  const subscribers = new Set<SseSubscriber>();
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let watcher: ReturnType<typeof fsWatch> | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let lastProjectionJson = "";
+  let closed = false;
+
+  const notify = async () => {
+    if (closed) return;
+    try {
+      const projection = await projectFlowRunFromFiles(runId, { cwd });
+      const json = JSON.stringify(projection);
+      if (json === lastProjectionJson) return;
+      lastProjectionJson = json;
+      for (const fn of subscribers) {
+        try { fn(json); } catch { /* subscriber disconnected */ }
+      }
+    } catch { /* file not ready yet */ }
+  };
+
+  const schedule = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { void notify(); }, SSE_DEBOUNCE_MS);
+  };
+
+  // Try fs.watch; fall back to polling on error
+  try {
+    watcher = fsWatch(watchDir, { recursive: true }, () => schedule());
+    watcher.once("error", () => {
+      watcher = null;
+      if (!closed) startPolling();
+    });
+  } catch {
+    startPolling();
+  }
+
+  function startPolling() {
+    if (pollTimer || closed) return;
+    pollTimer = setInterval(() => { void notify(); }, SSE_POLL_INTERVAL_MS);
+    if (pollTimer.unref) pollTimer.unref();
+  }
+
+  // Unref watcher so it doesn't keep the process alive
+  if (watcher && (watcher as any).unref) (watcher as any).unref();
+
+  return {
+    subscribe(fn: SseSubscriber) {
+      subscribers.add(fn);
+      return () => { subscribers.delete(fn); };
+    },
+    close() {
+      closed = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (pollTimer) clearInterval(pollTimer);
+      try { watcher?.close(); } catch { /* ignore */ }
+    }
+  };
+}
+
+function handleSseRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  watcher: RunWatcher
+) {
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    "connection": "keep-alive",
+    "x-accel-buffering": "no"
+  });
+  // Initial keep-alive comment
+  response.write(": connected\n\n");
+
+  const unsubscribe = watcher.subscribe((json) => {
+    response.write(`event: projection\ndata: ${json}\n\n`);
+  });
+
+  const keepAlive = setInterval(() => {
+    if (!response.writableEnded) response.write(": ping\n\n");
+  }, 15000);
+  if (keepAlive.unref) keepAlive.unref();
+
+  const cleanup = () => {
+    clearInterval(keepAlive);
+    unsubscribe();
+  };
+
+  request.once("close", cleanup);
+  request.once("aborted", cleanup);
+  response.once("close", cleanup);
+  response.once("finish", cleanup);
+}
+
+function routeRequest(
+  options: Required<Pick<FlowConsoleServerOptions, "runId" | "cwd">>,
+  watcher: RunWatcher
+) {
   const runRoot = runDir(options.runId, options.cwd);
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -108,6 +220,10 @@ function routeRequest(options: Required<Pick<FlowConsoleServerOptions, "runId" |
       }
       if (url.pathname === "/api/projection") {
         sendJson(response, 200, await readProjection(options.runId, options.cwd));
+        return;
+      }
+      if (url.pathname === "/api/stream") {
+        handleSseRequest(request, response, watcher);
         return;
       }
       if (url.pathname.startsWith("/artifacts/")) {
@@ -136,7 +252,8 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   const cwd = path.resolve(options.cwd ?? process.cwd());
   await projectFlowRunFromFiles(options.runId, { cwd });
 
-  const server = createServer(routeRequest({ runId: options.runId, cwd }));
+  const watcher = createRunWatcher(options.runId, cwd);
+  const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, host, () => {
@@ -152,6 +269,7 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   return {
     close: () =>
       new Promise<void>((resolve, reject) => {
+        watcher.close();
         server.close((error) => (error ? reject(error) : resolve()));
       }),
     host,

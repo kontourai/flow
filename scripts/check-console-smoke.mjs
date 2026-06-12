@@ -19,7 +19,7 @@ let browser;
 try {
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
-  await page.goto(server.url, { waitUntil: "networkidle" });
+  await page.goto(server.url, { waitUntil: "load" });
 
   // Header: status badge shows run status, subject shows run-id
   const status = page.getByTestId("flow-console-status");

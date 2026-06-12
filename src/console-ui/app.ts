@@ -1,9 +1,50 @@
-import { renderDrawer, openDrawer, closeDrawer } from "./drawer.js";
+import { renderDrawer, openDrawer, closeDrawer, getOpenGateId, isDrawerOpen, getDrawerScrollTop, setDrawerScrollTop } from "./drawer.js";
 import { renderGraph, renderTimeline } from "./graph.js";
 import { renderLinkList } from "./links.js";
 import type { ConsoleGate, ConsoleProjection } from "./types.js";
 
 const THEME_STORAGE_KEY = "flow-console-theme";
+
+// ---------------------------------------------------------------------------
+// Live-update state
+// ---------------------------------------------------------------------------
+
+let _liveIndicatorEl: HTMLElement | null = null;
+
+function setLiveStatus(connected: boolean) {
+  if (!_liveIndicatorEl) return;
+  _liveIndicatorEl.dataset.connected = connected ? "true" : "false";
+  const dot = _liveIndicatorEl.querySelector<HTMLElement>(".live-dot");
+  const label = _liveIndicatorEl.querySelector<HTMLElement>(".live-label");
+  if (dot) dot.className = `live-dot ${connected ? "live-dot-on" : "live-dot-off"}`;
+  if (label) label.textContent = connected ? "live" : "disconnected";
+  _liveIndicatorEl.setAttribute("title", connected ? "Live updates active" : "Disconnected — reconnecting…");
+}
+
+function createLiveIndicator(): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "live-indicator";
+  el.dataset.testid = "live-indicator";
+  el.dataset.connected = "false";
+  el.setAttribute("aria-live", "polite");
+  el.setAttribute("title", "Connecting…");
+
+  const dot = document.createElement("span");
+  dot.className = "live-dot live-dot-off";
+  dot.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("span");
+  label.className = "live-label";
+  label.textContent = "disconnected";
+
+  el.append(dot, label);
+  _liveIndicatorEl = el;
+  return el;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function text(value: string, className?: string) {
   const node = document.createElement("span");
@@ -122,8 +163,9 @@ function renderHeader(projection: ConsoleProjection) {
   headerMain.append(metaDetails);
 
   const themeToggle = renderThemeToggle();
+  const liveIndicator = createLiveIndicator();
 
-  header.append(headerMain, themeToggle);
+  header.append(headerMain, themeToggle, liveIndicator);
   return header;
 }
 
@@ -137,7 +179,27 @@ function renderLinks(projection: ConsoleProjection) {
   return section;
 }
 
+// ---------------------------------------------------------------------------
+// Re-render with UI state preservation
+// ---------------------------------------------------------------------------
+
 function renderApp(projection: ConsoleProjection) {
+  // Snapshot UI state before tearing down
+  const prevOpenGateId = getOpenGateId();
+  const drawerWasOpen = isDrawerOpen();
+  const drawerScroll = getDrawerScrollTop();
+
+  // Skip re-render if drawer has text selection focus — don't disrupt user
+  if (drawerWasOpen) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && sel.toString().length > 0) {
+      const drawerEl = document.querySelector(".drawer");
+      if (drawerEl && drawerEl.contains(sel.getRangeAt(0).startContainer)) {
+        return;
+      }
+    }
+  }
+
   const root = document.querySelector<HTMLDivElement>("#app");
   if (!root) return;
   document.title = `${projection.run.run_id} | Flow Console`;
@@ -153,7 +215,65 @@ function renderApp(projection: ConsoleProjection) {
   const drawer = renderDrawer(projection);
   main.append(left);
   root.append(main, drawer);
+
+  // Restore drawer if it was open and the gate still exists in the new projection
+  if (drawerWasOpen && prevOpenGateId) {
+    const updatedGate = projection.gates.find((g) => g.id === prevOpenGateId);
+    if (updatedGate) {
+      openDrawer(updatedGate, projection);
+      // Restore scroll position after paint
+      requestAnimationFrame(() => {
+        setDrawerScrollTop(drawerScroll);
+      });
+    }
+  }
 }
+
+// ---------------------------------------------------------------------------
+// SSE / live updates
+// ---------------------------------------------------------------------------
+
+const SSE_MAX_BACKOFF_MS = 30_000;
+
+function startLiveUpdates() {
+  let backoff = 1000;
+  let es: EventSource | null = null;
+
+  function connect() {
+    if (es) {
+      try { es.close(); } catch { /* ignore */ }
+    }
+    es = new EventSource("/api/stream");
+
+    es.addEventListener("open", () => {
+      backoff = 1000;
+      setLiveStatus(true);
+    });
+
+    es.addEventListener("projection", (event: MessageEvent) => {
+      try {
+        const projection = JSON.parse(event.data) as ConsoleProjection;
+        renderApp(projection);
+      } catch { /* malformed payload — skip */ }
+    });
+
+    es.addEventListener("error", () => {
+      setLiveStatus(false);
+      es?.close();
+      es = null;
+      // Exponential backoff with cap
+      const delay = backoff;
+      backoff = Math.min(backoff * 2, SSE_MAX_BACKOFF_MS);
+      setTimeout(connect, delay);
+    });
+  }
+
+  connect();
+}
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
 
 async function boot() {
   // Apply theme before rendering to avoid flash
@@ -164,6 +284,8 @@ async function boot() {
     const response = await fetch("/api/projection", { headers: { accept: "application/json" } });
     if (!response.ok) throw new Error(`projection request failed: ${response.status}`);
     renderApp((await response.json()) as ConsoleProjection);
+    // Start live updates only after initial render succeeds
+    startLiveUpdates();
   } catch (error) {
     if (root) {
       root.innerHTML = "";

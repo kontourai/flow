@@ -1,5 +1,18 @@
 import type { ConsoleGate, ConsoleProjection, ConsoleStep } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// Timeline state — preserved across live re-renders
+// ---------------------------------------------------------------------------
+let _timelineExpanded = false;
+
+export function isTimelineExpanded(): boolean {
+  return _timelineExpanded;
+}
+
+export function setTimelineExpanded(value: boolean): void {
+  _timelineExpanded = value;
+}
+
 function statusForStep(step: ConsoleStep, gates: ConsoleGate[]) {
   const stepGates = gates.filter((gate) => gate.step_id === step.id);
   if (stepGates.some((gate) => gate.status === "block" || gate.status === "route-back")) return "block";
@@ -146,18 +159,25 @@ export function renderTimeline(projection: ConsoleProjection) {
   }
 
   if (hasMore) {
-    // Hide older rows initially (all except last SHOW_INITIAL)
+    // Use persisted expanded state across re-renders
     const hiddenRows = allRows.slice(0, allRows.length - SHOW_INITIAL);
-    for (const r of hiddenRows) r.classList.add("timeline-hidden");
 
-    const showAllBtn = document.createElement("button");
-    showAllBtn.className = "show-all-btn";
-    showAllBtn.textContent = `Show all (${transitions.length})`;
-    showAllBtn.addEventListener("click", () => {
-      for (const r of hiddenRows) r.classList.remove("timeline-hidden");
-      showAllBtn.remove();
-    });
-    timeline.append(showAllBtn);
+    if (_timelineExpanded) {
+      // Already expanded from a previous render — show all rows immediately
+      // (no button needed)
+    } else {
+      for (const r of hiddenRows) r.classList.add("timeline-hidden");
+
+      const showAllBtn = document.createElement("button");
+      showAllBtn.className = "show-all-btn";
+      showAllBtn.textContent = `Show all (${transitions.length})`;
+      showAllBtn.addEventListener("click", () => {
+        _timelineExpanded = true;
+        for (const r of hiddenRows) r.classList.remove("timeline-hidden");
+        showAllBtn.remove();
+      });
+      timeline.append(showAllBtn);
+    }
   }
 
   timeline.append(list);
