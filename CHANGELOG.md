@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.20](https://github.com/kontourai/flow/compare/v0.1.19...v0.1.20) (2026-06-12)
+
+
+### Fixes
+
+* **ci:** author release PRs via kontour-release-bot app token ([0bb0684](https://github.com/kontourai/flow/commit/0bb068425331348a16b1537499881a3e8235896c))
+
+
+### Documentation
+
+* route-back reason reference table; governance files ([49c7546](https://github.com/kontourai/flow/commit/49c75465ec4e0c510267b2326c00231188e5f63b))
+
 ## [0.1.19](https://github.com/kontourai/flow/compare/v0.1.18...v0.1.19) (2026-06-11)
 
 
