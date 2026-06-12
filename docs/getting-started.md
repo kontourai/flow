@@ -10,7 +10,7 @@ Flow v0.1 is local and file-backed. Nothing here talks to a hosted service.
 npm install -D @kontourai/flow
 ```
 
-Requires Node.js 18 or newer.
+Requires Node.js 22 or newer.
 
 ## 1. Initialize the project
 

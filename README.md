@@ -7,7 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/%40kontourai%2Fflow)](https://www.npmjs.com/package/@kontourai/flow)
 [![CI](https://github.com/kontourai/flow/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/flow/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+[![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](package.json)
 
 [Documentation](https://kontourai.github.io/flow/) · [Getting Started](docs/getting-started.md) · [Use Cases](docs/use-cases.md) · [CLI Reference](docs/cli.md)
 
