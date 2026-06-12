@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+# Tag-push and the release workflow's explicit dispatch can both fire for the
+# same tag; serialize them so the later run's already-published check skips
+# cleanly instead of colliding mid-publish (seen on v0.1.20, 2026-06-12).
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     runs-on: ubuntu-latest
