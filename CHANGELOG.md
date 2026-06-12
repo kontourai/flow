@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/kontourai/flow/compare/v0.3.0...v1.0.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* require Node >= 22; verify on current LTS (22, 24) ([#71](https://github.com/kontourai/flow/issues/71))
+
+### Features
+
+* require Node &gt;= 22; verify on current LTS (22, 24) ([#71](https://github.com/kontourai/flow/issues/71)) ([5e0cf7c](https://github.com/kontourai/flow/commit/5e0cf7c0d266f5b83d438b10defb1b613187bee6))
+
 ## [0.3.0](https://github.com/kontourai/flow/compare/v0.2.0...v0.3.0) (2026-06-12)
 
 
