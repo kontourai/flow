@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kontourai/flow/compare/v0.2.0...v0.3.0) (2026-06-12)
+
+
+### Features
+
+* **console:** end-user UX overhaul with live updates ([#69](https://github.com/kontourai/flow/issues/69)) ([0d659b4](https://github.com/kontourai/flow/commit/0d659b4eca8f96646e3c1d887220549186656093))
+
 ## [0.2.0](https://github.com/kontourai/flow/compare/v0.1.20...v0.2.0) (2026-06-12)
 
 
