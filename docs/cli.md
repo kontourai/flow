@@ -40,6 +40,36 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
 
 Exits `1` when the definition is invalid, so it slots directly into CI.
 
+## flow validate-kit
+
+```sh
+flow validate-kit <kit-dir> [--json] [--cwd <path>]
+```
+
+Validates a Flow Kit container manifest (`kit.json`) at the given directory. Container validation checks the core manifest contract: `schema_version`, `id`, `name`, `flows`, path validity, and path existence. It does not validate Flow Definition semantics; use `flow validate-definition` for that.
+
+`--json` emits a stable payload:
+
+```json
+{
+  "valid": false,
+  "path": "my-kit",
+  "error_count": 2,
+  "diagnostics": [
+    {
+      "code": "kit.id.invalid",
+      "severity": "error",
+      "path": "$.id",
+      "message": ".id must be a kebab-case string matching ^[a-z][a-z0-9-]*$"
+    }
+  ]
+}
+```
+
+Consumer extension fields (such as `skills`, `docs`, `adapters`) are ignored without error. Exits `1` when the kit is invalid.
+
+See [Flow Kit Container](flow-kit-container.md) for the full container contract.
+
 ## flow start
 
 ```sh

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-kit-container.schema.json",
+  "title": "Flow Kit Container",
+  "description": "The core manifest contract for a Flow Kit container. A Flow Kit is Flow's distribution unit for portable workflow bundles. Consumer products (such as Flow Agents) may define additional asset-class fields as extensions; unknown top-level fields are consumer extensions and core validation ignores-but-permits them.",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "flows"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The kit manifest contract version. Must be \"1.0\"."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "A stable, unique, kebab-case identifier for the kit. Must start with a lowercase letter; may contain lowercase letters, digits, and hyphens. Used as the kit's install key."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A non-empty human-readable display name for the kit."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional free-text description of the kit's purpose."
+    },
+    "product_name": {
+      "type": "string",
+      "description": "Optional branded product name when the kit is part of a named product."
+    },
+    "flows": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The Flow Definitions packaged in this kit. At least one entry is required.",
+      "items": {
+        "$ref": "#/$defs/kit_entry"
+      }
+    }
+  },
+  "$defs": {
+    "kit_entry": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional stable identifier for this entry within the kit."
+        },
+        "path": {
+          "$ref": "#/$defs/kit_path"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of this entry."
+        }
+      }
+    },
+    "kit_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative path to the asset inside the kit directory. Must not be absolute and must not contain '..' path traversal segments. Paths must resolve inside the kit directory to ensure portability.",
+      "not": {
+        "anyOf": [
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "^/" }
+        ]
+      }
+    }
+  }
+}

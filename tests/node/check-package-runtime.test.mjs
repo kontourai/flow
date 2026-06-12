@@ -110,6 +110,8 @@ test("package root exports stay stable across source-domain splits", () => {
     "validateDefinition",
     "validateDefinitionWithDiagnostics",
     "validateEvaluationTransition",
+    "validateKitContainer",
+    "validateKitContainerFile",
     "validateRunTransition",
     "validateTransitionRequest",
     "writeJson"

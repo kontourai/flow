@@ -53,6 +53,7 @@ Flow core source is organized by runtime domain:
 - `src/release/flow-release.ts` owns release readiness fixtures, lane evaluation, version release report projection, and version release Markdown rendering.
 - `src/reports/flow-reports.ts` owns Flow Report JSON, Markdown report, summary, resume, and report file writing.
 - `src/console/` owns local console projection and server implementations.
+- `src/kit/` owns Flow Kit container validation (`validateKitContainer`, `validateKitContainerFile`). The kit container contract is the distribution unit for portable workflow bundles; consumer products extend it rather than modifying it.
 
 New CLI behavior belongs in `src/cli.ts` unless it becomes shared runtime behavior, in which case the shared logic should live in Flow-owned source and the CLI should remain a thin caller.
 
