@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/kontourai/flow/compare/v0.1.20...v0.2.0) (2026-06-12)
+
+
+### Features
+
+* Flow Kit container spec — kits are Flow's distribution unit ([df68d6e](https://github.com/kontourai/flow/commit/df68d6e72028754b556f385003a2a2ad9b6f9777))
+* Flow Kit container spec — kits are Flow's distribution unit ([32d5351](https://github.com/kontourai/flow/commit/32d5351efe0d6cb337fdaa33651b425e7c48edf7))
+
+
+### Fixes
+
+* register Flow Kit Container page in docs site build ([3f51985](https://github.com/kontourai/flow/commit/3f51985c05bae7a4f9217abe470658d6043dea29))
+
 ## [0.1.20](https://github.com/kontourai/flow/compare/v0.1.19...v0.1.20) (2026-06-12)
 
 

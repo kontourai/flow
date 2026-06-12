@@ -163,3 +163,11 @@ export type {
   FlowConsoleServerHandle,
   FlowConsoleServerOptions
 } from "./console/console-server.js";
+export {
+  validateKitContainer,
+  validateKitContainerFile
+} from "./kit/flow-kit-container.js";
+export type {
+  KitContainerDiagnostic,
+  KitContainerValidationResult
+} from "./kit/flow-kit-container.js";

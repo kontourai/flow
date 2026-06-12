@@ -80,6 +80,7 @@ Flow owns the provider-neutral process kernel:
 - gate evidence, accepted exceptions, continuation state
 - Flow Reports and the local console projection
 - project config merge semantics
+- the Flow Kit container contract: the `kit.json` manifest shape, core field validation, and the extension model for consumer-defined asset classes
 
 Flow deliberately does not own — and must not grow into:
 
