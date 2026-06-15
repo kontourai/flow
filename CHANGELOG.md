@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/kontourai/flow/compare/v1.1.0...v1.2.0) (2026-06-15)
+
+
+### Features
+
+* add agent-blind kit operations per ADR 0008 (flow kit validate|install|inspect) ([201d205](https://github.com/kontourai/flow/commit/201d20595061506534c6b7209b5c1f4d7bd542b6))
+* agent-blind kit operations (flow kit validate|install|inspect) per ADR 0008 ([f299c16](https://github.com/kontourai/flow/commit/f299c163dd99343ef7168747cb420b05f635eeb5))
+
 ## [1.1.0](https://github.com/kontourai/flow/compare/v1.0.0...v1.1.0) (2026-06-15)
 
 
