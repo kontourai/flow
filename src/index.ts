@@ -82,13 +82,18 @@ export {
   initialState,
   nextActionForStep,
   openGates,
+  predecessorsOf,
+  readyGates,
+  readySteps,
   routeBackAttempt,
   routeBackDecision,
   routeReasonForFailedEvidence,
   routeTargetForReason,
+  stageStatuses,
   validateDefinition,
   validateDefinitionWithDiagnostics
 } from "./definition/flow-definition.js";
+export type { StageStatus } from "./definition/flow-definition.js";
 export {
   validateRunTransition,
   validateTransitionRequest

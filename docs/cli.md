@@ -167,3 +167,41 @@ flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path
 ```
 
 Projects a versioned release report from a local fixture file. Missing required evidence becomes explicit gaps with `decision: "hold"`. See [Release Readiness](release-readiness.md#version-release-reports).
+
+## flow ready-steps
+
+```sh
+flow ready-steps <run-id> [--format json] [--cwd <path>]
+```
+
+Prints the ready frontier — the steps that are not yet passed and whose every
+predecessor has passed its gate.  For a linear definition this is normally
+the current step.  For a DAG definition with `needs`, it can include multiple
+steps.
+
+Default output:
+
+```text
+ready steps: implement
+```
+
+`--format json` emits:
+
+```json
+{
+  "run_id": "my-run",
+  "readySteps": ["implement"],
+  "stageStatuses": {
+    "plan": "passed",
+    "shape": "passed",
+    "implement": "current",
+    "verify": "blocked",
+    "publish": "blocked"
+  }
+}
+```
+
+`flow status --format json` also includes `readySteps` and `stageStatuses` in
+its output; `--format summary` appends a `ready steps: …` line when the ready
+frontier is non-empty.  `flow resume` similarly appends ready steps when
+present.
