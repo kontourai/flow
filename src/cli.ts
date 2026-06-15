@@ -39,7 +39,6 @@ function usage() {
   flow kit validate <kit-dir> [--json] [--cwd <path>]
   flow kit install <source> [--dest <path>] [--ref <ref>]
   flow kit inspect <kit-dir> [--json]
-  flow validate-kit <kit-dir> [--json] [--cwd <path>]  (deprecated: use "flow kit validate")
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
@@ -317,35 +316,6 @@ async function main() {
     }
 
     throw new Error(`unknown kit action: ${action}\n\nflow kit validate <kit-dir> [--json]\nflow kit install <source> [--dest <path>] [--ref <ref>]\nflow kit inspect <kit-dir> [--json]`);
-  }
-
-  if (command === "validate-kit") {
-    // Deprecated: use "flow kit validate" instead.
-    process.stderr.write(
-      'DeprecationWarning: "flow validate-kit" is deprecated and will be removed in a future release. ' +
-      'Use "flow kit validate" instead.\n'
-    );
-    const kitPath = requireArg(args[0], "flow validate-kit requires a kit directory path");
-    const resolvedKit = path.resolve(cwd, kitPath);
-    const result = await validateKitContainerFile(resolvedKit);
-    const payload = {
-      valid: result.valid,
-      path: kitPath,
-      error_count: result.diagnostics.filter((d) => d.severity === "error").length,
-      diagnostics: result.diagnostics
-    };
-    if (flags.json) {
-      console.log(JSON.stringify(payload, null, 2));
-    } else if (payload.valid) {
-      console.log(`valid Flow Kit container: ${kitPath}`);
-    } else {
-      console.log(`invalid Flow Kit container: ${kitPath}`);
-      for (const d of payload.diagnostics) {
-        console.log(`${d.severity.toUpperCase()} ${d.code} ${d.path}: ${d.message}`);
-      }
-    }
-    if (!payload.valid) process.exitCode = 1;
-    return;
   }
 
   if (command === "validate-transition") {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { validateKitContainer, validateKitContainerFile } from "../../dist/index.js";
-import { cliPath, execFile, repoRootUrl } from "./helpers/cli.mjs";
+import { cliPath, execFile } from "./helpers/cli.mjs";
 
 // ---------------------------------------------------------------------------
 // validateKitContainer (pure function, no file I/O)
@@ -170,83 +170,16 @@ test("validateKitContainerFile detects missing Flow Definition file", async () =
 });
 
 // ---------------------------------------------------------------------------
-// CLI: flow validate-kit
+// CLI: flow validate-kit is GONE (hard cut)
 // ---------------------------------------------------------------------------
 
-test("CLI validate-kit accepts a valid kit directory", async () => {
-  const kitDir = await mkdtemp(path.join(tmpdir(), "flow-cli-kit-"));
-  const flowsDir = path.join(kitDir, "flows");
-  await mkdir(flowsDir, { recursive: true });
-  await writeFile(path.join(flowsDir, "test.flow.json"), JSON.stringify({
-    id: "test-kit.test",
-    version: "1",
-    steps: [{ id: "run", next: null }],
-    gates: {}
-  }));
-  await writeFile(path.join(kitDir, "kit.json"), JSON.stringify({
-    schema_version: "1.0",
-    id: "test-kit",
-    name: "Test Kit",
-    flows: [{ path: "flows/test.flow.json" }]
-  }));
-  const result = await execFile(process.execPath, [cliPath, "validate-kit", kitDir]);
-  assert.match(result.stdout, /valid Flow Kit container/);
-});
-
-test("CLI validate-kit --json returns structured payload", async () => {
-  const kitDir = await mkdtemp(path.join(tmpdir(), "flow-cli-kit-json-"));
-  const flowsDir = path.join(kitDir, "flows");
-  await mkdir(flowsDir, { recursive: true });
-  await writeFile(path.join(flowsDir, "test.flow.json"), "{}");
-  await writeFile(path.join(kitDir, "kit.json"), JSON.stringify({
-    schema_version: "1.0",
-    id: "test-kit",
-    name: "Test Kit",
-    flows: [{ path: "flows/test.flow.json" }]
-  }));
-  const result = await execFile(process.execPath, [cliPath, "validate-kit", kitDir, "--json"]);
-  const payload = JSON.parse(result.stdout);
-  assert.deepEqual(Object.keys(payload), ["valid", "path", "error_count", "diagnostics"]);
-  assert.equal(payload.valid, true);
-  assert.equal(payload.error_count, 0);
-});
-
-test("CLI validate-kit --json reports invalid kit and exits 1", async () => {
-  const kitDir = await mkdtemp(path.join(tmpdir(), "flow-cli-kit-invalid-"));
-  await writeFile(path.join(kitDir, "kit.json"), JSON.stringify({
-    schema_version: "1.0",
-    id: "BadId",
-    name: "",
-    flows: []
-  }));
+test("CLI validate-kit is an unknown command after hard cut", async () => {
   await assert.rejects(
-    execFile(process.execPath, [cliPath, "validate-kit", kitDir, "--json"]),
+    execFile(process.execPath, [cliPath, "validate-kit", "/tmp/any-kit"]),
     (error) => {
-      const payload = JSON.parse(error.stdout);
       assert.equal(error.code, 1);
-      assert.equal(payload.valid, false);
-      assert.ok(payload.error_count >= 3); // id, name, flows
+      assert.match(error.stderr ?? error.message, /unknown command/);
       return true;
     }
   );
-});
-
-test("CLI validate-kit uses --cwd for path resolution", async () => {
-  const kitDir = await mkdtemp(path.join(tmpdir(), "flow-cli-kit-cwd-"));
-  const flowsDir = path.join(kitDir, "flows");
-  await mkdir(flowsDir, { recursive: true });
-  await writeFile(path.join(flowsDir, "test.flow.json"), "{}");
-  await writeFile(path.join(kitDir, "kit.json"), JSON.stringify({
-    schema_version: "1.0",
-    id: "test-kit",
-    name: "Test Kit",
-    flows: [{ path: "flows/test.flow.json" }]
-  }));
-  const relPath = path.relative(path.dirname(kitDir), kitDir);
-  const result = await execFile(
-    process.execPath,
-    [cliPath, "validate-kit", relPath, "--cwd", path.dirname(kitDir)],
-    { cwd: repoRootUrl }
-  );
-  assert.match(result.stdout, /valid Flow Kit container/);
 });

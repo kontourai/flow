@@ -1,6 +1,5 @@
 /**
  * Tests for: flow kit validate, flow kit install, flow kit inspect
- * and the deprecated validate-kit alias.
  *
  * All tests use local-path or file:// git fixtures — no network access.
  */
@@ -284,41 +283,4 @@ test("flow kit inspect --json flow entries include id and path", async () => {
   assert.ok("path" in flow, "flow entry must have path");
 });
 
-// ---------------------------------------------------------------------------
-// validate-kit (deprecated alias)
-// ---------------------------------------------------------------------------
 
-test("deprecated validate-kit still works and prints a deprecation notice to stderr", async () => {
-  const kitDir = await makeKit("deprecated-alias");
-  const result = await execFile(process.execPath, [cliPath, "validate-kit", kitDir]);
-  // stdout: validation result
-  assert.match(result.stdout, /valid Flow Kit container/);
-  // stderr: deprecation warning
-  assert.match(result.stderr, /DeprecationWarning/);
-  assert.match(result.stderr, /flow kit validate/);
-});
-
-test("deprecated validate-kit --json still outputs valid JSON payload", async () => {
-  const kitDir = await makeKit("deprecated-alias-json");
-  const result = await execFile(process.execPath, [cliPath, "validate-kit", kitDir, "--json"]);
-  const payload = JSON.parse(result.stdout);
-  assert.equal(payload.valid, true);
-  assert.equal(payload.error_count, 0);
-});
-
-test("deprecated validate-kit exits 1 for invalid kit (parity with kit validate)", async () => {
-  const kitDir = await mkdtemp(path.join(tmpdir(), "flow-kit-deprecated-bad-"));
-  await writeFile(
-    path.join(kitDir, "kit.json"),
-    JSON.stringify({ schema_version: "1.0", id: "BadId", name: "", flows: [] })
-  );
-  await assert.rejects(
-    execFile(process.execPath, [cliPath, "validate-kit", kitDir, "--json"]),
-    (error) => {
-      assert.equal(error.code, 1);
-      const payload = JSON.parse(error.stdout);
-      assert.equal(payload.valid, false);
-      return true;
-    }
-  );
-});
