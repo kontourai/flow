@@ -28,6 +28,7 @@ import {
 } from "./index.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
+import { kitInstall, kitInspect } from "./kit/kit-operations.js";
 
 type CliFlags = Record<string, any>;
 
@@ -35,7 +36,10 @@ function usage() {
   return `Usage:
   flow init [--demo] [--cwd <path>]
   flow validate-definition <path> [--json] [--cwd <path>]
-  flow validate-kit <kit-dir> [--json] [--cwd <path>]
+  flow kit validate <kit-dir> [--json] [--cwd <path>]
+  flow kit install <source> [--dest <path>] [--ref <ref>]
+  flow kit inspect <kit-dir> [--json]
+  flow validate-kit <kit-dir> [--json] [--cwd <path>]  (deprecated: use "flow kit validate")
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
@@ -246,7 +250,81 @@ async function main() {
     return;
   }
 
+  if (command === "kit") {
+    const action = requireArg(args[0], 'flow kit requires validate, install, or inspect');
+
+    if (action === "validate") {
+      const kitPath = requireArg(args[1], "flow kit validate requires a kit directory path");
+      const resolvedKit = path.resolve(cwd, kitPath);
+      const result = await validateKitContainerFile(resolvedKit);
+      const payload = {
+        valid: result.valid,
+        path: kitPath,
+        error_count: result.diagnostics.filter((d) => d.severity === "error").length,
+        diagnostics: result.diagnostics
+      };
+      if (flags.json) {
+        console.log(JSON.stringify(payload, null, 2));
+      } else if (payload.valid) {
+        console.log(`valid Flow Kit container: ${kitPath}`);
+      } else {
+        console.log(`invalid Flow Kit container: ${kitPath}`);
+        for (const d of payload.diagnostics) {
+          console.log(`${d.severity.toUpperCase()} ${d.code} ${d.path}: ${d.message}`);
+        }
+      }
+      if (!payload.valid) process.exitCode = 1;
+      return;
+    }
+
+    if (action === "install") {
+      const source = requireArg(args[1], "flow kit install requires a source (git URL, npm spec, or local path)");
+      const result = await kitInstall(source, {
+        dest: flags.dest ? path.resolve(cwd, flags.dest) : cwd,
+        ref: flags.ref
+      });
+      console.log(`installed kit: ${result.kitId}`);
+      console.log(`location: ${result.destPath}`);
+      return;
+    }
+
+    if (action === "inspect") {
+      const kitPath = requireArg(args[1], "flow kit inspect requires a kit directory path");
+      const resolvedKit = path.resolve(cwd, kitPath);
+      // AGENT-BLIND: reports structural view only — flow ids and declared asset-class NAMES.
+      // Does NOT derive K-levels or runtime targets; that is flow-agents' responsibility.
+      const result = await kitInspect(resolvedKit);
+      if (flags.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        if (result.valid) {
+          console.log(`kit: ${result.kitId} (${result.kitName})`);
+          console.log(`flows: ${result.flows.map((f) => f.id ?? f.path).join(", ")}`);
+          if (result.assetClasses.length) {
+            console.log(`asset classes: ${result.assetClasses.join(", ")}`);
+          } else {
+            console.log("asset classes: (none declared)");
+          }
+        } else {
+          console.log("invalid Flow Kit container");
+          for (const d of result.diagnostics) {
+            console.log(`${d.severity.toUpperCase()} ${d.code} ${d.path}: ${d.message}`);
+          }
+        }
+      }
+      if (!result.valid) process.exitCode = 1;
+      return;
+    }
+
+    throw new Error(`unknown kit action: ${action}\n\nflow kit validate <kit-dir> [--json]\nflow kit install <source> [--dest <path>] [--ref <ref>]\nflow kit inspect <kit-dir> [--json]`);
+  }
+
   if (command === "validate-kit") {
+    // Deprecated: use "flow kit validate" instead.
+    process.stderr.write(
+      'DeprecationWarning: "flow validate-kit" is deprecated and will be removed in a future release. ' +
+      'Use "flow kit validate" instead.\n'
+    );
     const kitPath = requireArg(args[0], "flow validate-kit requires a kit directory path");
     const resolvedKit = path.resolve(cwd, kitPath);
     const result = await validateKitContainerFile(resolvedKit);
