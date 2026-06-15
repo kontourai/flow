@@ -41,7 +41,8 @@ const pages: PageDef[] = [
   { src: "repo-structure.md", out: "repo-structure.html", navTitle: "Repo Structure", section: "Project" },
   { src: "adr/0001-flow-as-process-transparency-layer.md", out: "adr/0001-flow-as-process-transparency-layer.html", navTitle: "ADR 0001: Transparency Layer", section: "Decisions" },
   { src: "adr/0002-gate-expectations-and-project-authority.md", out: "adr/0002-gate-expectations-and-project-authority.html", navTitle: "ADR 0002: Gate Expectations", section: "Decisions" },
-  { src: "adr/0003-project-config-merge-semantics.md", out: "adr/0003-project-config-merge-semantics.html", navTitle: "ADR 0003: Config Merge", section: "Decisions" }
+  { src: "adr/0003-project-config-merge-semantics.md", out: "adr/0003-project-config-merge-semantics.html", navTitle: "ADR 0003: Config Merge", section: "Decisions" },
+  { src: "adr/0008-kit-operation-boundary.md", out: "adr/0008-kit-operation-boundary.html", navTitle: "ADR 0008: Kit Operation Boundary", section: "Decisions" }
 ];
 
 const navSections: NavSection[] = ["Learn", "Reference", "Product", "Project", "Decisions"].map((title) => ({

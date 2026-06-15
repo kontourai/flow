@@ -40,10 +40,14 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
 
 Exits `1` when the definition is invalid, so it slots directly into CI.
 
-## flow validate-kit
+## flow kit
+
+Agent-blind kit operations: fetch, validate, place, and report structure — without interpreting what a skill or adapter means. These commands know nothing about extension asset class semantics; that is [flow-agents'](https://kontourai.github.io/flow-agents/) responsibility. See [ADR 0008](adr/0008-kit-operation-boundary.md) for the boundary decision.
+
+### flow kit validate
 
 ```sh
-flow validate-kit <kit-dir> [--json] [--cwd <path>]
+flow kit validate <kit-dir> [--json] [--cwd <path>]
 ```
 
 Validates a Flow Kit container manifest (`kit.json`) at the given directory. Container validation checks the core manifest contract: `schema_version`, `id`, `name`, `flows`, path validity, and path existence. It does not validate Flow Definition semantics; use `flow validate-definition` for that.
@@ -69,6 +73,58 @@ Validates a Flow Kit container manifest (`kit.json`) at the given directory. Con
 Consumer extension fields (such as `skills`, `docs`, `adapters`) are ignored without error. Exits `1` when the kit is invalid.
 
 See [Flow Kit Container](flow-kit-container.md) for the full container contract.
+
+### flow kit install
+
+```sh
+flow kit install <source> [--dest <path>] [--ref <ref>]
+```
+
+Fetch a kit from a source, validate the container, and place the kit package at `<dest>/<kit-id>/`. Source formats:
+
+- **Git URL** — `https://github.com/org/repo.git#main` or `git@github.com:org/repo.git`
+- **Local path** — `/path/to/kit-dir` or `./relative/kit-dir`
+- **file:// URL** — `file:///path/to/local-repo#branch` (useful in tests and CI)
+- **npm spec** — `@scope/package@version`
+
+`--ref` overrides any `#ref` fragment in a git URL.
+
+**Agent-blind**: copies the entire kit package as-is. It does not interpret, filter, or process extension asset classes (skills, adapters, docs, evals). Consumer products such as flow-agents apply their own extension layer on top.
+
+Exits `1` when the source cannot be fetched or the container is invalid.
+
+### flow kit inspect
+
+```sh
+flow kit inspect <kit-dir> [--json]
+```
+
+Reports the structural (K0) view of a kit container: validity, declared flow ids, and the **names** of declared extension asset-class fields.
+
+`--json` emits a stable payload:
+
+```json
+{
+  "valid": true,
+  "kitId": "review-kit",
+  "kitName": "Review Kit",
+  "flows": [
+    { "id": "review-kit.review", "path": "flows/review.flow.json" }
+  ],
+  "assetClasses": ["skills", "docs"],
+  "diagnostics": []
+}
+```
+
+**Agent-blind**: `assetClasses` lists the _names_ of declared extension fields — it does not interpret their contents, derive K-levels, or infer runtime targets. Those operations belong to flow-agents' `flow-agents kit inspect`. Exits `1` when the kit is invalid.
+
+## flow validate-kit (deprecated)
+
+```sh
+flow validate-kit <kit-dir> [--json] [--cwd <path>]
+```
+
+**Deprecated.** Use `flow kit validate` instead. Prints a deprecation warning to stderr, then behaves identically to `flow kit validate`.
 
 ## flow start
 
