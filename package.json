@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
