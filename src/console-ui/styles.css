@@ -86,6 +86,27 @@ a {
   min-width: 0;
 }
 
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.header-brand-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.header-brand-name {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .eyebrow {
   color: var(--muted);
   font-size: 12px;

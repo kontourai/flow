@@ -98,9 +98,33 @@ function renderThemeToggle(): HTMLButtonElement {
   return btn;
 }
 
+function renderBrand(): HTMLElement {
+  const brand = document.createElement("div");
+  brand.className = "header-brand";
+  brand.dataset.testid = "flow-console-brand";
+
+  // Flow product mark, vendored from @kontourai/ui (icons/flow.svg).
+  const mark = document.createElement("img");
+  mark.className = "header-brand-mark product-icon product-icon-flow";
+  mark.src = "./vendor/ui/icons/flow.svg";
+  mark.width = 18;
+  mark.height = 18;
+  mark.alt = "";
+  mark.setAttribute("aria-hidden", "true");
+
+  const name = document.createElement("span");
+  name.className = "header-brand-name";
+  name.textContent = "Flow Console";
+
+  brand.append(mark, name);
+  return brand;
+}
+
 function renderHeader(projection: ConsoleProjection) {
   const header = document.createElement("header");
   header.className = "console-header";
+
+  const brand = renderBrand();
 
   const eyebrow = document.createElement("span");
   eyebrow.className = "eyebrow";
@@ -129,7 +153,7 @@ function renderHeader(projection: ConsoleProjection) {
 
   const headerMain = document.createElement("div");
   headerMain.className = "header-main";
-  headerMain.append(eyebrow, subject, statusRow);
+  headerMain.append(brand, eyebrow, subject, statusRow);
 
   if (projection.next_action) {
     const nextAction = document.createElement("div");

@@ -3,8 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const kitRoot = path.join(root, "node_modules", "@kontourai", "console-kit");
-const vendorRoot = path.join(root, "src", "console-ui", "vendor", "console-kit");
+const kitRoot = path.join(root, "node_modules", "@kontourai", "ui");
+const vendorRoot = path.join(root, "src", "console-ui", "vendor", "ui");
 const checkOnly = process.argv.includes("--check");
 
 const assets = [
@@ -20,20 +20,27 @@ const assets = [
     target: path.join(vendorRoot, "react", "styles.css"),
     directory: false,
   },
+  {
+    label: "flow product mark",
+    source: path.join(kitRoot, "icons", "flow.svg"),
+    target: path.join(vendorRoot, "icons", "flow.svg"),
+    directory: false,
+  },
 ];
 
 if (checkOnly) {
   await assertSynced();
-  console.log("Flow Console Kit vendor assets are synced.");
+  console.log("Flow UI vendor assets are synced.");
 } else {
   await syncAssets();
-  console.log("Synced Flow Console Kit vendor assets.");
+  console.log("Synced Flow UI vendor assets.");
 }
 
 async function syncAssets() {
   await assertPackageInstalled();
   await rm(vendorRoot, { recursive: true, force: true });
   await mkdir(path.join(vendorRoot, "react"), { recursive: true });
+  await mkdir(path.join(vendorRoot, "icons"), { recursive: true });
 
   for (const asset of assets) {
     await cp(asset.source, asset.target, { recursive: asset.directory });
@@ -68,7 +75,7 @@ async function assertSynced() {
 async function assertPackageInstalled() {
   const stat = await lstat(kitRoot).catch(() => undefined);
   if (!stat) {
-    throw new Error("Missing @kontourai/console-kit. Run npm install from the flow package.");
+    throw new Error("Missing @kontourai/ui. Run npm install from the flow package.");
   }
 }
 
