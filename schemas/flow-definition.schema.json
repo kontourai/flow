@@ -78,6 +78,12 @@
             { "$ref": "#/$defs/definition_name" },
             { "type": "null" }
           ]
+        },
+        "needs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/definition_name" },
+          "uniqueItems": true,
+          "description": "Explicit predecessor step ids. When present, overrides the implicit predecessor derived from next-chain traversal. Must be acyclic."
         }
       }
     },

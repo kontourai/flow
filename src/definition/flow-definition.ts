@@ -192,6 +192,75 @@ function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
     });
   }
 
+  // Validate needs references and detect cycles.
+  if (Array.isArray(definition.steps) && stepIds.size > 0) {
+    // Validate that every needs id references an existing step.
+    definition.steps.forEach((step, index) => {
+      if (!Array.isArray(step.needs)) return;
+      const stepPath = `$.steps[${index}]`;
+      step.needs.forEach((needId, needIndex) => {
+        if (!stepIds.has(needId)) {
+          diagnostics.push(createDiagnostic(
+            "definition.step.needs.unknown",
+            `${stepPath}.needs[${needIndex}]`,
+            `step ${step.id} needs references unknown step: ${needId}`,
+            { step: step.id, needs: needId }
+          ));
+        }
+      });
+    });
+
+    // Build the effective dependency graph (composition rule: needs wins over next-chain).
+    // Then check for cycles using DFS.
+    const effectivePreds: Map<string, string[]> = new Map();
+    const stepList: string[] = definition.steps
+      .filter((s) => isNonEmptyString(s.id))
+      .map((s) => s.id);
+
+    for (const stepId of stepList) {
+      const step = definition.steps.find((s) => s.id === stepId)!;
+      if (Array.isArray(step.needs)) {
+        effectivePreds.set(stepId, step.needs.filter((n) => stepIds.has(n)));
+      } else {
+        const predStep = definition.steps.find((s) => s.next === stepId);
+        effectivePreds.set(stepId, predStep ? [predStep.id] : []);
+      }
+    }
+
+    // DFS cycle detection — report the first cycle found.
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color: Map<string, number> = new Map(stepList.map((id) => [id, WHITE]));
+    const cycleDetected = { found: false };
+
+    function visit(nodeId: string, path: string[]): void {
+      if (cycleDetected.found) return;
+      if (color.get(nodeId) === BLACK) return;
+      if (color.get(nodeId) === GRAY) {
+        const cycleStart = path.indexOf(nodeId);
+        const cycle = [...path.slice(cycleStart), nodeId];
+        diagnostics.push(createDiagnostic(
+          "definition.steps.needs.cycle",
+          "$.steps",
+          `dependency cycle detected: ${cycle.join(" -> ")}`,
+          { cycle }
+        ));
+        cycleDetected.found = true;
+        return;
+      }
+      color.set(nodeId, GRAY);
+      for (const pred of (effectivePreds.get(nodeId) ?? [])) {
+        visit(pred, [...path, nodeId]);
+        if (cycleDetected.found) return;
+      }
+      color.set(nodeId, BLACK);
+    }
+
+    for (const stepId of stepList) {
+      if (color.get(stepId) === WHITE) visit(stepId, []);
+      if (cycleDetected.found) break;
+    }
+  }
+
   if (isObject(definition.gates)) {
     for (const [gateId, gate] of Object.entries(definition.gates) as Array<[string, any]>) {
       const gatePath = `$.gates.${gateId}`;
@@ -381,4 +450,195 @@ export function routeBackDecision(state: any, gate: any, routeReason: string | n
   }
   if (firstEvidence.analytics?.loop_key !== undefined) routeData.analytics_loop_key = firstEvidence.analytics.loop_key;
   return routeData.status ? routeData : { ...routeData, status };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 — Dependency DAG: predecessors, readiness, stage statuses
+// ---------------------------------------------------------------------------
+
+/**
+ * Composition rule for next ↔ needs:
+ *
+ * A step's effective predecessors are computed as follows:
+ *   1. If the step declares `needs` (even an empty array), those ids are the
+ *      effective predecessors and the `next`-chain is ignored for this step.
+ *   2. Otherwise, the effective predecessor is whichever step has `next`
+ *      pointing to this step (at most one in a linear chain, zero for the
+ *      first step).
+ *
+ * This means `next` remains "linear sugar" — existing definitions that only
+ * use `next` continue to work identically.  A definition that mixes `next`
+ * and `needs` is valid as long as the full graph (needs-edges + next-edges for
+ * steps that lack `needs`) is acyclic.
+ */
+
+function normalizedSteps(definition: any): any[] {
+  definition = normalizeFlowDefinition(definition);
+  return Array.isArray(definition.steps) ? definition.steps : [];
+}
+
+/**
+ * Return the effective predecessor step ids for `stepId`.
+ * Uses the composition rule described above.
+ */
+export function predecessorsOf(definition: any, stepId: string): string[] {
+  const steps = normalizedSteps(definition);
+  const step = steps.find((s) => s.id === stepId);
+  if (!step) return [];
+
+  // Explicit needs wins.
+  if (Array.isArray(step.needs)) return [...step.needs];
+
+  // Fall back to whichever step has next === stepId.
+  const predecessor = steps.find((s) => s.next === stepId);
+  return predecessor ? [predecessor.id] : [];
+}
+
+/**
+ * Determine whether every predecessor of `stepId` has a passed gate.
+ * A step with no predecessors is considered unblocked.
+ */
+function predecessorsPassed(definition: any, stepId: string, state: any): boolean {
+  const preds = predecessorsOf(definition, stepId);
+  if (preds.length === 0) return true;
+  const steps = normalizedSteps(definition);
+  return preds.every((predId) => {
+    // A predecessor is "passed" if all its gates have pass outcomes or it has
+    // no gates and has appeared in transitions as a completed step.
+    const predStep = steps.find((s) => s.id === predId);
+    if (!predStep) return false;
+    const predGateIds = Object.entries((normalizeFlowDefinition(definition)).gates ?? {})
+      .filter(([, g]: [string, any]) => g.step === predId)
+      .map(([id]: [string, any]) => id);
+
+    if (predGateIds.length === 0) {
+      // No gate: passed if it appears in transitions with status "allowed".
+      return (state.transitions ?? []).some(
+        (t) => t.from_step === predId && t.status === "allowed"
+      );
+    }
+    return predGateIds.every((gateId) =>
+      (state.gate_outcomes ?? []).some(
+        (o) => o.gate_id === gateId && o.status === "pass"
+      )
+    );
+  });
+}
+
+/**
+ * Return steps that are not yet passed and whose every predecessor has a
+ * passed gate (or no gate).  A step with no predecessors is ready at start.
+ */
+export function readySteps(definition: any, state: any, _manifest: any): string[] {
+  const def = normalizeFlowDefinition(definition);
+  const steps: any[] = normalizedSteps(def);
+
+  return steps
+    .filter((step) => {
+      // Already passed?
+      const stepGates = Object.entries(def.gates ?? {})
+        .filter(([, g]: [string, any]) => g.step === step.id)
+        .map(([id]: [string, any]) => id);
+
+      const allGatesPassed =
+        stepGates.length > 0 &&
+        stepGates.every((gateId) =>
+          (state.gate_outcomes ?? []).some(
+            (o) => o.gate_id === gateId && o.status === "pass"
+          )
+        );
+
+      if (allGatesPassed) return false;
+
+      // For gate-less steps, check transitions.
+      if (stepGates.length === 0) {
+        const appearedInTransitions = (state.transitions ?? []).some(
+          (t) => t.from_step === step.id && t.status === "allowed"
+        );
+        if (appearedInTransitions) return false;
+      }
+
+      // Is this the completed terminal step?
+      if (state.status === "completed") return false;
+
+      return predecessorsPassed(def, step.id, state);
+    })
+    .map((step) => step.id);
+}
+
+/**
+ * Return the gates whose step is in readySteps().
+ */
+export function readyGates(definition: any, state: any, manifest: any): any[] {
+  const ready = new Set(readySteps(definition, state, manifest));
+  const def = normalizeFlowDefinition(definition);
+  return (Object.entries(def.gates ?? {}) as Array<[string, any]>)
+    .filter(([, gate]) => ready.has(gate.step))
+    .map(([id, gate]) => ({ id, ...gate }));
+}
+
+export type StageStatus = "passed" | "current" | "ready" | "blocked" | "failed" | "pending";
+
+/**
+ * Return a per-step status for visualization.
+ *
+ * Rules (checked in order):
+ *  - "failed"  — the step has a gate with a non-pass, non-wait outcome
+ *                (i.e., block or route-back) and it is not the current step.
+ *  - "current" — step.id === state.current_step
+ *  - "passed"  — all gates for this step have a pass outcome, or the step
+ *                appears in an allowed transition and has no gates.
+ *  - "ready"   — in readySteps().
+ *  - "blocked" — some predecessor has not passed.
+ *  - "pending" — fallback.
+ */
+export function stageStatuses(definition: any, state: any, manifest: any): Record<string, StageStatus> {
+  const def = normalizeFlowDefinition(definition);
+  const steps: any[] = normalizedSteps(def);
+  const readySet = new Set(readySteps(def, state, manifest));
+  const result: Record<string, StageStatus> = {};
+
+  for (const step of steps) {
+    const stepGates = Object.entries(def.gates ?? {})
+      .filter(([, g]: [string, any]) => g.step === step.id)
+      .map(([id]: [string, any]) => id);
+
+    // Failed: any gate for this step has a failing outcome.
+    const hasFailed = stepGates.some((gateId) =>
+      (state.gate_outcomes ?? []).some(
+        (o) => o.gate_id === gateId && (o.status === "block" || o.status === "route-back")
+      )
+    );
+
+    // Passed: all gates have pass outcomes (or gate-less step appeared in allowed transition).
+    const allGatesPassed =
+      stepGates.length > 0 &&
+      stepGates.every((gateId) =>
+        (state.gate_outcomes ?? []).some(
+          (o) => o.gate_id === gateId && o.status === "pass"
+        )
+      );
+    const gatelessPassed =
+      stepGates.length === 0 &&
+      (state.transitions ?? []).some(
+        (t) => t.from_step === step.id && t.status === "allowed"
+      );
+    const passed = allGatesPassed || gatelessPassed;
+
+    if (hasFailed && step.id !== state.current_step) {
+      result[step.id] = "failed";
+    } else if (step.id === state.current_step) {
+      result[step.id] = "current";
+    } else if (passed) {
+      result[step.id] = "passed";
+    } else if (readySet.has(step.id)) {
+      result[step.id] = "ready";
+    } else if (!predecessorsPassed(def, step.id, state)) {
+      result[step.id] = "blocked";
+    } else {
+      result[step.id] = "pending";
+    }
+  }
+
+  return result;
 }

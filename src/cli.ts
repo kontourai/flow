@@ -22,6 +22,8 @@ import {
   scaffoldDemoRun,
   startRun,
   validateRunTransition,
+  readySteps,
+  stageStatuses,
   validateDefinitionWithDiagnostics
 } from "./index.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
@@ -47,6 +49,7 @@ function usage() {
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
   flow resume <run-id> [--cwd <path>]
   flow list [--cwd <path>]
+  flow ready-steps [<run-id>] [--format json] [--cwd <path>]
 `;
 }
 
@@ -143,11 +146,18 @@ async function parseRouteMetadata(flags: CliFlags, cwd = process.cwd()) {
 async function printStatus(runId, format, cwd = process.cwd()) {
   const run = await loadRun(runId, cwd);
   if (format === "json") {
-    console.log(JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2));
+    const base = reportJson(run.definition, run.state, run.manifest);
+    const ready = readySteps(run.definition, run.state, run.manifest);
+    const statuses = stageStatuses(run.definition, run.state, run.manifest);
+    console.log(JSON.stringify({ ...base, readySteps: ready, stageStatuses: statuses }, null, 2));
   } else if (format === "markdown") {
     process.stdout.write(renderMarkdownReport(run.definition, run.state, run.manifest));
   } else {
+    const ready = readySteps(run.definition, run.state, run.manifest);
     process.stdout.write(renderSummary(run.definition, run.state));
+    if (ready.length) {
+      process.stdout.write(`ready steps: ${ready.join(", ")}\n`);
+    }
   }
 }
 
@@ -419,10 +429,30 @@ async function main() {
     return;
   }
 
+  if (command === "ready-steps") {
+    const runId = requireArg(args[0], "flow ready-steps requires a run id");
+    const run = await loadRun(runId, cwd);
+    const ready = readySteps(run.definition, run.state, run.manifest);
+    const statuses = stageStatuses(run.definition, run.state, run.manifest);
+    if (flags.format === "json") {
+      console.log(JSON.stringify({ run_id: runId, readySteps: ready, stageStatuses: statuses }, null, 2));
+    } else {
+      if (ready.length) {
+        console.log(`ready steps: ${ready.join(", ")}`);
+      } else {
+        console.log("no ready steps");
+      }
+    }
+    return;
+  }
+
   if (command === "resume") {
     const runId = requireArg(args[0], "flow resume requires a run id");
     const run = await loadRun(runId, cwd);
-    process.stdout.write(renderResume(run.definition, run.state));
+    const ready = readySteps(run.definition, run.state, run.manifest);
+    const lines = [renderResume(run.definition, run.state)];
+    if (ready.length) lines.push(`ready steps: ${ready.join(", ")}\n`);
+    process.stdout.write(lines.join(""));
     return;
   }
 

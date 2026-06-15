@@ -1,0 +1,88 @@
+{
+  "id": "builder-kit-dag-flow",
+  "version": "1",
+  "steps": [
+    { "id": "plan",      "next": "implement" },
+    { "id": "shape",     "next": "implement" },
+    { "id": "implement", "next": "verify",    "needs": ["plan", "shape"] },
+    { "id": "verify",    "next": "publish" },
+    { "id": "publish",   "next": null }
+  ],
+  "gates": {
+    "plan-gate": {
+      "step": "plan",
+      "expects": [
+        {
+          "id": "acceptance-criteria",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Acceptance criteria are ready for implementation.",
+          "claim": {
+            "type": "builder.acceptance",
+            "subject": "builder.plan",
+            "accepted_statuses": ["trusted", "reviewed"]
+          }
+        }
+      ]
+    },
+    "shape-gate": {
+      "step": "shape",
+      "expects": [
+        {
+          "id": "shape-ready",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Architecture shape is approved and ready for implementation.",
+          "claim": {
+            "type": "builder.shape",
+            "subject": "builder.shape",
+            "accepted_statuses": ["trusted", "reviewed"]
+          }
+        }
+      ]
+    },
+    "implement-gate": {
+      "step": "implement",
+      "expects": [
+        {
+          "id": "scoped-diff",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "The implementation diff is scoped to the planned change.",
+          "claim": {
+            "type": "implementation.scoped-diff",
+            "subject": "builder.implement",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ]
+    },
+    "verify-gate": {
+      "step": "verify",
+      "expects": [
+        {
+          "id": "tests-passed",
+          "kind": "surface.claim",
+          "required": true,
+          "description": "Test results are ready for verification.",
+          "claim": {
+            "type": "quality.tests",
+            "subject": "builder.verify",
+            "accepted_statuses": ["trusted"]
+          }
+        }
+      ],
+      "on_route_back": {
+        "implementation_defect": "implement",
+        "plan_gap": "plan",
+        "decision_gap": "plan",
+        "missing_evidence": "verify",
+        "default": "implement"
+      },
+      "route_back_policy": {
+        "max_attempts": 3,
+        "on_exceeded": "block"
+      }
+    }
+  }
+}

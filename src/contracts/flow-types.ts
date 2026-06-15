@@ -5,6 +5,7 @@ export type MutableRecord = Record<string, any>;
 export interface FlowStep {
   id: string;
   next: string | null;
+  needs?: string[];
 }
 
 export interface FlowExpectation {
