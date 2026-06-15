@@ -30,7 +30,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/sync-console-kit-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
+    "build": "node scripts/sync-ui-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
     "test": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
     "test:node": "node --test tests/node/*.test.mjs",
     "test:browser": "playwright test",
@@ -39,8 +39,8 @@
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
     "docs:build": "node scripts/docs-site/build.ts",
     "docs:check": "npm run docs:build && node scripts/docs-site/check-links.ts",
-    "sync:console-kit": "node scripts/sync-console-kit-assets.mjs",
-    "check:console-kit-assets": "node scripts/sync-console-kit-assets.mjs --check",
+    "sync:ui": "node scripts/sync-ui-assets.mjs",
+    "check:ui-assets": "node scripts/sync-ui-assets.mjs --check",
     "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
     "check:schemas": "npm run build && npm run test:node",
     "check:console-projection": "npm run build && node --test tests/node/check-console-projection.test.mjs",
@@ -69,7 +69,7 @@
     "url": "git+https://github.com/kontourai/flow.git"
   },
   "devDependencies": {
-    "@kontourai/console-kit": "^0.1.0",
+    "@kontourai/ui": "^1.1.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
     "marked": "^16.4.2",

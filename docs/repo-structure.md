@@ -10,13 +10,13 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | --- | --- | --- |
 | `src/` | Flow TypeScript source for the package runtime, CLI, transition validation, gate evaluation, reports, release readiness, and local run store behavior, organized by domain folders. | Tracked source. New Flow-owned runtime behavior belongs here. Keep provider-specific orchestration out of Flow core. |
 | `src/console-ui/` | Local Flow Console browser UI source. | Tracked source. UI changes for `flow console` belong here. |
-| `src/console-ui/vendor/console-kit/` | Vendored Console Kit styles and tokens used by the local console build. | Tracked vendor asset exception. Updated by `scripts/sync-console-kit-assets.mjs`; do not hand-edit generated copies without checking the sync script. |
+| `src/console-ui/vendor/ui/` | Vendored Kontour UI styles, tokens, and the Flow product mark used by the local console build. | Tracked vendor asset exception. Updated by `scripts/sync-ui-assets.mjs`; do not hand-edit generated copies without checking the sync script. |
 | `schemas/` | Public JSON schemas for Flow Definitions, Flow Runs, Gate Evidence, Flow Reports, project config, config merge reports, transition validation, release readiness, and version release reports. | Tracked public contract assets and included in the npm package. New Flow-owned schema contracts belong here. |
 | `examples/` | Published examples for authoring and using Flow contracts. | Tracked package assets. New user-facing examples belong here and must be documented in `examples/README.md`. |
 | `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example and covered by the package contents check. |
 | `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
-| `scripts/` | Operational Node tooling for Console Kit asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
+| `scripts/` | Operational Node tooling for Kontour UI asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
 | `scripts/docs-site/` | TypeScript generator, stylesheet, and favicon for the GitHub Pages docs site. | Tracked tooling. Built by `npm run docs:build` into the ignored `site/` directory and deployed by the `Docs` workflow. |
 | `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. Domain files keep package runtime, CLI, config, definitions, transitions, release checks, Surface claim handling, route-back behavior, and reports separate. | Tracked Node test lane. Node tests belong here instead of `scripts/`. Shared test-only helpers belong in `tests/node/helpers/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
@@ -79,13 +79,13 @@ Generated local output stays ignored:
 Tracked exceptions are intentional:
 
 - `examples/scenarios/console-projection/.flow/**` is tracked even though root `.flow/` is ignored. It is a deterministic Flow Run scenario for console projection checks.
-- `src/console-ui/vendor/console-kit/**` is tracked even though it is copied from `@kontourai/console-kit`. The local console build depends on these assets being present in source form before `dist/console-ui/` is generated.
+- `src/console-ui/vendor/ui/**` is tracked even though it is copied from `@kontourai/ui`. The local console build depends on these assets being present in source form before `dist/console-ui/` is generated.
 
 Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendored console assets without checking package contents, script references, browser tests, and `npm pack --dry-run`.
 
 ## Validation Lanes
 
-`npm run build` syncs Console Kit assets, compiles Flow TypeScript, compiles console UI TypeScript, and copies console UI assets to `dist/console-ui/`.
+`npm run build` syncs Kontour UI assets, compiles Flow TypeScript, compiles console UI TypeScript, and copies console UI assets to `dist/console-ui/`.
 
 `npm run typecheck` checks Flow TypeScript without writing output. `npm run typecheck:console-ui` checks the console UI project without writing output.
 
@@ -93,7 +93,7 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 `npm run check:schemas` builds first, then runs the split Node schema/runtime contract lane under `tests/node/`.
 
-`npm run check:console-kit-assets` verifies tracked vendored Console Kit assets match the installed package.
+`npm run check:ui-assets` verifies tracked vendored Kontour UI assets match the installed package.
 
 `npm run check:console-smoke` builds first, then validates the local console server smoke path.
 
