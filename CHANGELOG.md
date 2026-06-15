@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/kontourai/flow/compare/v1.0.0...v1.1.0) (2026-06-15)
+
+
+### Features
+
+* dependency-DAG stages (Phase 1 — needs + readiness derivation) ([#73](https://github.com/kontourai/flow/issues/73)) ([dfd9dda](https://github.com/kontourai/flow/commit/dfd9ddaf3a43495bc21da76ebff55ec6696e2d5b))
+
 ## [1.0.0](https://github.com/kontourai/flow/compare/v0.3.0...v1.0.0) (2026-06-12)
 
 
