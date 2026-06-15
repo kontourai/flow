@@ -118,13 +118,9 @@ Reports the structural (K0) view of a kit container: validity, declared flow ids
 
 **Agent-blind**: `assetClasses` lists the _names_ of declared extension fields — it does not interpret their contents, derive K-levels, or infer runtime targets. Those operations belong to flow-agents' `flow-agents kit inspect`. Exits `1` when the kit is invalid.
 
-## flow validate-kit (deprecated)
+## Migration
 
-```sh
-flow validate-kit <kit-dir> [--json] [--cwd <path>]
-```
-
-**Deprecated.** Use `flow kit validate` instead. Prints a deprecation warning to stderr, then behaves identically to `flow kit validate`.
+`flow validate-kit` was replaced by `flow kit validate` in 1.2.0 and removed in 1.3.0. Update any scripts or CI steps that use `flow validate-kit <kit-dir>` to use `flow kit validate <kit-dir>` instead.
 
 ## flow start
 
