@@ -32,6 +32,7 @@ const pages: PageDef[] = [
   { src: "evidence.md", out: "evidence.html", navTitle: "Evidence", section: "Reference" },
   { src: "gates-and-route-back.md", out: "gates-and-route-back.html", navTitle: "Gates & Route-Back", section: "Reference" },
   { src: "agent-hooks.md", out: "agent-hooks.html", navTitle: "Agent Hooks", section: "Reference" },
+  { src: "flow-kit-container.md", out: "flow-kit-container.html", navTitle: "Flow Kit Container", section: "Reference" },
   { src: "project-config.md", out: "project-config.html", navTitle: "Project Config", section: "Reference" },
   { src: "release-readiness.md", out: "release-readiness.html", navTitle: "Release Readiness", section: "Reference" },
   { src: "product-vision.md", out: "product-vision.html", navTitle: "Product Vision", section: "Product" },

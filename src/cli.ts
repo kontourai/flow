@@ -27,6 +27,7 @@ import {
   validateDefinitionWithDiagnostics
 } from "./index.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
+import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 
 type CliFlags = Record<string, any>;
 
@@ -34,6 +35,7 @@ function usage() {
   return `Usage:
   flow init [--demo] [--cwd <path>]
   flow validate-definition <path> [--json] [--cwd <path>]
+  flow validate-kit <kit-dir> [--json] [--cwd <path>]
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
@@ -240,6 +242,30 @@ async function main() {
       : validateDefinitionWithDiagnostics(definition);
     const payload = validationPayload(definitionPath, result);
     printDefinitionValidation(definitionPath, payload, Boolean(flags.json));
+    if (!payload.valid) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "validate-kit") {
+    const kitPath = requireArg(args[0], "flow validate-kit requires a kit directory path");
+    const resolvedKit = path.resolve(cwd, kitPath);
+    const result = await validateKitContainerFile(resolvedKit);
+    const payload = {
+      valid: result.valid,
+      path: kitPath,
+      error_count: result.diagnostics.filter((d) => d.severity === "error").length,
+      diagnostics: result.diagnostics
+    };
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else if (payload.valid) {
+      console.log(`valid Flow Kit container: ${kitPath}`);
+    } else {
+      console.log(`invalid Flow Kit container: ${kitPath}`);
+      for (const d of payload.diagnostics) {
+        console.log(`${d.severity.toUpperCase()} ${d.code} ${d.path}: ${d.message}`);
+      }
+    }
     if (!payload.valid) process.exitCode = 1;
     return;
   }
