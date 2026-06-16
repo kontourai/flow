@@ -1,6 +1,6 @@
 {
   "id": "agent-dev-flow",
-  "version": "1",
+  "version": "2",
   "steps": [
     { "id": "plan", "next": "implement" },
     { "id": "implement", "next": "verify" },
@@ -13,13 +13,14 @@
       "expects": [
         {
           "id": "acceptance-criteria",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Acceptance criteria are ready for implementation.",
-          "claim": {
-            "type": "builder.acceptance",
-            "subject": "builder.plan",
-            "accepted_statuses": ["trusted", "reviewed"]
+          "bundle_claim": {
+            "claimType": "builder.acceptance",
+            "subjectType": "flow-step",
+            "subjectId": "builder.plan",
+            "accepted_statuses": ["verified", "assumed"]
           }
         }
       ]
@@ -29,13 +30,14 @@
       "expects": [
         {
           "id": "scoped-diff",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "The implementation diff is scoped to the planned change.",
-          "claim": {
-            "type": "implementation.scoped-diff",
-            "subject": "builder.implement",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "implementation.scoped-diff",
+            "subjectType": "flow-step",
+            "subjectId": "builder.implement",
+            "accepted_statuses": ["verified"]
           }
         }
       ]
@@ -45,25 +47,27 @@
       "expects": [
         {
           "id": "tests-passed",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Test results are ready for verification.",
-          "claim": {
-            "type": "quality.tests",
-            "subject": "builder.verify",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "quality.tests",
+            "subjectType": "flow-step",
+            "subjectId": "builder.verify",
+            "accepted_statuses": ["verified"]
           }
         },
         {
           "id": "browser-evidence-reviewed",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": false,
           "description": "Browser evidence was reviewed when the change has a user-visible surface.",
           "explore_hint": "Attach this claim for UI changes.",
-          "claim": {
-            "type": "quality.browser-evidence",
-            "subject": "builder.verify",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "quality.browser-evidence",
+            "subjectType": "flow-step",
+            "subjectId": "builder.verify",
+            "accepted_statuses": ["verified"]
           }
         }
       ],

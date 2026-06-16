@@ -42,7 +42,7 @@ function usage() {
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
@@ -376,6 +376,7 @@ async function main() {
       gate: requireArg(flags.gate, "--gate is required"),
       file: requireArg(flags.file, "--file is required"),
       kind: flags.kind,
+      bundle: Boolean(flags.bundle),
       trustArtifact: Boolean(flags["trust-artifact"]),
       status: flags.status,
       supersede: flags.supersede,

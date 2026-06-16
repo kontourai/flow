@@ -12,8 +12,8 @@ test("version release report projects complete local fixtures and preserves refs
   assert.equal(report.status, "ready");
   assert.equal(report.gaps.length, 0);
   assert.equal(report.changeset.length, 2);
-  assert.equal(report.verification_evidence[0].kind, "surface.claim");
-  assert.equal(report.verification_evidence[0].claim.type, "quality.tests");
+  assert.equal(report.verification_evidence[0].kind, "trust.bundle");
+  assert.equal(report.verification_evidence[0].bundle.claims[0].claimType, "quality.tests");
   assert.equal(report.release_evidence.decision, "pass");
   assert.deepEqual(report.release_evidence.required_lanes, ["change-approval", "deployment-window", "freeze-state"]);
   assert.deepEqual(report.release_evidence.lanes.filter((lane) => lane.required).map((lane) => lane.status), ["pass", "pass", "pass"]);

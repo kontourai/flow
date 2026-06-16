@@ -86,12 +86,12 @@ test("completed runs report completion instead of a stale next action", async ()
   await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "done-1", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "adversarial-review-gate",
-    "--file", path.join(scenario, "producer-output.trust.json"), "--trust-artifact", "--cwd", cwd]);
+    "--file", path.join(scenario, "producer-output.trust.json"), "--bundle", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "adversarial-review-gate",
-    "--file", path.join(scenario, "review-round-2-trusted.trust.json"), "--trust-artifact", "--cwd", cwd]);
+    "--file", path.join(scenario, "review-round-2-trusted.trust.json"), "--bundle", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "resolve-gate",
-    "--file", path.join(scenario, "resolution.trust.json"), "--trust-artifact", "--cwd", cwd]);
+    "--file", path.join(scenario, "resolution.trust.json"), "--bundle", "--cwd", cwd]);
   const final = await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--cwd", cwd]);
   assert.match(final.stdout, /next action: run complete; no further action required/);
 
@@ -107,10 +107,10 @@ test("CLI supersede replaces failed evidence so a route-back can recover", async
   await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "adv-1", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
-    "--file", path.join(scenario, "producer-output.trust.json"), "--trust-artifact", "--cwd", cwd]);
+    "--file", path.join(scenario, "producer-output.trust.json"), "--bundle", "--cwd", cwd]);
   const failed = await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
     "--file", path.join(scenario, "review-round-1-completeness-defect.trust.json"),
-    "--trust-artifact", "--status", "failed", "--route-reason", "completeness_defect", "--cwd", cwd]);
+    "--bundle", "--status", "failed", "--route-reason", "completeness_defect", "--cwd", cwd]);
   const failedId = failed.stdout.match(/attached evidence: (\S+)/)[1];
 
   const routeBack = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
@@ -118,7 +118,7 @@ test("CLI supersede replaces failed evidence so a route-back can recover", async
 
   await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
     "--file", path.join(scenario, "review-round-2-trusted.trust.json"),
-    "--trust-artifact", "--supersede", failedId, "--cwd", cwd]);
+    "--bundle", "--supersede", failedId, "--cwd", cwd]);
   const pass = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
   assert.match(pass.stdout, /pass adversarial-review-gate/);
   assert.match(pass.stdout, /current step: resolve/);
@@ -131,7 +131,7 @@ test("CLI supersede replaces failed evidence so a route-back can recover", async
   // superseding evidence on another gate is rejected
   await assert.rejects(
     execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "resolve-gate",
-      "--file", path.join(scenario, "resolution.trust.json"), "--trust-artifact", "--supersede", failedId, "--cwd", cwd]),
+      "--file", path.join(scenario, "resolution.trust.json"), "--bundle", "--supersede", failedId, "--cwd", cwd]),
     /cannot supersede evidence/
   );
 });
@@ -149,11 +149,11 @@ test("CLI status and resume surface explore_hint for missing expectations", asyn
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
             explore_hint: "Run the suite and attach the CI trust report.",
-            claim: { type: "quality.tests", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "quality.tests", accepted_statuses: ["verified"] }
           }
         ]
       }
@@ -223,8 +223,44 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
   const flowCwd = await mkdtemp(path.join(tmpdir(), "flow-cli-cwd-"));
   const definition = await resourceDefinitionFixture();
   await writeFile(path.join(flowCwd, "flow-definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
-  await writeFile(path.join(flowCwd, "acceptance.txt"), "acceptance criteria linked\n");
-  await writeFile(path.join(flowCwd, "route-metadata.json"), `${JSON.stringify({ route_reason: "plan_gap", expectation_ids: ["plan-gate"] }, null, 2)}\n`);
+  const acceptanceBundle = {
+    schemaVersion: 3,
+    source: "cli/acceptance",
+    claims: [{
+      id: "claim.builder.acceptance.cwd",
+      subjectType: "flow-step",
+      subjectId: "resource-contract-flow",
+      surface: "builder.acceptance",
+      claimType: "builder.acceptance",
+      fieldOrBehavior: "acceptanceCriteria",
+      value: "acceptance criteria linked",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z"
+    }],
+    evidence: [{
+      id: "evidence.builder.acceptance.cwd",
+      claimId: "claim.builder.acceptance.cwd",
+      evidenceType: "human_attestation",
+      method: "attestation",
+      sourceRef: "cli:cwd-smoke",
+      excerptOrSummary: "Acceptance criteria reviewed.",
+      observedAt: "2026-06-10T00:00:00.000Z",
+      collectedBy: "cli/acceptance"
+    }],
+    policies: [],
+    events: [{
+      id: "event.builder.acceptance.cwd.verified",
+      claimId: "claim.builder.acceptance.cwd",
+      status: "verified",
+      actor: "cli/acceptance",
+      method: "attestation",
+      evidenceIds: ["evidence.builder.acceptance.cwd"],
+      createdAt: "2026-06-10T00:00:00.000Z",
+      verifiedAt: "2026-06-10T00:00:00.000Z"
+    }]
+  };
+  await writeFile(path.join(flowCwd, "acceptance-bundle.json"), `${JSON.stringify(acceptanceBundle, null, 2)}\n`);
+  await writeFile(path.join(flowCwd, "route-metadata.json"), `${JSON.stringify({ route_reason: "plan_gap", expectation_ids: ["acceptance-criteria"] }, null, 2)}\n`);
 
   await execFile(process.execPath, [
     cli,
@@ -245,13 +281,8 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     "--gate",
     "plan-gate",
     "--file",
-    "acceptance.txt",
-    "--claim-type",
-    "builder.acceptance",
-    "--claim-subject",
-    "resource-contract-flow",
-    "--claim-status",
-    "trusted",
+    "acceptance-bundle.json",
+    "--bundle",
     "--route-metadata",
     "route-metadata.json",
     "--cwd",
@@ -312,15 +343,12 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
   assert.equal(reportPayload.current_step, "implement");
   assert.match(resume.stdout, /current step: implement/);
   assert.match(list.stdout, /cwd-smoke\tactive\timplement\tresource-contract-flow \/ cwd-smoke/);
-  assert.equal(manifest.evidence[0].original_path, "acceptance.txt");
-  assert.equal(manifest.evidence[0].kind, "surface.claim");
-  assert.deepEqual(manifest.evidence[0].claim, {
-    type: "builder.acceptance",
-    status: "trusted",
-    subject: "resource-contract-flow"
-  });
+  assert.equal(manifest.evidence[0].original_path, "acceptance-bundle.json");
+  assert.equal(manifest.evidence[0].kind, "trust.bundle");
+  assert.ok(manifest.evidence[0].bundle, "bundle field should be present");
+  assert.equal(manifest.evidence[0].bundle.claims[0].claimType, "builder.acceptance");
   assert.equal(manifest.evidence[0].route_reason, "plan_gap");
-  assert.deepEqual(manifest.evidence[0].expectation_ids, ["plan-gate"]);
+  assert.deepEqual(manifest.evidence[0].expectation_ids, ["acceptance-criteria"]);
   assert.deepEqual(FLOW_RUN_LAYOUT, {
     definition: "definition.json",
     state: "state.json",
@@ -552,23 +580,49 @@ test("CLI records route-back metadata and only route_reason selects the route", 
   assert.deepEqual(gate.diagnostics, { claimed_target: "plan" });
 });
 
-test("CLI attaches Surface trust artifact evidence and reports claim diagnostics", async () => {
+test("CLI attaches trust.bundle evidence and reports claim diagnostics", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-trust-"));
   const cli = cliPath;
   const definitionPath = path.join(cwd, "definition.json");
   await writeFile(definitionPath, `${JSON.stringify(routeBackDefinition(), null, 2)}\n`);
 
-  const trustedArtifact = {
-    schema_version: "0.1",
-    artifact_type: "trust-report",
-    subject: "builder.verify",
-    producer: "ci/main",
-    status: "trusted",
-    issued_at: "2026-05-26T00:00:00.000Z",
-    authority_traces: ["github:main"],
-    claims: [{ type: "quality.tests", status: "trusted" }]
+  const verifiedBundle = {
+    schemaVersion: 3,
+    source: "ci/main",
+    claims: [{
+      id: "claim.quality.tests.verify",
+      subjectType: "flow-step",
+      subjectId: "builder.verify",
+      surface: "quality.developer-evidence",
+      claimType: "quality.tests",
+      fieldOrBehavior: "testSuite",
+      value: "all tests passed",
+      createdAt: "2026-05-26T00:00:00.000Z",
+      updatedAt: "2026-05-26T00:00:00.000Z"
+    }],
+    evidence: [{
+      id: "evidence.quality.tests.output",
+      claimId: "claim.quality.tests.verify",
+      evidenceType: "test_output",
+      method: "validation",
+      sourceRef: "ci:run-1",
+      excerptOrSummary: "All tests passed.",
+      observedAt: "2026-05-26T00:00:00.000Z",
+      collectedBy: "ci/main"
+    }],
+    policies: [],
+    events: [{
+      id: "event.quality.tests.verified",
+      claimId: "claim.quality.tests.verify",
+      status: "verified",
+      actor: "ci/main",
+      method: "npm test",
+      evidenceIds: ["evidence.quality.tests.output"],
+      createdAt: "2026-05-26T00:00:00.000Z",
+      verifiedAt: "2026-05-26T00:00:00.000Z"
+    }]
   };
-  await writeFile(path.join(cwd, "trusted-report.json"), `${JSON.stringify(trustedArtifact, null, 2)}\n`);
+  await writeFile(path.join(cwd, "verified-bundle.json"), `${JSON.stringify(verifiedBundle, null, 2)}\n`);
   await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-trust-pass", "--params", "subject=cli-trust"], { cwd });
   await execFile(process.execPath, [
     cli,
@@ -577,8 +631,8 @@ test("CLI attaches Surface trust artifact evidence and reports claim diagnostics
     "--gate",
     "verify-gate",
     "--file",
-    "trusted-report.json",
-    "--trust-artifact"
+    "verified-bundle.json",
+    "--bundle"
   ], { cwd });
   await execFile(process.execPath, [cli, "evaluate", "cli-trust-pass", "--gate", "verify-gate"], { cwd });
   const passReport = JSON.parse((await execFile(process.execPath, [cli, "report", "cli-trust-pass", "--format", "json"], { cwd })).stdout);
@@ -587,8 +641,19 @@ test("CLI attaches Surface trust artifact evidence and reports claim diagnostics
   assert.equal(passGate.matched_expectations[0].expectation_id, "tests-passed");
   assert.equal(passGate.evidence_refs.length, 1);
 
-  const rejectedArtifact = { ...trustedArtifact, status: "rejected", claims: [{ type: "quality.tests", status: "rejected" }] };
-  await writeFile(path.join(cwd, "rejected-report.json"), `${JSON.stringify(rejectedArtifact, null, 2)}\n`);
+  const rejectedBundle = {
+    ...verifiedBundle,
+    events: [{
+      id: "event.quality.tests.rejected",
+      claimId: "claim.quality.tests.verify",
+      status: "rejected",
+      actor: "ci/main",
+      method: "npm test",
+      evidenceIds: ["evidence.quality.tests.output"],
+      createdAt: "2026-05-26T00:00:00.000Z"
+    }]
+  };
+  await writeFile(path.join(cwd, "rejected-bundle.json"), `${JSON.stringify(rejectedBundle, null, 2)}\n`);
   await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-trust-rejected", "--params", "subject=cli-trust"], { cwd });
   await execFile(process.execPath, [
     cli,
@@ -597,8 +662,8 @@ test("CLI attaches Surface trust artifact evidence and reports claim diagnostics
     "--gate",
     "verify-gate",
     "--file",
-    "rejected-report.json",
-    "--trust-artifact"
+    "rejected-bundle.json",
+    "--bundle"
   ], { cwd });
   await execFile(process.execPath, [cli, "evaluate", "cli-trust-rejected", "--gate", "verify-gate"], { cwd });
   const rejectedMarkdown = (await execFile(process.execPath, [cli, "report", "cli-trust-rejected", "--format", "markdown"], { cwd })).stdout;
@@ -631,8 +696,8 @@ test("CLI validates arbitrary Flow Definition files with JSON diagnostics", asyn
       assert.equal(error.code, 1);
       assert.equal(payload.valid, false);
       assert.equal(payload.error_count, 6);
-      assert.equal(payload.diagnostics[0].code, "definition.expectation.claim.required");
-      assert.equal(payload.diagnostics[0].path, "$.gates.verify-gate.expects[0].claim");
+      assert.equal(payload.diagnostics[0].code, "definition.expectation.bundle_claim.required");
+      assert.equal(payload.diagnostics[0].path, "$.gates.verify-gate.expects[0].bundle_claim");
       return true;
     }
   );

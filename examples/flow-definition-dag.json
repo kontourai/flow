@@ -1,6 +1,6 @@
 {
   "id": "builder-kit-dag-flow",
-  "version": "1",
+  "version": "2",
   "steps": [
     { "id": "plan",      "next": "implement" },
     { "id": "shape",     "next": "implement" },
@@ -14,13 +14,14 @@
       "expects": [
         {
           "id": "acceptance-criteria",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Acceptance criteria are ready for implementation.",
-          "claim": {
-            "type": "builder.acceptance",
-            "subject": "builder.plan",
-            "accepted_statuses": ["trusted", "reviewed"]
+          "bundle_claim": {
+            "claimType": "builder.acceptance",
+            "subjectType": "flow-step",
+            "subjectId": "builder.plan",
+            "accepted_statuses": ["verified", "assumed"]
           }
         }
       ]
@@ -30,13 +31,14 @@
       "expects": [
         {
           "id": "shape-ready",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Architecture shape is approved and ready for implementation.",
-          "claim": {
-            "type": "builder.shape",
-            "subject": "builder.shape",
-            "accepted_statuses": ["trusted", "reviewed"]
+          "bundle_claim": {
+            "claimType": "builder.shape",
+            "subjectType": "flow-step",
+            "subjectId": "builder.shape",
+            "accepted_statuses": ["verified", "assumed"]
           }
         }
       ]
@@ -46,13 +48,14 @@
       "expects": [
         {
           "id": "scoped-diff",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "The implementation diff is scoped to the planned change.",
-          "claim": {
-            "type": "implementation.scoped-diff",
-            "subject": "builder.implement",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "implementation.scoped-diff",
+            "subjectType": "flow-step",
+            "subjectId": "builder.implement",
+            "accepted_statuses": ["verified"]
           }
         }
       ]
@@ -62,13 +65,14 @@
       "expects": [
         {
           "id": "tests-passed",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Test results are ready for verification.",
-          "claim": {
-            "type": "quality.tests",
-            "subject": "builder.verify",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "quality.tests",
+            "subjectType": "flow-step",
+            "subjectId": "builder.verify",
+            "accepted_statuses": ["verified"]
           }
         }
       ],

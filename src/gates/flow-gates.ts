@@ -13,70 +13,113 @@ import {
   expectationLabel,
   slugLabel
 } from "../shared/flow-utils.js";
+import { buildTrustReport, validateTrustBundle } from "@kontourai/surface";
+import { validateTrustBundleSchema } from "./trust-bundle-validator.js";
 
 export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
   return (gate.expects ?? []).map((expectation) => ({
     ...expectation,
-    claim: expectation.claim ? { ...expectation.claim } : undefined,
+    bundle_claim: expectation.bundle_claim ? { ...expectation.bundle_claim } : undefined,
     ...(overrides[expectation.id] ?? {}),
     id: expectation.id
   }));
 }
 
-export function evidenceProducerTrusted(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
-  const claimType = expectation.claim?.type;
-  const override = config.gate_overrides?.[expectation.gate_id]?.expectations?.[expectation.id] ?? {};
-  const mapping = claimType ? config.trusted_producers?.[claimType] : null;
-  const trustedProducers = override.trusted_producers ?? mapping?.producers ?? [];
-  const trustedTraces = override.authority_traces ?? mapping?.authority_traces ?? [];
-  if (!trustedProducers.length && !trustedTraces.length) return true;
-  return trustedProducers.includes(entry.producer) || trustedTraces.some((trace) => evidenceAuthorityTraces(entry).includes(trace));
+function findClaimInReport(report: any, selector: any): any | null {
+  if (!report?.claims || !Array.isArray(report.claims)) return null;
+  return report.claims.find((claim: any) => {
+    if (claim.claimType !== selector.claimType) return false;
+    if (selector.subjectType && claim.subjectType !== selector.subjectType) return false;
+    if (selector.subjectId && claim.subjectId !== selector.subjectId) return false;
+    return true;
+  }) ?? null;
 }
 
-function evidenceAuthorityTraces(entry) {
-  return [
-    entry.authority_trace,
-    ...(Array.isArray(entry.authority_traces) ? entry.authority_traces : []),
-    ...(Array.isArray(entry.trust_artifact?.authority_traces) ? entry.trust_artifact.authority_traces : [])
-  ].filter(Boolean);
+function deriveBundleReport(bundle: unknown): { report: any | null; error: string | null } {
+  // First validate via Surface (referential/structural)
+  let validated: any;
+  try {
+    validated = validateTrustBundle(bundle);
+  } catch (err: any) {
+    return { report: null, error: `bundle_invalid: ${err?.message ?? String(err)}` };
+  }
+  // Then derive statuses via Surface
+  try {
+    const report = buildTrustReport(validated);
+    return { report, error: null };
+  } catch (err: any) {
+    return { report: null, error: `bundle_derivation_failed: ${err?.message ?? String(err)}` };
+  }
 }
 
-function evidenceClaimDiagnostic(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
-  if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return null;
+function evidenceBundleDiagnostic(entry: any, expectation: any): string | null {
+  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
   if (entry.status === "failed") return "rejected";
-  if (entry.trust_artifact?.integrity?.verified === false || entry.diagnostics?.trust_artifact?.reason === "integrity_mismatch") return "integrity_mismatch";
-  if (entry.claim?.type !== expectation.claim?.type) return null;
-  if (expectation.claim?.subject && entry.claim?.subject !== expectation.claim.subject) return "subject_mismatch";
-  const accepted = expectation.accepted_statuses ?? expectation.claim?.accepted_statuses ?? ["trusted"];
-  const claimStatus = entry.claim?.status ?? entry.trust_status ?? entry.status;
-  if (!accepted.includes(claimStatus)) return claimStatus === "stale" ? "stale" : "rejected";
-  const claimType = expectation.claim?.type;
-  const override = config.gate_overrides?.[expectation.gate_id]?.expectations?.[expectation.id] ?? {};
-  const mapping = claimType ? config.trusted_producers?.[claimType] : null;
-  const trustedProducers = override.trusted_producers ?? mapping?.producers ?? [];
-  const trustedTraces = override.authority_traces ?? mapping?.authority_traces ?? [];
-  if (trustedProducers.length && !trustedProducers.includes(entry.producer)) return "untrusted_producer";
-  if (trustedTraces.length && !trustedTraces.some((trace) => evidenceAuthorityTraces(entry).includes(trace))) return "authority_gap";
+
+  const bundle = entry.bundle;
+  if (!bundle) return "bundle_invalid";
+
+  // Schema validation
+  const schemaResult = validateTrustBundleSchema(bundle);
+  if (!schemaResult.valid) return "bundle_invalid";
+
+  // Derive report
+  const report = entry.bundle_report ?? deriveBundleReport(bundle).report;
+  if (!report) return "bundle_invalid";
+
+  const selector = expectation.bundle_claim ?? expectation.claim;
+  if (!selector) return "bundle_invalid";
+
+  const claim = findClaimInReport(report, selector);
+  if (!claim) return "claim_not_found";
+
+  const accepted = selector.accepted_statuses ?? ["verified"];
+  const claimStatus = claim.status ?? "unknown";
+  if (!accepted.includes(claimStatus)) {
+    if (claimStatus === "stale") return "stale";
+    if (claimStatus === "disputed") return "disputed";
+    return "rejected";
+  }
+
   return null;
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig()) {
-  if (expectation.kind !== "surface.claim") return false;
-  if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return false;
+export function evidenceMatchesExpectation(entry: any, expectation: any, _config: MutableRecord = defaultFlowConfig()) {
+  if (expectation.kind !== "trust.bundle") return false;
+  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
   if (entry.status === "failed") return false;
-  if (entry.claim?.type !== expectation.claim?.type) return false;
-  if (expectation.claim?.subject && entry.claim?.subject !== expectation.claim.subject) return false;
-  const accepted = expectation.accepted_statuses ?? expectation.claim?.accepted_statuses ?? ["trusted"];
-  const claimStatus = entry.claim?.status ?? entry.trust_status ?? entry.status;
-  if (!accepted.includes(claimStatus)) return false;
-  return evidenceProducerTrusted(entry, expectation, config);
+
+  const bundle = entry.bundle;
+  if (!bundle) return false;
+
+  // Schema validation
+  const schemaResult = validateTrustBundleSchema(bundle);
+  if (!schemaResult.valid) return false;
+
+  // Use cached bundle_report when present, otherwise derive
+  let report = entry.bundle_report;
+  if (!report) {
+    const derived = deriveBundleReport(bundle);
+    if (!derived.report) return false;
+    report = derived.report;
+  }
+
+  const selector = expectation.bundle_claim ?? expectation.claim;
+  if (!selector) return false;
+
+  const claim = findClaimInReport(report, selector);
+  if (!claim) return false;
+
+  const accepted = selector.accepted_statuses ?? ["verified"];
+  const claimStatus = claim.status ?? "unknown";
+  return accepted.includes(claimStatus);
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig()) {
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, _config: MutableRecord = defaultFlowConfig()) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
-    const reason = evidenceClaimDiagnostic(entry, expectation, config);
+    const reason = evidenceBundleDiagnostic(entry, expectation);
     if (!reason) continue;
     diagnostics.push({
       expectation_id: expectation.id,

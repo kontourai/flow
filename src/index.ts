@@ -102,7 +102,6 @@ export {
   applyEvaluation,
   evaluateGate,
   evidenceMatchesExpectation,
-  evidenceProducerTrusted,
   expectationsForGate,
   mergeGateOutcome
 } from "./gates/flow-gates.js";
@@ -126,7 +125,7 @@ export {
   flowReadme,
   listRuns,
   loadRun,
-  normalizeTrustArtifact,
+  normalizeTrustBundle,
   saveRun,
   scaffoldDemoRun,
   sha256File,

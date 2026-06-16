@@ -10,29 +10,28 @@
       "step": "verify",
       "expects": [
         {
-          "id": "missing-claim",
-          "kind": "surface.claim",
+          "id": "missing-bundle-claim",
+          "kind": "trust.bundle",
           "required": true,
-          "description": "This entry is missing claim."
+          "description": "This entry is missing bundle_claim."
         },
         {
           "id": "missing-claim-type",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
-          "description": "This entry is missing claim.type.",
-          "claim": {
-            "subject": "builder.verify",
-            "accepted_statuses": ["trusted"]
+          "description": "This entry is missing bundle_claim.claimType.",
+          "bundle_claim": {
+            "subjectType": "flow-step",
+            "accepted_statuses": ["verified"]
           }
         },
         {
           "id": "bad-accepted-statuses",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": false,
           "description": "This entry has malformed accepted statuses.",
-          "claim": {
-            "type": "quality.tests",
-            "subject": "builder.verify",
+          "bundle_claim": {
+            "claimType": "quality.tests",
             "accepted_statuses": []
           }
         },
@@ -40,9 +39,9 @@
           "id": "bad-kind",
           "kind": "surface-claim",
           "required": true,
-          "description": "This entry uses a legacy typo.",
-          "claim": {
-            "type": "quality.tests"
+          "description": "This entry uses an unsupported kind.",
+          "bundle_claim": {
+            "claimType": "quality.tests"
           }
         }
       ],

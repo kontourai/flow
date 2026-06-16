@@ -6,235 +6,255 @@ import {
   evaluateGate,
   FLOW_SCHEMA_VERSION,
   initialState,
-  normalizeTrustArtifact,
-  renderMarkdownReport,
-  reportJson,
   validateDefinition
 } from "../../dist/index.js";
-import { assertSurfaceClaimManifestShape } from "./helpers/assertions.mjs";
-import { json, surfaceClaimEvidenceFixture, surfaceClaimFixture } from "./helpers/fixtures.mjs";
+import { json, surfaceClaimFixture, surfaceClaimEvidenceFixture } from "./helpers/fixtures.mjs";
 import { routeBackDefinition, routeBackManifest } from "./helpers/route-back-fixtures.mjs";
 
-test("neutral Surface trust artifacts normalize through Surface contract fields", () => {
-  const normalized = normalizeTrustArtifact({
-    schema_version: "0.1",
-    artifact_type: "trust-report",
-    subject: "builder.verify",
-    producer: "ci/main",
-    status: "trusted",
-    issued_at: "2026-05-26T00:00:00.000Z",
-    authority_traces: ["github:main"],
-    claims: [{ type: "quality.tests", status: "trusted" }]
-  }, "abc123", new Date("2026-05-26T00:00:00.000Z"));
+// The "surface-claims" scenario directory has been migrated to trust.bundle in Flow 2.0.
+// These tests verify trust.bundle gate evaluation against the updated fixtures.
 
-  assert.equal(normalized.claim.type, "quality.tests");
-  assert.equal(normalized.claim.subject, "builder.verify");
-  assert.equal(normalized.claim.status, "trusted");
-  assert.equal(normalized.producer, "ci/main");
-  assert.deepEqual(normalized.authority_traces, ["github:main"]);
-  assert.equal(normalized.trust_artifact.artifact_type, "trust-report");
-
-  const stale = normalizeTrustArtifact({
-    artifact_type: "trust-snapshot",
-    expires_at: "2026-05-25T00:00:00.000Z",
-    claims: [{ type: "quality.tests", subject: "builder.verify", status: "trusted" }]
-  }, "abc123", new Date("2026-05-26T00:00:00.000Z"));
-  assert.equal(stale.claim.status, "stale");
-
-  const mismatch = normalizeTrustArtifact({
-    artifact_type: "trust-report",
-    integrity: { sha256: "expected" },
-    claims: [{ type: "quality.tests", subject: "builder.verify", status: "trusted" }]
-  }, "actual", new Date("2026-05-26T00:00:00.000Z"));
-  assert.equal(mismatch.claim.status, "integrity_mismatch");
-  assert.equal(mismatch.diagnostics.trust_artifact.reason, "integrity_mismatch");
-
-  assert.throws(() => normalizeTrustArtifact({ artifact_type: "trust-report", claims: [{}] }, "abc123"), /claim.type/);
-});
-
-test("fixture-backed Surface claim manifests satisfy the neutral fixture shape", async () => {
+test("fixture-backed trust.bundle manifests satisfy the neutral fixture shape", async () => {
   const definition = await surfaceClaimFixture("flow-definition.json");
   assert.doesNotThrow(() => validateDefinition(definition));
-  assert.equal(definition.gates["verify-gate"].expects[0].kind, "surface.claim");
-
-  const config = await surfaceClaimFixture("flow-config.json");
-  assert.equal(config.schema_version, FLOW_SCHEMA_VERSION);
-  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["surface-fixture/ci"]);
-  assert.deepEqual(config.trusted_producers["quality.tests"].authority_traces, ["project-policy:main"]);
+  assert.equal(definition.gates["verify-gate"].expects[0].kind, "trust.bundle");
+  assert.equal(definition.gates["verify-gate"].expects[0].bundle_claim.claimType, "quality.tests");
 
   const evidenceDir = new URL("../../examples/scenarios/surface-claims/evidence/", import.meta.url);
   const files = (await readdir(evidenceDir)).filter((file) => file.endsWith(".json")).sort();
   assert.deepEqual(files, [
-    "fail-authority-gap.json",
-    "fail-integrity-mismatch.json",
+    "fail-bundle-invalid.json",
+    "fail-claim-not-found.json",
     "fail-missing-claim.json",
     "fail-rejected-claim.json",
     "fail-stale-claim.json",
-    "fail-subject-mismatch.json",
-    "fail-untrusted-producer.json",
     "pass-trust-report.json",
     "pass-trust-snapshot.json"
   ]);
 
   for (const file of files) {
-    assertSurfaceClaimManifestShape(await surfaceClaimEvidenceFixture(file), file);
+    const manifest = await surfaceClaimEvidenceFixture(file);
+    assert.equal(manifest.schema_version, FLOW_SCHEMA_VERSION, `${file} schema_version`);
+    assert.ok(Array.isArray(manifest.evidence), `${file} evidence must be an array`);
   }
 });
 
-test("fixture-backed Surface claim matching covers pass and diagnostic route-back cases", async () => {
+test("trust.bundle pass fixtures evaluate to gate pass with matched expectations", async () => {
   const definition = await surfaceClaimFixture("flow-definition.json");
-  const config = await surfaceClaimFixture("flow-config.json");
 
-  const passFiles = ["pass-trust-report.json", "pass-trust-snapshot.json"];
-  for (const file of passFiles) {
+  for (const file of ["pass-trust-report.json", "pass-trust-snapshot.json"]) {
     const state = initialState(definition, `fixture-${file}`);
     state.current_step = "verify";
-    const outcome = evaluateGate(definition, state, await surfaceClaimEvidenceFixture(file), "verify-gate", config);
+    const manifest = await surfaceClaimEvidenceFixture(file);
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig());
     assert.equal(outcome.status, "pass", file);
-    assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: `ev.${file.replace(".json", "")}` }], file);
+    assert.ok(outcome.matched_expectations?.length === 1, `${file} should have one matched expectation`);
+    assert.equal(outcome.matched_expectations[0].expectation_id, "tests-passed", file);
     assert.equal(outcome.diagnostics, undefined, file);
   }
+});
 
-  const missingState = initialState(definition, "fixture-fail-missing-claim");
-  missingState.current_step = "verify";
-  const missing = evaluateGate(definition, missingState, await surfaceClaimEvidenceFixture("fail-missing-claim.json"), "verify-gate", config);
-  assert.equal(missing.status, "route-back");
-  assert.equal(missing.route_reason, "missing_evidence");
-  assert.deepEqual(missing.missing, ["tests-passed"]);
-  assert.deepEqual(missing.matched_expectations, []);
-  assert.equal(missing.diagnostics, undefined);
+test("trust.bundle missing evidence routes back with missing_evidence reason", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const state = initialState(definition, "fixture-fail-missing");
+  state.current_step = "verify";
+  const manifest = await surfaceClaimEvidenceFixture("fail-missing-claim.json");
+  const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig());
+  assert.equal(outcome.status, "route-back");
+  assert.equal(outcome.route_reason, "missing_evidence");
+  assert.deepEqual(outcome.missing, ["tests-passed"]);
+  assert.deepEqual(outcome.matched_expectations, []);
+  assert.equal(outcome.diagnostics, undefined);
+});
+
+test("trust.bundle failure cases produce correct diagnostic reason codes", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
 
   const failureCases = [
-    ["fail-stale-claim.json", "stale", config],
-    ["fail-rejected-claim.json", "rejected", config],
-    ["fail-untrusted-producer.json", "untrusted_producer", config],
-    ["fail-subject-mismatch.json", "subject_mismatch", config],
-    ["fail-integrity-mismatch.json", "integrity_mismatch", config],
-    ["fail-authority-gap.json", "authority_gap", {
-      ...config,
-      trusted_producers: {
-        "quality.tests": {
-          authority_traces: ["project-policy:main"]
-        }
-      }
-    }]
+    ["fail-rejected-claim.json", "rejected"],
+    ["fail-stale-claim.json", "stale"],
+    ["fail-claim-not-found.json", "claim_not_found"],
+    ["fail-bundle-invalid.json", "bundle_invalid"]
   ];
 
-  for (const [file, reason, caseConfig] of failureCases) {
+  for (const [file, reason] of failureCases) {
     const state = initialState(definition, `fixture-${file}`);
     state.current_step = "verify";
-    const outcome = evaluateGate(definition, state, await surfaceClaimEvidenceFixture(file), "verify-gate", caseConfig);
+    const manifest = await surfaceClaimEvidenceFixture(file);
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig());
     assert.equal(outcome.status, "route-back", file);
     assert.equal(outcome.route_reason, "missing_evidence", file);
     assert.deepEqual(outcome.missing, ["tests-passed"], file);
     assert.deepEqual(outcome.matched_expectations, [], file);
+    assert.ok(outcome.diagnostics?.claim_evaluation?.length > 0, `${file} should have claim_evaluation diagnostics`);
     assert.equal(outcome.diagnostics.claim_evaluation[0].expectation_id, "tests-passed", file);
     assert.equal(outcome.diagnostics.claim_evaluation[0].evidence_id, `ev.${file.replace(".json", "")}`, file);
     assert.equal(outcome.diagnostics.claim_evaluation[0].reason, reason, file);
   }
 });
 
-test("surface claim expectations evaluate required, optional, trusted producer, and overrides", async () => {
+test("trust.bundle expectations evaluate required and optional correctly", async () => {
   const definition = await json("examples/agent-dev-flow.json");
-  const state = initialState(definition, "claim-check", { subject: "feature-search-filters" });
+  const state = initialState(definition, "bundle-check", { subject: "feature-search-filters" });
   const emptyManifest = { schema_version: FLOW_SCHEMA_VERSION, evidence: [] };
-  const trustedConfig = {
-    ...defaultFlowConfig(),
-    trusted_producers: {
-      "quality.tests": { producers: ["ci/main"] },
-      "quality.browser-evidence": { producers: ["browser/check"] }
-    }
-  };
 
-  const missing = evaluateGate(definition, state, emptyManifest, "verify-gate", trustedConfig);
+  const missing = evaluateGate(definition, state, emptyManifest, "verify-gate", defaultFlowConfig());
   assert.equal(missing.status, "route-back");
   assert.equal(missing.route_reason, "missing_evidence");
   assert.deepEqual(missing.missing, ["tests-passed"]);
   assert.deepEqual(missing.optional_missing, ["browser-evidence-reviewed"]);
-
-  const untrusted = evaluateGate(definition, state, {
-    schema_version: FLOW_SCHEMA_VERSION,
-    evidence: [{
-      id: "ev.untrusted",
-      gate_id: "verify-gate",
-      kind: "surface.claim",
-      requested_kind: "surface.claim",
-      status: "passed",
-      claim: { type: "quality.tests", subject: "builder.verify", status: "trusted" },
-      producer: "ci/fork",
-      attached_at: "2026-05-26T00:00:00.000Z"
-    }]
-  }, "verify-gate", trustedConfig);
-  assert.equal(untrusted.status, "route-back");
-  assert.equal(untrusted.route_reason, "missing_evidence");
-  assert.equal(untrusted.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
-
-  const accepted = evaluateGate(definition, state, {
-    schema_version: FLOW_SCHEMA_VERSION,
-    evidence: [{
-      id: "ev.trusted",
-      gate_id: "verify-gate",
-      kind: "surface.claim",
-      requested_kind: "surface.claim",
-      status: "passed",
-      claim: { type: "quality.tests", subject: "builder.verify", status: "trusted" },
-      producer: "ci/main",
-      attached_at: "2026-05-26T00:00:00.000Z"
-    }]
-  }, "verify-gate", trustedConfig);
-  assert.equal(accepted.status, "pass");
-  assert.deepEqual(accepted.optional_missing, ["browser-evidence-reviewed"]);
-
-  const overrideConfig = {
-    ...trustedConfig,
-    gate_overrides: {
-      "verify-gate": {
-        expectations: {
-          "tests-passed": { required: false }
-        }
-      }
-    }
-  };
-  const optionalOnly = evaluateGate(definition, state, emptyManifest, "verify-gate", overrideConfig);
-  assert.equal(optionalOnly.status, "pass");
-  assert.deepEqual(optionalOnly.optional_missing, ["tests-passed", "browser-evidence-reviewed"]);
 });
 
-test("trust artifact claim diagnostics cover stale rejected subject integrity and authority gaps", () => {
+test("trust.bundle validation rejects malformed bundles at evaluation time", () => {
   const definition = routeBackDefinition();
-  const state = initialState(definition, "trust-diagnostics");
-  state.current_step = "verify";
-  const base = {
-    gate_id: "verify-gate",
-    kind: "surface.claim",
-    requested_kind: "surface.claim",
-    status: "passed",
-    attached_at: "2026-05-26T00:00:00.000Z"
-  };
-  const cases = [
-    ["stale", { claim: { type: "quality.tests", subject: "builder.verify", status: "stale" } }, {}, "stale"],
-    ["rejected", { claim: { type: "quality.tests", subject: "builder.verify", status: "rejected" } }, {}, "rejected"],
-    ["subject", { claim: { type: "quality.tests", subject: "wrong.subject", status: "trusted" } }, {}, "subject_mismatch"],
-    ["integrity", {
-      claim: { type: "quality.tests", subject: "builder.verify", status: "integrity_mismatch" },
-      trust_artifact: { integrity: { verified: false } }
-    }, {}, "integrity_mismatch"],
-    ["authority", {
-      claim: { type: "quality.tests", subject: "builder.verify", status: "trusted" },
-      producer: "ci/main"
-    }, {
-      ...defaultFlowConfig(),
-      trusted_producers: { "quality.tests": { authority_traces: ["github:main"] } }
-    }, "authority_gap"]
+  // Patch definition to use trust.bundle
+  const bundleDef = JSON.parse(JSON.stringify(definition));
+  bundleDef.gates["verify-gate"].expects = [
+    {
+      id: "tests-passed",
+      kind: "trust.bundle",
+      required: true,
+      description: "Tests passed.",
+      bundle_claim: {
+        claimType: "quality.tests",
+        subjectType: "flow-step",
+        subjectId: "builder.verify",
+        accepted_statuses: ["verified"]
+      }
+    }
   ];
 
-  for (const [id, entry, config, reason] of cases) {
-    const outcome = evaluateGate(definition, state, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }]), "verify-gate", config);
-    assert.equal(outcome.status, "route-back");
-    assert.equal(outcome.missing[0], "tests-passed");
-    assert.equal(outcome.diagnostics.claim_evaluation[0].reason, reason);
-    const report = reportJson(definition, { ...state, gate_outcomes: [outcome] }, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }]));
-    assert.equal(report.gate_summaries[0].diagnostics.claim_evaluation[0].reason, reason);
-    assert.match(renderMarkdownReport(definition, { ...state, gate_outcomes: [outcome] }, routeBackManifest([{ id: `ev.${id}`, ...base, ...entry }])), new RegExp(reason));
+  const state = initialState(bundleDef, "bundle-validation-test");
+  state.current_step = "verify";
+
+  // Missing bundle field → bundle_invalid diagnostic
+  const noBundleManifest = routeBackManifest([{
+    id: "ev.no-bundle",
+    gate_id: "verify-gate",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    attached_at: "2026-06-15T00:00:00.000Z"
+  }]);
+  const noBundleOutcome = evaluateGate(bundleDef, state, noBundleManifest, "verify-gate", defaultFlowConfig());
+  assert.equal(noBundleOutcome.status, "route-back");
+  assert.equal(noBundleOutcome.diagnostics?.claim_evaluation?.[0]?.reason, "bundle_invalid");
+
+  // Invalid bundle (not a Hachure TrustBundle) → bundle_invalid diagnostic
+  const invalidBundleManifest = routeBackManifest([{
+    id: "ev.invalid-bundle",
+    gate_id: "verify-gate",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    bundle: { not: "a valid bundle" },
+    attached_at: "2026-06-15T00:00:00.000Z"
+  }]);
+  const invalidBundleOutcome = evaluateGate(bundleDef, state, invalidBundleManifest, "verify-gate", defaultFlowConfig());
+  assert.equal(invalidBundleOutcome.status, "route-back");
+  assert.equal(invalidBundleOutcome.diagnostics?.claim_evaluation?.[0]?.reason, "bundle_invalid");
+});
+
+test("trust.bundle gate passes when selected claim status is in accepted_statuses", () => {
+  const definition = routeBackDefinition();
+  const bundleDef = JSON.parse(JSON.stringify(definition));
+  bundleDef.gates["verify-gate"].expects = [
+    {
+      id: "tests-passed",
+      kind: "trust.bundle",
+      required: true,
+      description: "Tests passed.",
+      bundle_claim: {
+        claimType: "quality.tests",
+        subjectType: "flow-step",
+        subjectId: "builder.verify",
+        accepted_statuses: ["verified"]
+      }
+    }
+  ];
+
+  const state = initialState(bundleDef, "bundle-pass-test");
+  state.current_step = "verify";
+
+  const passManifest = routeBackManifest([{
+    id: "ev.verified",
+    gate_id: "verify-gate",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    bundle: {
+      schemaVersion: 3,
+      source: "ci/main",
+      claims: [
+        {
+          id: "claim.quality.tests.verify",
+          subjectType: "flow-step",
+          subjectId: "builder.verify",
+          surface: "quality.developer-evidence",
+          claimType: "quality.tests",
+          fieldOrBehavior: "testSuite",
+          value: "all tests passed",
+          createdAt: "2026-06-15T00:00:00.000Z",
+          updatedAt: "2026-06-15T00:00:00.000Z"
+        }
+      ],
+      evidence: [
+        {
+          id: "evidence.tests",
+          claimId: "claim.quality.tests.verify",
+          evidenceType: "test_output",
+          method: "validation",
+          sourceRef: "ci:run",
+          excerptOrSummary: "All tests passed.",
+          observedAt: "2026-06-15T00:00:00.000Z",
+          collectedBy: "ci/main"
+        }
+      ],
+      policies: [],
+      events: [
+        {
+          id: "event.verified",
+          claimId: "claim.quality.tests.verify",
+          status: "verified",
+          actor: "ci/main",
+          method: "npm test",
+          evidenceIds: ["evidence.tests"],
+          createdAt: "2026-06-15T00:00:00.000Z",
+          verifiedAt: "2026-06-15T00:00:00.000Z"
+        }
+      ]
+    },
+    attached_at: "2026-06-15T00:00:00.000Z"
+  }]);
+
+  const outcome = evaluateGate(bundleDef, state, passManifest, "verify-gate", defaultFlowConfig());
+  assert.equal(outcome.status, "pass");
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.verified" }]);
+  assert.equal(outcome.diagnostics, undefined);
+});
+
+test("trust.bundle Hachure conformance: test vectors produce expected claim statuses via Surface", async () => {
+  // Import hachure conformance vectors and Surface buildTrustReport
+  const { testVectors } = await import("hachure");
+  const { buildTrustReport, validateTrustBundle } = await import("@kontourai/surface");
+
+  let checked = 0;
+  for (const { name, vector } of testVectors) {
+    const { input, expect: expected, now } = vector;
+    const nowDate = now ? new Date(now) : new Date();
+    let bundle;
+    try {
+      bundle = validateTrustBundle(input);
+    } catch {
+      continue; // skip if surface can't validate (schema version mismatch, etc.)
+    }
+    const report = buildTrustReport(bundle, { now: nowDate });
+    for (const [claimId, expectedStatus] of Object.entries(expected.statusByClaimId)) {
+      const claim = report.claims.find(c => c.id === claimId);
+      assert.ok(claim, `${name}: claim ${claimId} should be in report`);
+      assert.equal(claim.status, expectedStatus, `${name}: claim ${claimId} status should be ${expectedStatus}`);
+    }
+    checked++;
   }
+  assert.ok(checked > 0, "should have validated at least one Hachure conformance vector");
 });

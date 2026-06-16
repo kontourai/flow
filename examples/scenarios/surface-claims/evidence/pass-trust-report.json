@@ -4,41 +4,70 @@
     {
       "id": "ev.pass-trust-report",
       "gate_id": "verify-gate",
-      "kind": "surface.claim",
-      "requested_kind": "surface.claim",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
       "status": "passed",
-      "claim": {
-        "type": "quality.tests",
-        "subject": "flow-step.verify",
-        "status": "trusted"
-      },
-      "producer": "surface-fixture/ci",
-      "authority_traces": [
-        "project-policy:main"
-      ],
-      "trust_artifact": {
-        "schema_version": "0.1",
-        "artifact_type": "trust-report",
-        "subject": "flow-step.verify",
-        "producer": "surface-fixture/ci",
-        "status": "trusted",
-        "issued_at": "2026-05-26T00:00:00.000Z",
-        "authority_traces": [
-          "project-policy:main"
-        ],
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "ci/main",
         "claims": [
           {
-            "type": "quality.tests",
-            "subject": "flow-step.verify",
-            "status": "trusted",
-            "issued_at": "2026-05-26T00:00:00.000Z"
+            "id": "claim.quality.tests.verify",
+            "subjectType": "flow-step",
+            "subjectId": "builder.verify",
+            "surface": "quality.developer-evidence",
+            "claimType": "quality.tests",
+            "fieldOrBehavior": "testSuite",
+            "value": "all tests passed",
+            "createdAt": "2026-06-15T00:00:00.000Z",
+            "updatedAt": "2026-06-15T00:00:00.000Z",
+            "impactLevel": "high",
+            "currentIntegrityRef": "commit:abc123",
+            "verificationPolicyId": "policy.software-evidence.commit"
           }
         ],
-        "integrity": {
-          "verified": true
-        }
+        "evidence": [
+          {
+            "id": "evidence.quality.tests.output",
+            "claimId": "claim.quality.tests.verify",
+            "evidenceType": "test_output",
+            "method": "validation",
+            "sourceRef": "ci:run-1847",
+            "excerptOrSummary": "All test suites passed.",
+            "observedAt": "2026-06-15T00:00:00.000Z",
+            "collectedBy": "ci/main",
+            "integrityRef": "commit:abc123"
+          }
+        ],
+        "policies": [
+          {
+            "id": "policy.software-evidence.commit",
+            "claimType": "software-evidence",
+            "requiredEvidence": ["test_output"],
+            "requiredMethods": ["validation"],
+            "requiresCorroboration": false,
+            "acceptanceCriteria": ["evidence check passes for the affected commit"],
+            "reviewAuthority": "repo policy",
+            "validityRule": { "kind": "commit" },
+            "stalenessTriggers": ["new commit touches the same surface"],
+            "conflictRules": [],
+            "impactLevel": "high"
+          }
+        ],
+        "events": [
+          {
+            "id": "event.quality.tests.verified",
+            "claimId": "claim.quality.tests.verify",
+            "status": "verified",
+            "actor": "ci/main",
+            "method": "npm test",
+            "evidenceIds": ["evidence.quality.tests.output"],
+            "createdAt": "2026-06-15T00:00:00.000Z",
+            "verifiedAt": "2026-06-15T00:00:00.000Z"
+          }
+        ]
       },
-      "attached_at": "2026-05-26T00:00:00.000Z"
+      "attached_at": "2026-06-15T00:00:00.000Z"
     }
   ]
 }

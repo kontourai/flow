@@ -8,17 +8,20 @@ export interface FlowStep {
   needs?: string[];
 }
 
+export interface FlowBundleClaimSelector {
+  claimType: string;
+  subjectType?: string;
+  subjectId?: string;
+  accepted_statuses?: string[];
+}
+
 export interface FlowExpectation {
   id: string;
-  kind: "surface.claim";
+  kind: "trust.bundle";
   required: boolean;
   description: string;
   explore_hint?: string;
-  claim: {
-    type: string;
-    subject?: string;
-    accepted_statuses?: string[];
-  };
+  bundle_claim: FlowBundleClaimSelector;
 }
 
 export interface FlowGate {
@@ -58,7 +61,10 @@ export interface FlowEvidenceEntry extends MutableRecord {
   kind: string;
   requested_kind?: string;
   status?: string;
-  claim?: MutableRecord;
+  /** Hachure TrustBundle attached to a trust.bundle evidence entry */
+  bundle?: MutableRecord;
+  /** Surface-derived TrustReport (derived statuses) stored alongside the bundle */
+  bundle_report?: MutableRecord;
   producer?: string;
   authority_trace?: string;
   authority_traces?: string[];
@@ -242,7 +248,7 @@ export const BUILTIN_EVIDENCE_KINDS = new Set([
   "command",
   "file",
   "ci",
-  "surface.claim",
+  "trust.bundle",
   "veritas-readiness",
   "human-attestation",
   "trace-link"

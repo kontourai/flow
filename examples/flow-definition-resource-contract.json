@@ -11,7 +11,7 @@
     }
   },
   "spec": {
-    "version": "1",
+    "version": "2",
     "steps": [
       { "id": "plan", "next": "implement" },
       { "id": "implement", "next": "verify" },
@@ -23,13 +23,14 @@
         "expects": [
           {
             "id": "acceptance-criteria",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true,
             "description": "Acceptance criteria are ready for implementation.",
-            "claim": {
-              "type": "builder.acceptance",
-              "subject": "resource-contract-flow",
-              "accepted_statuses": ["trusted", "reviewed"]
+            "bundle_claim": {
+              "claimType": "builder.acceptance",
+              "subjectType": "flow-step",
+              "subjectId": "resource-contract-flow",
+              "accepted_statuses": ["verified", "assumed"]
             }
           }
         ]
@@ -39,13 +40,14 @@
         "expects": [
           {
             "id": "scoped-diff",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true,
             "description": "The implementation diff is scoped to the planned change.",
-            "claim": {
-              "type": "implementation.scoped-diff",
-              "subject": "resource-contract-flow",
-              "accepted_statuses": ["trusted"]
+            "bundle_claim": {
+              "claimType": "implementation.scoped-diff",
+              "subjectType": "flow-step",
+              "subjectId": "resource-contract-flow",
+              "accepted_statuses": ["verified"]
             }
           }
         ]
@@ -55,13 +57,14 @@
         "expects": [
           {
             "id": "tests-passed",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true,
             "description": "Test results are ready for verification.",
-            "claim": {
-              "type": "quality.tests",
-              "subject": "resource-contract-flow",
-              "accepted_statuses": ["trusted"]
+            "bundle_claim": {
+              "claimType": "quality.tests",
+              "subjectType": "flow-step",
+              "subjectId": "resource-contract-flow",
+              "accepted_statuses": ["verified"]
             }
           }
         ]

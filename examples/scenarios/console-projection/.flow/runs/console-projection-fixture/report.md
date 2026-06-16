@@ -22,6 +22,6 @@
 ## Evidence Manifest
 
 - ev.scoped-diff: file for build-gate ()
-- ev.surface-tests: surface.claim for verify-gate ()
+- ev.surface-tests: trust.bundle for verify-gate ()
 - ev.veritas-readiness: veritas-readiness for verify-gate ()
 - ev.failed-tests: command for verify-gate ()

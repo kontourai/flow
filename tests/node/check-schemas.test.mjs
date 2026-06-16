@@ -86,9 +86,9 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(definitionSchema.$defs.gate.properties.route_back_policy);
   assert.equal(definitionSchema.$defs.gate.properties.route_back_policy.properties.allow_unknown_reasons.type, "boolean");
   assert.ok(evidenceSchema.$defs.evidence.properties.route_reason);
-  assert.ok(evidenceSchema.$defs.evidence.properties.trust_artifact);
-  assert.equal(evidenceSchema.$defs.evidence.properties.trust_artifact.additionalProperties, false);
-  assert.equal(evidenceSchema.$defs.evidence.properties.trust_artifact.properties.claims.items.additionalProperties, false);
+  assert.ok(evidenceSchema.$defs.evidence.properties.bundle);
+  assert.equal(evidenceSchema.$defs.evidence.properties.bundle.additionalProperties, true);
+  assert.ok(evidenceSchema.$defs.evidence.properties.bundle.properties.claims);
   assert.ok(evidenceSchema.$defs.evidence.properties.authority_traces);
   assert.ok(evidenceSchema.$defs.evidence.properties.classifier);
   assert.ok(runSchema.$defs.gate_outcome.properties.route_reason);

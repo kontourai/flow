@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1",
+  "evidence": [
+    {
+      "id": "ev.fail-claim-not-found",
+      "gate_id": "verify-gate",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
+      "status": "passed",
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "ci/main",
+        "claims": [
+          {
+            "id": "claim.wrong.type",
+            "subjectType": "flow-step",
+            "subjectId": "builder.verify",
+            "surface": "quality.developer-evidence",
+            "claimType": "wrong.claim-type",
+            "fieldOrBehavior": "testSuite",
+            "value": "all tests passed",
+            "createdAt": "2026-06-15T00:00:00.000Z",
+            "updatedAt": "2026-06-15T00:00:00.000Z"
+          }
+        ],
+        "evidence": [],
+        "policies": [],
+        "events": []
+      },
+      "attached_at": "2026-06-15T00:00:00.000Z"
+    }
+  ]
+}

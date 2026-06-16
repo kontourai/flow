@@ -91,10 +91,10 @@ test("Flow Markdown report escapes inline run data and normalizes line breaks", 
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
-            claim: { type: "quality.tests" }
+            bundle_claim: { claimType: "quality.tests" }
           }
         ]
       }

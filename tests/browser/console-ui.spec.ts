@@ -59,8 +59,8 @@ test("opens gate detail drawer when a step node is clicked", async ({ page }) =>
   // Checklist section
   await expect(drawer.locator(".checklist")).toBeVisible();
   await expect(drawer.locator(".checklist-item")).toHaveCount(1);
-  // Expectation: "Tests passed through Surface trust"
-  await expect(drawer.locator(".checklist")).toContainText("Tests passed through Surface trust");
+  // Expectation: "Tests passed through Hachure trust bundle"
+  await expect(drawer.locator(".checklist")).toContainText("Tests passed through Hachure trust bundle");
 
   // Evidence section with badges
   await expect(drawer.locator(".evidence-row")).not.toHaveCount(0);
