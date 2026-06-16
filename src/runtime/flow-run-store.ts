@@ -29,6 +29,8 @@ import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport } from "../reports/flow-reports.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
+import { buildTrustReport, validateTrustBundle } from "@kontourai/surface";
+import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 
 export async function ensureFlowLayout(cwd = process.cwd()) {
   const root = flowRoot(cwd);
@@ -46,15 +48,49 @@ export async function scaffoldDemoRun(cwd = process.cwd()) {
   const runId = "demo";
   if (existsSync(runDir(runId, cwd))) return { runId, created: false };
   const demoDir = path.join(root, "demo");
-  const claimFile = path.join(demoDir, "acceptance-claim.json");
-  await writeJson(claimFile, {
-    schema_version: FLOW_SCHEMA_VERSION,
-    artifact_type: "trust-report",
-    subject: "builder.plan",
-    producer: "demo/reviewer",
-    status: "trusted",
-    issued_at: new Date().toISOString(),
-    claims: [{ type: "builder.acceptance", subject: "builder.plan", status: "trusted" }]
+  const bundleFile = path.join(demoDir, "acceptance-bundle.json");
+  const now = new Date().toISOString();
+  await writeJson(bundleFile, {
+    schemaVersion: 3,
+    source: "demo/reviewer",
+    claims: [
+      {
+        id: "claim.builder.acceptance.demo",
+        subjectType: "flow-step",
+        subjectId: "builder.plan",
+        surface: "builder.acceptance",
+        claimType: "builder.acceptance",
+        fieldOrBehavior: "acceptanceCriteria",
+        value: "demo acceptance criteria reviewed",
+        createdAt: now,
+        updatedAt: now
+      }
+    ],
+    evidence: [
+      {
+        id: "evidence.builder.acceptance.demo",
+        claimId: "claim.builder.acceptance.demo",
+        evidenceType: "human_attestation",
+        method: "attestation",
+        sourceRef: "demo:reviewer",
+        excerptOrSummary: "Demo acceptance criteria reviewed and confirmed.",
+        observedAt: now,
+        collectedBy: "demo/reviewer"
+      }
+    ],
+    policies: [],
+    events: [
+      {
+        id: "event.builder.acceptance.demo.verified",
+        claimId: "claim.builder.acceptance.demo",
+        status: "verified",
+        actor: "demo/reviewer",
+        method: "attestation",
+        evidenceIds: ["evidence.builder.acceptance.demo"],
+        createdAt: now,
+        verifiedAt: now
+      }
+    ]
   });
   await startRun(path.join(root, "definitions", "agent-dev-flow.json"), {
     cwd,
@@ -64,8 +100,8 @@ export async function scaffoldDemoRun(cwd = process.cwd()) {
   await attachEvidence(runId, {
     cwd,
     gate: "plan-gate",
-    file: claimFile,
-    trustArtifact: true
+    file: bundleFile,
+    bundle: true
   });
   const result = await evaluateRun(runId, { cwd });
   return { runId, created: true, state: result.state };
@@ -157,51 +193,35 @@ export async function sha256File(file) {
   return createHash("sha256").update(data).digest("hex");
 }
 
-function firstArrayValue(value) {
-  return Array.isArray(value) ? value[0] : undefined;
-}
+/**
+ * Normalize and validate a Hachure TrustBundle, returning the bundle and its
+ * derived TrustReport. Throws on invalid bundle.
+ */
+export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report: any } {
+  if (!isObject(raw)) throw new Error("trust bundle must be a JSON object");
 
-export function normalizeTrustArtifact(artifact, fileSha256, now = new Date()) {
-  if (!isObject(artifact)) throw new Error("trust artifact must be a JSON object");
-  const artifactType = artifact.artifact_type ?? artifact.type;
-  if (!["trust-report", "trust-snapshot"].includes(artifactType)) throw new Error("trust artifact artifact_type must be trust-report or trust-snapshot");
-  const claim = firstArrayValue(artifact.claims) ?? artifact.claim;
-  if (!isObject(claim)) throw new Error("trust artifact must include a claim or claims[0]");
-  if (!isNonEmptyString(claim.type)) throw new Error("trust artifact claim.type is required");
-  const subject = claim.subject ?? artifact.subject;
-  if (subject !== undefined && !isNonEmptyString(subject)) throw new Error("trust artifact subject must be a non-empty string when present");
-  const expiresAt = artifact.expires_at ?? claim.expires_at;
-  const artifactStatus = claim.status ?? artifact.status ?? "trusted";
-  const stale = expiresAt ? Date.parse(expiresAt) <= now.getTime() : false;
-  const expectedSha256 = artifact.integrity?.sha256 ?? artifact.sha256;
-  const integrityVerified = !expectedSha256 || expectedSha256 === fileSha256;
-  const status = !integrityVerified ? "integrity_mismatch" : stale ? "stale" : artifactStatus;
-  const projection = {
-    schema_version: artifact.schema_version ?? FLOW_SCHEMA_VERSION,
-    artifact_type: artifactType,
-    subject,
-    producer: artifact.producer ?? claim.producer,
-    status: artifact.status ?? artifactStatus,
-    issued_at: artifact.issued_at ?? claim.issued_at,
-    expires_at: expiresAt,
-    authority_traces: artifact.authority_traces ?? claim.authority_traces ?? [],
-    claims: Array.isArray(artifact.claims) ? artifact.claims : [claim],
-    integrity: {
-      ...(isObject(artifact.integrity) ? artifact.integrity : {}),
-      verified: integrityVerified
-    }
-  };
-  return {
-    trust_artifact: projection,
-    claim: {
-      type: claim.type,
-      status,
-      ...(subject ? { subject } : {})
-    },
-    producer: projection.producer,
-    authority_traces: projection.authority_traces,
-    diagnostics: integrityVerified ? undefined : { trust_artifact: { reason: "integrity_mismatch", expected_sha256: expectedSha256, actual_sha256: fileSha256 } }
-  };
+  // JSON Schema validation via Hachure
+  const schemaResult = validateTrustBundleSchema(raw);
+  if (!schemaResult.valid) {
+    throw new Error(`trust bundle does not conform to Hachure schema: ${schemaResult.errors.slice(0, 3).join("; ")}`);
+  }
+
+  // Surface structural validation + status derivation
+  let bundle: any;
+  try {
+    bundle = validateTrustBundle(raw);
+  } catch (err: any) {
+    throw new Error(`trust bundle validation failed: ${err?.message ?? String(err)}`);
+  }
+
+  let bundle_report: any;
+  try {
+    bundle_report = buildTrustReport(bundle);
+  } catch (err: any) {
+    throw new Error(`trust bundle status derivation failed: ${err?.message ?? String(err)}`);
+  }
+
+  return { bundle, bundle_report };
 }
 
 export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
@@ -229,30 +249,18 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
     sha256: sourceSha256,
     attached_at: new Date().toISOString()
   };
-  if (options.trustArtifact) {
-    const artifact = await readJson(source);
-    const normalized = normalizeTrustArtifact(artifact, sourceSha256);
-    entry.kind = "surface.claim";
-    entry.requested_kind = "surface.claim";
-    entry.claim = normalized.claim;
-    entry.trust_artifact = normalized.trust_artifact;
-    if (normalized.producer) entry.producer = normalized.producer;
-    if (normalized.authority_traces?.length) {
-      entry.authority_traces = normalized.authority_traces;
-      entry.authority_trace = normalized.authority_traces[0];
-    }
-    if (normalized.diagnostics) entry.diagnostics = normalized.diagnostics;
+
+  // trust.bundle path: read the file as a Hachure TrustBundle, validate,
+  // derive statuses via Surface buildTrustReport, store bundle + report.
+  if (options.bundle || options.kind === "trust.bundle") {
+    const raw = await readJson(source);
+    const { bundle, bundle_report } = normalizeTrustBundle(raw);
+    entry.kind = "trust.bundle";
+    entry.requested_kind = "trust.bundle";
+    entry.bundle = bundle;
+    entry.bundle_report = bundle_report;
   }
-  if (options.claimType) {
-    entry.kind = "surface.claim";
-    entry.requested_kind = "surface.claim";
-    entry.claim = {
-      ...(entry.claim ?? {}),
-      type: options.claimType,
-      status: options.claimStatus ?? entry.claim?.status ?? "trusted"
-    };
-    if (options.claimSubject) entry.claim.subject = options.claimSubject;
-  }
+
   if (options.producer) entry.producer = options.producer;
   if (options.authorityTrace) entry.authority_trace = options.authorityTrace;
   if (options.route_reason) entry.route_reason = options.route_reason;

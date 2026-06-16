@@ -3,55 +3,107 @@
   "$id": "https://kontourai.io/schemas/flow-definition.schema.json",
   "title": "Flow Definition",
   "oneOf": [
-    { "$ref": "#/$defs/flat_definition" },
-    { "$ref": "#/$defs/resource_definition" }
+    {
+      "$ref": "#/$defs/flat_definition"
+    },
+    {
+      "$ref": "#/$defs/resource_definition"
+    }
   ],
   "$defs": {
     "flat_definition": {
       "type": "object",
-      "required": ["id", "version", "steps", "gates"],
+      "required": [
+        "id",
+        "version",
+        "steps",
+        "gates"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "$ref": "#/$defs/definition_name" },
-        "version": { "type": "string", "minLength": 1 },
-        "steps": { "$ref": "#/$defs/steps" },
-        "gates": { "$ref": "#/$defs/gates" }
+        "id": {
+          "$ref": "#/$defs/definition_name"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "$ref": "#/$defs/steps"
+        },
+        "gates": {
+          "$ref": "#/$defs/gates"
+        }
       }
     },
     "resource_definition": {
       "type": "object",
-      "required": ["apiVersion", "kind", "metadata", "spec"],
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
       "additionalProperties": false,
       "properties": {
-        "apiVersion": { "const": "flow.kontourai.io/v1alpha1" },
-        "kind": { "const": "FlowDefinition" },
-        "metadata": { "$ref": "#/$defs/resource_metadata" },
-        "spec": { "$ref": "#/$defs/resource_spec" }
+        "apiVersion": {
+          "const": "flow.kontourai.io/v1alpha1"
+        },
+        "kind": {
+          "const": "FlowDefinition"
+        },
+        "metadata": {
+          "$ref": "#/$defs/resource_metadata"
+        },
+        "spec": {
+          "$ref": "#/$defs/resource_spec"
+        }
       }
     },
     "resource_metadata": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "$ref": "#/$defs/definition_name" },
-        "labels": { "$ref": "#/$defs/resource_string_map" },
-        "annotations": { "$ref": "#/$defs/resource_string_map" }
+        "name": {
+          "$ref": "#/$defs/definition_name"
+        },
+        "labels": {
+          "$ref": "#/$defs/resource_string_map"
+        },
+        "annotations": {
+          "$ref": "#/$defs/resource_string_map"
+        }
       }
     },
     "resource_spec": {
       "type": "object",
-      "required": ["version", "steps", "gates"],
+      "required": [
+        "version",
+        "steps",
+        "gates"
+      ],
       "additionalProperties": false,
       "properties": {
-        "version": { "type": "string", "minLength": 1 },
-        "steps": { "$ref": "#/$defs/steps" },
-        "gates": { "$ref": "#/$defs/gates" }
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "$ref": "#/$defs/steps"
+        },
+        "gates": {
+          "$ref": "#/$defs/gates"
+        }
       }
     },
     "resource_string_map": {
       "type": "object",
-      "additionalProperties": { "type": "string" }
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "definition_name": {
       "type": "string",
@@ -60,28 +112,43 @@
     "steps": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/step" }
+      "items": {
+        "$ref": "#/$defs/step"
+      }
     },
     "gates": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": { "$ref": "#/$defs/gate" }
+      "additionalProperties": {
+        "$ref": "#/$defs/gate"
+      }
     },
     "step": {
       "type": "object",
-      "required": ["id", "next"],
+      "required": [
+        "id",
+        "next"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "$ref": "#/$defs/definition_name" },
+        "id": {
+          "$ref": "#/$defs/definition_name"
+        },
         "next": {
           "anyOf": [
-            { "$ref": "#/$defs/definition_name" },
-            { "type": "null" }
+            {
+              "$ref": "#/$defs/definition_name"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "needs": {
           "type": "array",
-          "items": { "$ref": "#/$defs/definition_name" },
+          "items": {
+            "$ref": "#/$defs/definition_name"
+          },
           "uniqueItems": true,
           "description": "Explicit predecessor step ids. When present, overrides the implicit predecessor derived from next-chain traversal. Must be acyclic."
         }
@@ -89,21 +156,31 @@
     },
     "gate": {
       "type": "object",
-      "required": ["step"],
+      "required": [
+        "step"
+      ],
       "additionalProperties": false,
       "properties": {
-        "step": { "$ref": "#/$defs/definition_name" },
+        "step": {
+          "$ref": "#/$defs/definition_name"
+        },
         "expects": {
           "type": "array",
-          "items": { "$ref": "#/$defs/expectation" },
+          "items": {
+            "$ref": "#/$defs/expectation"
+          },
           "uniqueItems": true
         },
         "on_route_back": {
           "type": "object",
           "propertyNames": {
             "anyOf": [
-              { "const": "default" },
-              { "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+              {
+                "const": "default"
+              },
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+              }
             ]
           },
           "additionalProperties": {
@@ -114,51 +191,104 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "max_attempts": { "type": "integer", "minimum": 1 },
+            "max_attempts": {
+              "type": "integer",
+              "minimum": 1
+            },
             "on_exceeded": {
               "type": "string",
               "pattern": "^(block|[a-z0-9][a-z0-9._-]*)$"
             },
-            "allow_unknown_reasons": { "type": "boolean" }
+            "allow_unknown_reasons": {
+              "type": "boolean"
+            }
           }
         }
       }
     },
     "expectation": {
       "type": "object",
-      "required": ["id", "kind", "required", "description"],
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "description"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "$ref": "#/$defs/definition_name" },
-        "kind": { "type": "string", "const": "surface.claim" },
-        "required": { "type": "boolean" },
-        "description": { "type": "string", "minLength": 1 },
-        "explore_hint": { "type": "string", "minLength": 1 },
-        "claim": { "$ref": "#/$defs/surface_claim_expectation" }
-      },
-      "if": {
-        "properties": { "kind": { "const": "surface.claim" } },
-        "required": ["kind"]
-      },
-      "then": { "required": ["claim"] }
-    },
-    "surface_claim_expectation": {
-      "type": "object",
-      "required": ["type"],
-      "additionalProperties": false,
-      "properties": {
-        "type": {
+        "id": {
+          "$ref": "#/$defs/definition_name"
+        },
+        "kind": {
+          "type": "string",
+          "const": "trust.bundle"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "description": {
           "type": "string",
           "minLength": 1
         },
-        "subject": {
+        "explore_hint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bundle_claim": {
+          "$ref": "#/$defs/trust_bundle_claim_selector"
+        }
+      },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "trust.bundle"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "bundle_claim"
+        ]
+      }
+    },
+    "trust_bundle_claim_selector": {
+      "type": "object",
+      "required": [
+        "claimType"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "claimType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subjectType": {
           "type": "string",
           "minLength": 1,
-          "examples": ["builder.shape", "builder.plan", "builder.verify", "builder.merge-ready"]
+          "examples": [
+            "flow-step",
+            "repo-surface",
+            "release-channel",
+            "artifact"
+          ]
+        },
+        "subjectId": {
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "builder.verify",
+            "example/repo:src/api"
+          ]
         },
         "accepted_statuses": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1,
           "uniqueItems": true
         }

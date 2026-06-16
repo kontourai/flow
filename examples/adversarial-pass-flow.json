@@ -1,6 +1,6 @@
 {
   "id": "adversarial-pass-flow",
-  "version": "1",
+  "version": "2",
   "steps": [
     { "id": "produce", "next": "adversarial-review" },
     { "id": "adversarial-review", "next": "resolve" },
@@ -12,24 +12,26 @@
       "expects": [
         {
           "id": "producer-output-claim",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "The producer output under adversarial review is available as trusted evidence.",
-          "claim": {
-            "type": "adversarial.producer-output",
-            "subject": "adversarial-pass.produce",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "adversarial.producer-output",
+            "subjectType": "flow-step",
+            "subjectId": "adversarial-pass.produce",
+            "accepted_statuses": ["verified"]
           }
         },
         {
           "id": "adversarial-review-claim",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "The adversarial review result is recorded as trusted per-round evidence.",
-          "claim": {
-            "type": "adversarial.review",
-            "subject": "adversarial-pass.review",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "adversarial.review",
+            "subjectType": "flow-step",
+            "subjectId": "adversarial-pass.review",
+            "accepted_statuses": ["verified"]
           }
         }
       ],
@@ -51,13 +53,14 @@
       "expects": [
         {
           "id": "resolution-claim",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "The resolved output addresses the adversarial review findings.",
-          "claim": {
-            "type": "adversarial.resolution",
-            "subject": "adversarial-pass.resolve",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "adversarial.resolution",
+            "subjectType": "flow-step",
+            "subjectId": "adversarial-pass.resolve",
+            "accepted_statuses": ["verified"]
           }
         }
       ]

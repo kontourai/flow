@@ -2,66 +2,77 @@
   "schema_version": "0.1",
   "evidence": [
     {
-      "id": "ev.pass-trust-snapshot",
+      "id": "ev.fail-disputed-claim",
       "gate_id": "verify-gate",
       "kind": "trust.bundle",
       "requested_kind": "trust.bundle",
       "status": "passed",
       "bundle": {
         "schemaVersion": 3,
-        "source": "ci/snapshot",
+        "source": "ci/disputed",
         "claims": [
           {
-            "id": "claim.quality.tests.snapshot",
+            "id": "claim.quality.tests.disputed",
             "subjectType": "flow-step",
             "subjectId": "builder.verify",
             "surface": "quality.developer-evidence",
             "claimType": "quality.tests",
             "fieldOrBehavior": "testSuite",
-            "value": "all tests passed (snapshot)",
+            "value": "all tests passed",
             "createdAt": "2026-06-15T00:00:00.000Z",
             "updatedAt": "2026-06-15T00:00:00.000Z",
             "impactLevel": "high",
-            "currentIntegrityRef": "commit:def456",
             "verificationPolicyId": "policy.software-evidence.commit"
           }
         ],
         "evidence": [
           {
-            "id": "evidence.quality.tests.snapshot.output",
-            "claimId": "claim.quality.tests.snapshot",
+            "id": "evidence.pass",
+            "claimId": "claim.quality.tests.disputed",
             "evidenceType": "test_output",
             "method": "validation",
-            "sourceRef": "ci:run-snapshot",
-            "excerptOrSummary": "Snapshot tests passed.",
+            "sourceRef": "ci:run-ok",
+            "excerptOrSummary": "All tests passed.",
             "observedAt": "2026-06-15T00:00:00.000Z",
-            "collectedBy": "ci/snapshot",
-            "integrityRef": "commit:def456"
+            "collectedBy": "ci/main",
+            "passing": true
+          },
+          {
+            "id": "evidence.conflict",
+            "claimId": "claim.quality.tests.disputed",
+            "evidenceType": "test_output",
+            "method": "validation",
+            "sourceRef": "ci:run-fail",
+            "excerptOrSummary": "Test suite failed on runner B.",
+            "observedAt": "2026-06-15T01:00:00.000Z",
+            "collectedBy": "ci/fork",
+            "passing": false,
+            "blocking": true
           }
         ],
         "policies": [
           {
             "id": "policy.software-evidence.commit",
-            "claimType": "software-evidence",
+            "claimType": "quality.tests",
             "requiredEvidence": ["test_output"],
             "requiredMethods": ["validation"],
             "requiresCorroboration": false,
-            "acceptanceCriteria": ["evidence check passes for the affected commit"],
-            "reviewAuthority": "repo policy",
+            "acceptanceCriteria": ["tests pass"],
+            "reviewAuthority": "ci",
             "validityRule": { "kind": "commit" },
-            "stalenessTriggers": ["new commit touches the same surface"],
+            "stalenessTriggers": [],
             "conflictRules": [],
             "impactLevel": "high"
           }
         ],
         "events": [
           {
-            "id": "event.quality.tests.snapshot.verified",
-            "claimId": "claim.quality.tests.snapshot",
+            "id": "event.verified",
+            "claimId": "claim.quality.tests.disputed",
             "status": "verified",
-            "actor": "ci/snapshot",
-            "method": "npm test --snapshots",
-            "evidenceIds": ["evidence.quality.tests.snapshot.output"],
+            "actor": "ci/main",
+            "method": "npm test",
+            "evidenceIds": ["evidence.pass"],
             "createdAt": "2026-06-15T00:00:00.000Z",
             "verifiedAt": "2026-06-15T00:00:00.000Z"
           }

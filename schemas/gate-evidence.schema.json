@@ -26,59 +26,45 @@
         "gate_id": { "type": "string" },
         "kind": {
           "type": "string",
-          "enum": ["command", "file", "ci", "surface.claim", "veritas-readiness", "human-attestation", "trace-link", "custom"]
+          "enum": ["command", "file", "ci", "trust.bundle", "veritas-readiness", "human-attestation", "trace-link", "custom"]
         },
         "requested_kind": { "type": "string" },
         "status": { "type": "string", "enum": ["passed", "failed", "unknown"] },
-        "claim": {
+        "bundle": {
           "type": "object",
+          "description": "A Hachure-format TrustBundle (schemaVersion 2 or 3). Present on trust.bundle evidence entries.",
           "additionalProperties": true,
-          "required": ["type", "status"],
+          "required": ["schemaVersion", "source", "claims", "evidence", "policies", "events"],
           "properties": {
-            "type": { "type": "string" },
-            "subject": { "type": "string" },
-            "status": { "type": "string" }
+            "schemaVersion": { "enum": [2, 3] },
+            "source": { "type": "string" },
+            "claims": { "type": "array", "items": { "type": "object" } },
+            "evidence": { "type": "array", "items": { "type": "object" } },
+            "policies": { "type": "array", "items": { "type": "object" } },
+            "events": { "type": "array", "items": { "type": "object" } }
           }
         },
-        "trust_artifact": {
+        "bundle_report": {
           "type": "object",
-          "required": ["schema_version", "artifact_type", "claims"],
-          "additionalProperties": false,
+          "description": "Surface TrustReport derived from the attached bundle (derived claim statuses).",
+          "additionalProperties": true,
           "properties": {
-            "schema_version": { "type": "string" },
-            "artifact_type": { "type": "string", "enum": ["trust-report", "trust-snapshot"] },
-            "subject": { "type": "string" },
-            "producer": { "type": "string" },
-            "status": { "type": "string" },
-            "issued_at": { "type": "string", "format": "date-time" },
-            "expires_at": { "type": "string", "format": "date-time" },
-            "authority_traces": { "type": "array", "items": { "type": "string" } },
+            "id": { "type": "string" },
+            "generatedAt": { "type": "string", "format": "date-time" },
             "claims": {
               "type": "array",
-              "minItems": 1,
               "items": {
                 "type": "object",
-                "required": ["type"],
-                "additionalProperties": false,
                 "properties": {
-                  "type": { "type": "string" },
-                  "subject": { "type": "string" },
-                  "status": { "type": "string" },
-                  "producer": { "type": "string" },
-                  "issued_at": { "type": "string", "format": "date-time" },
-                  "expires_at": { "type": "string", "format": "date-time" },
-                  "authority_traces": { "type": "array", "items": { "type": "string" } }
+                  "id": { "type": "string" },
+                  "claimType": { "type": "string" },
+                  "subjectType": { "type": "string" },
+                  "subjectId": { "type": "string" },
+                  "status": { "type": "string" }
                 }
               }
             },
-            "integrity": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "sha256": { "type": "string" },
-                "verified": { "type": "boolean" }
-              }
-            }
+            "summary": { "type": "object" }
           }
         },
         "producer": { "type": "string" },

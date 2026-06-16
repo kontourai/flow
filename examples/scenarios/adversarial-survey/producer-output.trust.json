@@ -1,12 +1,42 @@
 {
-  "schema_version": "0.1",
-  "artifact_type": "trust-report",
-  "subject": "adversarial-pass.produce",
-  "producer": "survey/adversarial-workbench",
-  "status": "trusted",
-  "issued_at": "2026-06-10T00:00:00.000Z",
-  "authority_traces": ["survey:review-session/rs-204"],
+  "schemaVersion": 3,
+  "source": "survey/adversarial-workbench",
   "claims": [
-    { "type": "adversarial.producer-output", "subject": "adversarial-pass.produce", "status": "trusted" }
+    {
+      "id": "claim.adversarial.producer-output",
+      "subjectType": "flow-step",
+      "subjectId": "adversarial-pass.produce",
+      "surface": "adversarial.survey",
+      "claimType": "adversarial.producer-output",
+      "fieldOrBehavior": "outputArtifact",
+      "value": "producer output submitted for adversarial review",
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "updatedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.adversarial.producer-output",
+      "claimId": "claim.adversarial.producer-output",
+      "evidenceType": "source_excerpt",
+      "method": "observation",
+      "sourceRef": "survey:session/rs-204",
+      "excerptOrSummary": "Producer submitted output artifact rs-204.",
+      "observedAt": "2026-06-10T00:00:00.000Z",
+      "collectedBy": "survey/adversarial-workbench"
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.adversarial.producer-output.verified",
+      "claimId": "claim.adversarial.producer-output",
+      "status": "verified",
+      "actor": "survey/adversarial-workbench",
+      "method": "observation",
+      "evidenceIds": ["evidence.adversarial.producer-output"],
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "verifiedAt": "2026-06-10T00:00:00.000Z"
+    }
   ]
 }

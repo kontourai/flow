@@ -15,14 +15,15 @@ const validTerminalStep: FlowStep = { id: "publish", next: null };
 
 const validExpectation: FlowExpectation = {
   id: "review-claim",
-  kind: "surface.claim",
+  kind: "trust.bundle",
   required: true,
   description: "Review claim is accepted.",
   explore_hint: "Attach this claim for review gates.",
-  claim: {
-    type: "review",
-    subject: "change",
-    accepted_statuses: ["accepted"]
+  bundle_claim: {
+    claimType: "review",
+    subjectType: "flow-step",
+    subjectId: "change",
+    accepted_statuses: ["verified"]
   }
 };
 
@@ -57,16 +58,13 @@ const gateWithId: FlowGate = { id: "verify-gate", step: "verify" };
 const definitionWithUnknownField: FlowDefinition = { id: "release-flow", version: "0.1", steps: [], gates: {}, owner: "team-a" };
 
 // @ts-expect-error FlowExpectation rejects unknown top-level authored fields.
-const expectationWithUnknownField: FlowExpectation = { id: "review-claim", kind: "surface.claim", required: true, description: "Review claim is accepted.", stale_requires: ["tests"] };
+const expectationWithUnknownField: FlowExpectation = { id: "review-claim", kind: "trust.bundle", required: true, description: "Review claim is accepted.", stale_requires: ["tests"] };
 
-// @ts-expect-error FlowExpectation requires a claim for surface.claim expectations.
-const expectationWithoutClaim: FlowExpectation = { id: "review-claim", kind: "surface.claim", required: true, description: "Review claim is accepted." };
+// @ts-expect-error FlowExpectation requires bundle_claim for trust.bundle expectations.
+const expectationWithoutBundleClaim: FlowExpectation = { id: "review-claim", kind: "trust.bundle", required: true, description: "Review claim is accepted." };
 
-// @ts-expect-error FlowExpectation claim.type is required.
-const expectationWithoutClaimType: FlowExpectation = { id: "review-claim", kind: "surface.claim", required: true, description: "Review claim is accepted.", claim: {} };
-
-// @ts-expect-error FlowExpectation claim rejects unknown authored claim fields.
-const expectationWithUnknownClaimField: FlowExpectation = { id: "review-claim", kind: "surface.claim", required: true, description: "Review claim is accepted.", claim: { type: "review", project_detail: true } };
+// @ts-expect-error FlowExpectation bundle_claim.claimType is required.
+const expectationWithoutClaimType: FlowExpectation = { id: "review-claim", kind: "trust.bundle", required: true, description: "Review claim is accepted.", bundle_claim: {} };
 
 // @ts-expect-error FlowGate route_back_policy rejects unknown authored policy fields.
 const gateWithUnknownRoutePolicyField: FlowGate = { step: "verify", route_back_policy: { max_attempts: 2, project_route_detail: true } };
@@ -77,13 +75,16 @@ const stepWithUnknownField: FlowStep = { id: "verify", label: "Verify" };
 // @ts-expect-error FlowStep next is required.
 const stepWithoutNext: FlowStep = { id: "verify" };
 
-const evidenceEntryWithOpenClaim: FlowEvidenceEntry = {
+const evidenceEntryWithOpenBundle: FlowEvidenceEntry = {
   id: "evidence-1",
-  kind: "surface.claim",
-  claim: {
-    type: "review",
-    custom_status: "accepted",
-    project_payload: { sha: "abc123" }
+  kind: "trust.bundle",
+  bundle: {
+    schemaVersion: 3,
+    source: "ci/main",
+    claims: [],
+    evidence: [],
+    policies: [],
+    events: []
   },
   project_evidence_detail: "kept-open"
 };
@@ -108,7 +109,7 @@ const releaseResultWithOpenReportData: ReleaseReadinessResult = {
   subject: "change-1",
   required_lanes: ["review"],
   lanes: [],
-  evidence: [evidenceEntryWithOpenClaim],
+  evidence: [evidenceEntryWithOpenBundle],
   report_data: {
     project_summary: "ready",
     nested: { lane_count: 1 }
@@ -157,9 +158,8 @@ void [
   gateWithUnknownField,
   definitionWithUnknownField,
   expectationWithUnknownField,
-  expectationWithoutClaim,
+  expectationWithoutBundleClaim,
   expectationWithoutClaimType,
-  expectationWithUnknownClaimField,
   gateWithUnknownRoutePolicyField,
   stepWithUnknownField,
   stepWithoutNext,

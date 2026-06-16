@@ -31,15 +31,14 @@
       "expects": [
         {
           "id": "missing-review",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Reviewer approval is attached.",
-          "claim": {
-            "type": "human.review",
-            "subject": "console-projection-fixture",
-            "accepted_statuses": [
-              "trusted"
-            ]
+          "bundle_claim": {
+            "claimType": "human.review",
+            "subjectType": "flow-step",
+            "subjectId": "console-projection-fixture",
+            "accepted_statuses": ["verified"]
           }
         }
       ]
@@ -49,15 +48,14 @@
       "expects": [
         {
           "id": "tests-passed",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
-          "description": "Tests passed through Surface trust.",
-          "claim": {
-            "type": "quality.tests",
-            "subject": "console-projection-fixture",
-            "accepted_statuses": [
-              "trusted"
-            ]
+          "description": "Tests passed through Hachure trust bundle.",
+          "bundle_claim": {
+            "claimType": "quality.tests",
+            "subjectType": "flow-step",
+            "subjectId": "console-projection-fixture",
+            "accepted_statuses": ["verified"]
           }
         }
       ],

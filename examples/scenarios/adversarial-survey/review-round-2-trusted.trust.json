@@ -1,12 +1,42 @@
 {
-  "schema_version": "0.1",
-  "artifact_type": "trust-report",
-  "subject": "adversarial-pass.review",
-  "producer": "survey/adversarial-workbench",
-  "status": "trusted",
-  "issued_at": "2026-06-10T00:25:00.000Z",
-  "authority_traces": ["survey:review-session/rs-204/round-2"],
+  "schemaVersion": 3,
+  "source": "survey/adversarial-reviewer",
   "claims": [
-    { "type": "adversarial.review", "subject": "adversarial-pass.review", "status": "trusted" }
+    {
+      "id": "claim.adversarial.review.round2",
+      "subjectType": "flow-step",
+      "subjectId": "adversarial-pass.review",
+      "surface": "adversarial.survey",
+      "claimType": "adversarial.review",
+      "fieldOrBehavior": "reviewResult",
+      "value": "adversarial review completed; no defects found in round 2",
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "updatedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.adversarial.review.round2",
+      "claimId": "claim.adversarial.review.round2",
+      "evidenceType": "human_attestation",
+      "method": "attestation",
+      "sourceRef": "survey:session/rs-204/round-2",
+      "excerptOrSummary": "Adversarial reviewer found no defects in round 2.",
+      "observedAt": "2026-06-10T00:00:00.000Z",
+      "collectedBy": "survey/adversarial-reviewer"
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.adversarial.review.round2.verified",
+      "claimId": "claim.adversarial.review.round2",
+      "status": "verified",
+      "actor": "survey/adversarial-reviewer",
+      "method": "attestation",
+      "evidenceIds": ["evidence.adversarial.review.round2"],
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "verifiedAt": "2026-06-10T00:00:00.000Z"
+    }
   ]
 }

@@ -113,8 +113,8 @@ function validateExpectation(expectation: any, path: string, diagnostics: FlowDi
   if (!isNonEmptyString(expectation.id)) {
     diagnostics.push(createDiagnostic("definition.expectation.id.required", `${path}.id`, "expectation.id must be a non-empty string"));
   }
-  if (expectation.kind !== "surface.claim") {
-    diagnostics.push(createDiagnostic("definition.expectation.kind.unsupported", `${path}.kind`, "expectation.kind must be surface.claim"));
+  if (expectation.kind !== "trust.bundle") {
+    diagnostics.push(createDiagnostic("definition.expectation.kind.unsupported", `${path}.kind`, "expectation.kind must be trust.bundle"));
   }
   if (typeof expectation.required !== "boolean") {
     diagnostics.push(createDiagnostic("definition.expectation.required.invalid", `${path}.required`, "expectation.required must be a boolean"));
@@ -122,24 +122,27 @@ function validateExpectation(expectation: any, path: string, diagnostics: FlowDi
   if (!isNonEmptyString(expectation.description)) {
     diagnostics.push(createDiagnostic("definition.expectation.description.required", `${path}.description`, "expectation.description must be a non-empty string"));
   }
-  if (expectation.kind === "surface.claim" && !isObject(expectation.claim)) {
-    diagnostics.push(createDiagnostic("definition.expectation.claim.required", `${path}.claim`, "surface.claim expectations must include claim"));
+  if (expectation.kind === "trust.bundle" && !isObject(expectation.bundle_claim)) {
+    diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.required", `${path}.bundle_claim`, "trust.bundle expectations must include bundle_claim"));
     return;
   }
-  if (!isObject(expectation.claim)) return;
-  if (!isNonEmptyString(expectation.claim.type)) {
-    diagnostics.push(createDiagnostic("definition.expectation.claim.type.required", `${path}.claim.type`, "surface.claim expectations must include claim.type"));
+  if (!isObject(expectation.bundle_claim)) return;
+  if (!isNonEmptyString(expectation.bundle_claim.claimType)) {
+    diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.claimType.required", `${path}.bundle_claim.claimType`, "trust.bundle expectations must include bundle_claim.claimType"));
   }
-  if (expectation.claim.subject !== undefined && !isNonEmptyString(expectation.claim.subject)) {
-    diagnostics.push(createDiagnostic("definition.expectation.claim.subject.invalid", `${path}.claim.subject`, "claim.subject must be a non-empty string when present"));
+  if (expectation.bundle_claim.subjectType !== undefined && !isNonEmptyString(expectation.bundle_claim.subjectType)) {
+    diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.subjectType.invalid", `${path}.bundle_claim.subjectType`, "bundle_claim.subjectType must be a non-empty string when present"));
   }
-  if (expectation.claim.accepted_statuses !== undefined) {
-    if (!Array.isArray(expectation.claim.accepted_statuses) || expectation.claim.accepted_statuses.length === 0) {
-      diagnostics.push(createDiagnostic("definition.expectation.claim.accepted_statuses.invalid", `${path}.claim.accepted_statuses`, "claim.accepted_statuses must be a non-empty array"));
+  if (expectation.bundle_claim.subjectId !== undefined && !isNonEmptyString(expectation.bundle_claim.subjectId)) {
+    diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.subjectId.invalid", `${path}.bundle_claim.subjectId`, "bundle_claim.subjectId must be a non-empty string when present"));
+  }
+  if (expectation.bundle_claim.accepted_statuses !== undefined) {
+    if (!Array.isArray(expectation.bundle_claim.accepted_statuses) || expectation.bundle_claim.accepted_statuses.length === 0) {
+      diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.accepted_statuses.invalid", `${path}.bundle_claim.accepted_statuses`, "bundle_claim.accepted_statuses must be a non-empty array"));
     } else {
-      expectation.claim.accepted_statuses.forEach((status, index) => {
+      expectation.bundle_claim.accepted_statuses.forEach((status, index) => {
         if (!isNonEmptyString(status)) {
-          diagnostics.push(createDiagnostic("definition.expectation.claim.accepted_status.invalid", `${path}.claim.accepted_statuses[${index}]`, "accepted status must be a non-empty string"));
+          diagnostics.push(createDiagnostic("definition.expectation.bundle_claim.accepted_status.invalid", `${path}.bundle_claim.accepted_statuses[${index}]`, "accepted status must be a non-empty string"));
         }
       });
     }

@@ -1,6 +1,6 @@
 {
   "id": "release-readiness-fixture-flow",
-  "version": "1",
+  "version": "2",
   "steps": [
     { "id": "release-readiness", "next": "release" },
     { "id": "release", "next": null }
@@ -11,13 +11,13 @@
       "expects": [
         {
           "id": "change-approval",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "required": true,
           "description": "Required change record approval",
-          "claim": {
-            "type": "release.change.approved",
-            "subject": "release:kai-2026.06",
-            "accepted_statuses": ["trusted"]
+          "bundle_claim": {
+            "claimType": "release.change.approved",
+            "subjectId": "release:kai-2026.06",
+            "accepted_statuses": ["verified"]
           }
         }
       ]

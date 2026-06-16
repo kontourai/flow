@@ -10,30 +10,97 @@
     {
       "id": "change.api-1847",
       "summary": "Add release lane evidence projection",
-      "files": ["src/index.ts", "src/cli.ts"]
+      "files": [
+        "src/index.ts",
+        "src/cli.ts"
+      ]
     },
     {
       "id": "change.docs-1847",
       "summary": "Document local Version Release Report generation",
-      "files": ["README.md"]
+      "files": [
+        "README.md"
+      ]
     }
   ],
-  "required_verification_evidence": ["ev.verify.tests", "ev.verify.schemas"],
+  "required_verification_evidence": [
+    "ev.verify.tests",
+    "ev.verify.schemas"
+  ],
   "verification_evidence": [
     {
       "id": "ev.verify.tests",
       "gate_id": "verify-gate",
-      "kind": "surface.claim",
-      "requested_kind": "surface.claim",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
       "status": "passed",
       "attached_at": "2026-06-07T20:00:00.000Z",
-      "claim": {
-        "type": "quality.tests",
-        "subject": "release:kai-2026.06",
-        "status": "trusted"
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "fixture/test-runner",
+        "claims": [
+          {
+            "id": "claim.quality.tests.release",
+            "subjectType": "release",
+            "subjectId": "release:kai-2026.06",
+            "surface": "quality.developer-evidence",
+            "claimType": "quality.tests",
+            "fieldOrBehavior": "testSuite",
+            "value": "all tests passed",
+            "createdAt": "2026-06-07T20:00:00.000Z",
+            "updatedAt": "2026-06-07T20:00:00.000Z"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "evidence.quality.tests.output",
+            "claimId": "claim.quality.tests.release",
+            "evidenceType": "test_output",
+            "method": "validation",
+            "sourceRef": "fixture:test-log",
+            "excerptOrSummary": "All tests passed.",
+            "observedAt": "2026-06-07T20:00:00.000Z",
+            "collectedBy": "fixture/test-runner"
+          }
+        ],
+        "policies": [],
+        "events": [
+          {
+            "id": "event.quality.tests.verified",
+            "claimId": "claim.quality.tests.release",
+            "status": "verified",
+            "actor": "fixture/test-runner",
+            "method": "npm test",
+            "evidenceIds": [
+              "evidence.quality.tests.output"
+            ],
+            "createdAt": "2026-06-07T20:00:00.000Z",
+            "verifiedAt": "2026-06-07T20:00:00.000Z"
+          }
+        ]
+      },
+      "bundle_report": {
+        "id": "report.quality.tests.release",
+        "generatedAt": "2026-06-07T20:00:00.000Z",
+        "claims": [
+          {
+            "id": "claim.quality.tests.release",
+            "claimType": "quality.tests",
+            "subjectType": "release",
+            "subjectId": "release:kai-2026.06",
+            "status": "verified"
+          }
+        ],
+        "summary": {
+          "overallStatus": "verified",
+          "verifiedCount": 1,
+          "totalCount": 1
+        }
       },
       "producer": "fixture/test-runner",
-      "authority_traces": ["fixture:local-tests"],
+      "authority_traces": [
+        "fixture:local-tests"
+      ],
       "external_links": [
         {
           "label": "test log",
@@ -53,17 +120,45 @@
     {
       "id": "ev.verify.schemas",
       "gate_id": "verify-gate",
-      "kind": "surface.claim",
-      "requested_kind": "surface.claim",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
       "status": "passed",
       "attached_at": "2026-06-07T20:01:00.000Z",
-      "claim": {
-        "type": "quality.schemas",
-        "subject": "release:kai-2026.06",
-        "status": "trusted"
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "fixture/schema-check",
+        "claims": [
+          {
+            "id": "claim.quality.schemas.release",
+            "subjectType": "release",
+            "subjectId": "release:kai-2026.06",
+            "surface": "quality.developer-evidence",
+            "claimType": "quality.schemas",
+            "fieldOrBehavior": "schemaValidation",
+            "value": "all schemas valid",
+            "createdAt": "2026-06-07T20:01:00.000Z",
+            "updatedAt": "2026-06-07T20:01:00.000Z"
+          }
+        ],
+        "evidence": [],
+        "policies": [],
+        "events": [
+          {
+            "id": "event.quality.schemas.verified",
+            "claimId": "claim.quality.schemas.release",
+            "status": "verified",
+            "actor": "fixture/schema-check",
+            "method": "schema validation",
+            "evidenceIds": [],
+            "createdAt": "2026-06-07T20:01:00.000Z",
+            "verifiedAt": "2026-06-07T20:01:00.000Z"
+          }
+        ]
       },
       "producer": "fixture/schema-check",
-      "authority_traces": ["fixture:schema-check"]
+      "authority_traces": [
+        "fixture:schema-check"
+      ]
     }
   ],
   "release_readiness": {
@@ -72,14 +167,20 @@
     "decision": "pass",
     "risk_class": "high",
     "subject": "kai-2026.06",
-    "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+    "required_lanes": [
+      "change-approval",
+      "deployment-window",
+      "freeze-state"
+    ],
     "lanes": [
       {
         "lane_id": "change-approval",
         "status": "pass",
         "summary": "Required change record approval satisfied",
         "required": true,
-        "evidence_refs": ["ev.release.change.CHG-1847"],
+        "evidence_refs": [
+          "ev.release.change.CHG-1847"
+        ],
         "external_links": [
           {
             "label": "change record",
@@ -100,7 +201,9 @@
         "status": "pass",
         "summary": "Deployment window is open satisfied",
         "required": true,
-        "evidence_refs": ["ev.release.deployment.production"],
+        "evidence_refs": [
+          "ev.release.deployment.production"
+        ],
         "external_links": [
           {
             "label": "deployment window",
@@ -120,7 +223,9 @@
         "status": "pass",
         "summary": "Release freeze is clear satisfied",
         "required": true,
-        "evidence_refs": ["ev.release.freeze.freeze-2026-06"],
+        "evidence_refs": [
+          "ev.release.freeze.freeze-2026-06"
+        ],
         "external_links": [
           {
             "label": "freeze state",
@@ -149,14 +254,20 @@
           "status": "trusted"
         },
         "producer": "release-fixture/change-management",
-        "authority_traces": ["fixture:change-management"]
+        "authority_traces": [
+          "fixture:change-management"
+        ]
       }
     ],
     "report_data": {
       "decision": "pass",
       "risk_class": "high",
       "subject": "kai-2026.06",
-      "required_lanes": ["change-approval", "deployment-window", "freeze-state"],
+      "required_lanes": [
+        "change-approval",
+        "deployment-window",
+        "freeze-state"
+      ],
       "external_links": [
         {
           "label": "change record",

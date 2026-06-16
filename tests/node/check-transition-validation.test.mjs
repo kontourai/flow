@@ -70,13 +70,44 @@ test("transition validator accepts Resource-shaped request definitions", async (
       {
         id: "ev.acceptance",
         gate_id: "plan-gate",
-        kind: "surface.claim",
-        requested_kind: "surface.claim",
+        kind: "trust.bundle",
+        requested_kind: "trust.bundle",
         status: "passed",
-        claim: {
-          type: "builder.acceptance",
-          subject: "resource-contract-flow",
-          status: "trusted"
+        bundle: {
+          schemaVersion: 3,
+          source: "ci/acceptance",
+          claims: [{
+            id: "claim.builder.acceptance",
+            subjectType: "flow-step",
+            subjectId: "resource-contract-flow",
+            surface: "builder.acceptance",
+            claimType: "builder.acceptance",
+            fieldOrBehavior: "acceptanceCriteria",
+            value: "criteria met",
+            createdAt: "2026-06-09T00:00:00.000Z",
+            updatedAt: "2026-06-09T00:00:00.000Z"
+          }],
+          evidence: [{
+            id: "evidence.builder.acceptance",
+            claimId: "claim.builder.acceptance",
+            evidenceType: "human_attestation",
+            method: "attestation",
+            sourceRef: "ci:acceptance",
+            excerptOrSummary: "Acceptance criteria met.",
+            observedAt: "2026-06-09T00:00:00.000Z",
+            collectedBy: "ci/acceptance"
+          }],
+          policies: [],
+          events: [{
+            id: "event.builder.acceptance.verified",
+            claimId: "claim.builder.acceptance",
+            status: "verified",
+            actor: "ci/acceptance",
+            method: "attestation",
+            evidenceIds: ["evidence.builder.acceptance"],
+            createdAt: "2026-06-09T00:00:00.000Z",
+            verifiedAt: "2026-06-09T00:00:00.000Z"
+          }]
         },
         attached_at: "2026-06-09T00:00:00.000Z"
       }
@@ -257,10 +288,10 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
-            claim: { type: "quality.tests", subject: "builder.verify", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "quality.tests", subjectId: "builder.verify", accepted_statuses: ["verified"] }
           }
         ],
         on_route_back: { missing_evidence: "verify", default: "plan" }
@@ -270,10 +301,10 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
         expects: [
           {
             id: "evidence-report",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Evidence report is ready.",
-            claim: { type: "flow.evidence-report", subject: "builder.evidence", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "flow.evidence-report", subjectId: "builder.evidence", accepted_statuses: ["verified"] }
           }
         ]
       },
@@ -282,10 +313,10 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
         expects: [
           {
             id: "published-change",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Change was published.",
-            claim: { type: "flow.published-change", subject: "builder.publish", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "flow.published-change", subjectId: "builder.publish", accepted_statuses: ["verified"] }
           }
         ]
       },
@@ -294,10 +325,10 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
         expects: [
           {
             id: "release-readiness",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Release readiness is complete.",
-            claim: { type: "release.readiness", subject: "builder.release", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "release.readiness", subjectId: "builder.release", accepted_statuses: ["verified"] }
           }
         ]
       },
@@ -306,10 +337,10 @@ test("transition validator blocks Builder Kit-like merge before verify evidence 
         expects: [
           {
             id: "merged-change",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Change was merged.",
-            claim: { type: "flow.merged-change", subject: "builder.merge", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "flow.merged-change", subjectId: "builder.merge", accepted_statuses: ["verified"] }
           }
         ]
       }

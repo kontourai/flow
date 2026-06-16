@@ -75,5 +75,10 @@
     "marked": "^16.4.2",
     "playwright": "^1.60.0",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@kontourai/surface": "^1.0.1",
+    "ajv": "^8.20.0",
+    "hachure": "^0.4.0"
   }
 }

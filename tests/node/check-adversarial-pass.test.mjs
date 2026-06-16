@@ -11,7 +11,7 @@ test("adversarial-pass reference definition validates and documents route target
 
   const gate = definition.gates["adversarial-review-gate"];
   assert.equal(gate.step, "adversarial-review");
-  assert.ok(gate.expects.every((expectation) => expectation.kind === "surface.claim"));
+  assert.ok(gate.expects.every((expectation) => expectation.kind === "trust.bundle"));
   assert.deepEqual(gate.on_route_back, {
     conclusion_defect: "produce",
     framing_defect: "produce",
@@ -67,8 +67,8 @@ test("adversarial-pass defect reasons route to documented targets and enforce pe
       {
         id: `ev.${routeReason}`,
         gate_id: gateId,
-        kind: "surface.claim",
-        requested_kind: "surface.claim",
+        kind: "trust.bundle",
+        requested_kind: "trust.bundle",
         status: "failed",
         route_reason: routeReason,
         attached_at: "2026-06-08T00:00:00.000Z"
@@ -112,8 +112,8 @@ test("adversarial-pass defect reasons route to documented targets and enforce pe
     {
       id: "ev.conclusion-budget",
       gate_id: gateId,
-      kind: "surface.claim",
-      requested_kind: "surface.claim",
+      kind: "trust.bundle",
+      requested_kind: "trust.bundle",
       status: "failed",
       route_reason: "conclusion_defect",
       attached_at: "2026-06-08T00:03:00.000Z"
@@ -198,8 +198,8 @@ test("adversarial-pass reference uses default route for omitted and unmapped fai
       {
         id: `ev.default-${name}`,
         gate_id: gateId,
-        kind: "surface.claim",
-        requested_kind: "surface.claim",
+        kind: "trust.bundle",
+        requested_kind: "trust.bundle",
         status: "failed",
         attached_at: "2026-06-08T00:00:00.000Z",
         ...routeFields
@@ -247,8 +247,8 @@ test("adversarial-pass reference counts persisted default route-backs against th
     {
       id: "ev.default-budget",
       gate_id: gateId,
-      kind: "surface.claim",
-      requested_kind: "surface.claim",
+      kind: "trust.bundle",
+      requested_kind: "trust.bundle",
       status: "failed",
       attached_at: "2026-06-08T00:03:00.000Z"
     }

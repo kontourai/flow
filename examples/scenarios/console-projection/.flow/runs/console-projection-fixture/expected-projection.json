@@ -10,16 +10,17 @@
         "build-gate": {
           "expects": [
             {
-              "claim": {
+              "bundle_claim": {
                 "accepted_statuses": [
-                  "trusted"
+                  "verified"
                 ],
-                "subject": "console-projection-fixture",
-                "type": "human.review"
+                "claimType": "human.review",
+                "subjectId": "console-projection-fixture",
+                "subjectType": "flow-step"
               },
               "description": "Reviewer approval is attached.",
               "id": "missing-review",
-              "kind": "surface.claim",
+              "kind": "trust.bundle",
               "required": true
             }
           ],
@@ -28,16 +29,17 @@
         "verify-gate": {
           "expects": [
             {
-              "claim": {
+              "bundle_claim": {
                 "accepted_statuses": [
-                  "trusted"
+                  "verified"
                 ],
-                "subject": "console-projection-fixture",
-                "type": "quality.tests"
+                "claimType": "quality.tests",
+                "subjectId": "console-projection-fixture",
+                "subjectType": "flow-step"
               },
-              "description": "Tests passed through Surface trust.",
+              "description": "Tests passed through Hachure trust bundle.",
               "id": "tests-passed",
-              "kind": "surface.claim",
+              "kind": "trust.bundle",
               "required": true
             }
           ],
@@ -216,13 +218,9 @@
       "trust_artifact": null
     },
     {
-      "authority_trace": "surface:claim:tests",
+      "authority_trace": null,
       "authority_traces": [],
-      "claim": {
-        "status": "trusted",
-        "subject": "console-projection-fixture",
-        "type": "quality.tests"
-      },
+      "claim": null,
       "diagnostics": null,
       "expectation_ids": [
         "tests-passed"
@@ -239,75 +237,110 @@
           "href": "surface://claims/quality.tests/console-projection-fixture",
           "id": "surface-claim-tests",
           "kind": "surface",
-          "label": "Surface test claim",
+          "label": "Surface trust bundle companion",
           "source": "evidence",
           "target_id": "ev.surface-tests"
         }
       ],
       "gate_id": "verify-gate",
       "id": "ev.surface-tests",
-      "kind": "surface.claim",
+      "kind": "trust.bundle",
       "original_path": null,
-      "producer": "surface/fixture",
+      "producer": "ci/fixture",
       "raw": {
         "attached_at": "2026-06-07T14:12:00.000Z",
-        "authority_trace": "surface:claim:tests",
-        "claim": {
-          "status": "trusted",
-          "subject": "console-projection-fixture",
-          "type": "quality.tests"
+        "bundle": {
+          "claims": [
+            {
+              "claimType": "quality.tests",
+              "createdAt": "2026-06-07T14:12:00.000Z",
+              "fieldOrBehavior": "testSuite",
+              "id": "claim.quality.tests.fixture",
+              "impactLevel": "high",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step",
+              "surface": "quality.developer-evidence",
+              "updatedAt": "2026-06-07T14:12:00.000Z",
+              "value": "fixture tests passed",
+              "verificationPolicyId": "policy.software-evidence.commit"
+            }
+          ],
+          "events": [
+            {
+              "actor": "ci/fixture",
+              "claimId": "claim.quality.tests.fixture",
+              "createdAt": "2026-06-07T14:12:00.000Z",
+              "evidenceIds": [
+                "evidence.tests.output"
+              ],
+              "id": "event.tests.verified",
+              "method": "npm test",
+              "status": "verified",
+              "verifiedAt": "2026-06-07T14:12:00.000Z"
+            }
+          ],
+          "evidence": [
+            {
+              "claimId": "claim.quality.tests.fixture",
+              "collectedBy": "ci/fixture",
+              "evidenceType": "test_output",
+              "excerptOrSummary": "All fixture tests passed.",
+              "id": "evidence.tests.output",
+              "method": "validation",
+              "observedAt": "2026-06-07T14:12:00.000Z",
+              "sourceRef": "ci:fixture-run"
+            }
+          ],
+          "policies": [
+            {
+              "acceptanceCriteria": [
+                "tests pass"
+              ],
+              "claimType": "software-evidence",
+              "conflictRules": [],
+              "id": "policy.software-evidence.commit",
+              "impactLevel": "high",
+              "requiredEvidence": [
+                "test_output"
+              ],
+              "requiredMethods": [
+                "validation"
+              ],
+              "requiresCorroboration": false,
+              "reviewAuthority": "ci",
+              "stalenessTriggers": [],
+              "validityRule": {
+                "kind": "commit"
+              }
+            }
+          ],
+          "schemaVersion": 3,
+          "source": "ci/fixture"
         },
         "expectation_ids": [
           "tests-passed"
         ],
         "gate_id": "verify-gate",
         "id": "ev.surface-tests",
-        "kind": "surface.claim",
-        "producer": "surface/fixture",
+        "kind": "trust.bundle",
+        "producer": "ci/fixture",
         "refs": [
           {
             "href": "surface://claims/quality.tests/console-projection-fixture",
             "id": "surface-claim-tests",
             "kind": "surface",
-            "label": "Surface test claim"
+            "label": "Surface trust bundle companion"
           }
         ],
-        "requested_kind": "surface.claim",
+        "requested_kind": "trust.bundle",
         "status": "passed",
-        "stored_path": "evidence/surface-tests.json",
-        "trust_artifact": {
-          "artifact_type": "trust-report",
-          "claims": [
-            {
-              "status": "trusted",
-              "subject": "console-projection-fixture",
-              "type": "quality.tests"
-            }
-          ],
-          "issued_at": "2026-06-07T14:12:00.000Z",
-          "producer": "surface/fixture",
-          "status": "trusted",
-          "subject": "console-projection-fixture"
-        }
+        "stored_path": "evidence/surface-tests.json"
       },
-      "requested_kind": "surface.claim",
+      "requested_kind": "trust.bundle",
       "route_reason": null,
       "status": "passed",
       "stored_path": "evidence/surface-tests.json",
-      "trust_artifact": {
-        "artifact_type": "trust-report",
-        "claims": [
-          {
-            "status": "trusted",
-            "subject": "console-projection-fixture",
-            "type": "quality.tests"
-          }
-        ],
-        "issued_at": "2026-06-07T14:12:00.000Z",
-        "producer": "surface/fixture",
-        "status": "trusted",
-        "subject": "console-projection-fixture"
-      }
+      "trust_artifact": null
     },
     {
       "authority_trace": null,
@@ -406,55 +439,43 @@
   ],
   "expectations": [
     {
-      "claim": {
-        "accepted_statuses": [
-          "trusted"
-        ],
-        "subject": "console-projection-fixture",
-        "type": "human.review"
-      },
       "description": "Reviewer approval is attached.",
       "gate_id": "build-gate",
       "id": "missing-review",
-      "kind": "surface.claim",
+      "kind": "trust.bundle",
       "raw": {
-        "claim": {
+        "bundle_claim": {
           "accepted_statuses": [
-            "trusted"
+            "verified"
           ],
-          "subject": "console-projection-fixture",
-          "type": "human.review"
+          "claimType": "human.review",
+          "subjectId": "console-projection-fixture",
+          "subjectType": "flow-step"
         },
         "description": "Reviewer approval is attached.",
         "id": "missing-review",
-        "kind": "surface.claim",
+        "kind": "trust.bundle",
         "required": true
       },
       "required": true
     },
     {
-      "claim": {
-        "accepted_statuses": [
-          "trusted"
-        ],
-        "subject": "console-projection-fixture",
-        "type": "quality.tests"
-      },
-      "description": "Tests passed through Surface trust.",
+      "description": "Tests passed through Hachure trust bundle.",
       "gate_id": "verify-gate",
       "id": "tests-passed",
-      "kind": "surface.claim",
+      "kind": "trust.bundle",
       "raw": {
-        "claim": {
+        "bundle_claim": {
           "accepted_statuses": [
-            "trusted"
+            "verified"
           ],
-          "subject": "console-projection-fixture",
-          "type": "quality.tests"
+          "claimType": "quality.tests",
+          "subjectId": "console-projection-fixture",
+          "subjectType": "flow-step"
         },
-        "description": "Tests passed through Surface trust.",
+        "description": "Tests passed through Hachure trust bundle.",
         "id": "tests-passed",
-        "kind": "surface.claim",
+        "kind": "trust.bundle",
         "required": true
       },
       "required": true
@@ -509,7 +530,7 @@
       "href": "surface://claims/quality.tests/console-projection-fixture",
       "id": "surface-claim-tests",
       "kind": "surface",
-      "label": "Surface test claim",
+      "label": "Surface trust bundle companion",
       "source": "evidence",
       "target_id": "ev.surface-tests"
     },
@@ -628,27 +649,21 @@
       ],
       "expectations": [
         {
-          "claim": {
-            "accepted_statuses": [
-              "trusted"
-            ],
-            "subject": "console-projection-fixture",
-            "type": "human.review"
-          },
           "description": "Reviewer approval is attached.",
           "id": "missing-review",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "raw": {
-            "claim": {
+            "bundle_claim": {
               "accepted_statuses": [
-                "trusted"
+                "verified"
               ],
-              "subject": "console-projection-fixture",
-              "type": "human.review"
+              "claimType": "human.review",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step"
             },
             "description": "Reviewer approval is attached.",
             "id": "missing-review",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true
           },
           "required": true
@@ -669,16 +684,17 @@
       "raw": {
         "expects": [
           {
-            "claim": {
+            "bundle_claim": {
               "accepted_statuses": [
-                "trusted"
+                "verified"
               ],
-              "subject": "console-projection-fixture",
-              "type": "human.review"
+              "claimType": "human.review",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step"
             },
             "description": "Reviewer approval is attached.",
             "id": "missing-review",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true
           }
         ],
@@ -693,13 +709,9 @@
       "attempt": 1,
       "evidence": [
         {
-          "authority_trace": "surface:claim:tests",
+          "authority_trace": null,
           "authority_traces": [],
-          "claim": {
-            "status": "trusted",
-            "subject": "console-projection-fixture",
-            "type": "quality.tests"
-          },
+          "claim": null,
           "diagnostics": null,
           "expectation_ids": [
             "tests-passed"
@@ -716,75 +728,110 @@
               "href": "surface://claims/quality.tests/console-projection-fixture",
               "id": "surface-claim-tests",
               "kind": "surface",
-              "label": "Surface test claim",
+              "label": "Surface trust bundle companion",
               "source": "evidence",
               "target_id": "ev.surface-tests"
             }
           ],
           "gate_id": "verify-gate",
           "id": "ev.surface-tests",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "original_path": null,
-          "producer": "surface/fixture",
+          "producer": "ci/fixture",
           "raw": {
             "attached_at": "2026-06-07T14:12:00.000Z",
-            "authority_trace": "surface:claim:tests",
-            "claim": {
-              "status": "trusted",
-              "subject": "console-projection-fixture",
-              "type": "quality.tests"
+            "bundle": {
+              "claims": [
+                {
+                  "claimType": "quality.tests",
+                  "createdAt": "2026-06-07T14:12:00.000Z",
+                  "fieldOrBehavior": "testSuite",
+                  "id": "claim.quality.tests.fixture",
+                  "impactLevel": "high",
+                  "subjectId": "console-projection-fixture",
+                  "subjectType": "flow-step",
+                  "surface": "quality.developer-evidence",
+                  "updatedAt": "2026-06-07T14:12:00.000Z",
+                  "value": "fixture tests passed",
+                  "verificationPolicyId": "policy.software-evidence.commit"
+                }
+              ],
+              "events": [
+                {
+                  "actor": "ci/fixture",
+                  "claimId": "claim.quality.tests.fixture",
+                  "createdAt": "2026-06-07T14:12:00.000Z",
+                  "evidenceIds": [
+                    "evidence.tests.output"
+                  ],
+                  "id": "event.tests.verified",
+                  "method": "npm test",
+                  "status": "verified",
+                  "verifiedAt": "2026-06-07T14:12:00.000Z"
+                }
+              ],
+              "evidence": [
+                {
+                  "claimId": "claim.quality.tests.fixture",
+                  "collectedBy": "ci/fixture",
+                  "evidenceType": "test_output",
+                  "excerptOrSummary": "All fixture tests passed.",
+                  "id": "evidence.tests.output",
+                  "method": "validation",
+                  "observedAt": "2026-06-07T14:12:00.000Z",
+                  "sourceRef": "ci:fixture-run"
+                }
+              ],
+              "policies": [
+                {
+                  "acceptanceCriteria": [
+                    "tests pass"
+                  ],
+                  "claimType": "software-evidence",
+                  "conflictRules": [],
+                  "id": "policy.software-evidence.commit",
+                  "impactLevel": "high",
+                  "requiredEvidence": [
+                    "test_output"
+                  ],
+                  "requiredMethods": [
+                    "validation"
+                  ],
+                  "requiresCorroboration": false,
+                  "reviewAuthority": "ci",
+                  "stalenessTriggers": [],
+                  "validityRule": {
+                    "kind": "commit"
+                  }
+                }
+              ],
+              "schemaVersion": 3,
+              "source": "ci/fixture"
             },
             "expectation_ids": [
               "tests-passed"
             ],
             "gate_id": "verify-gate",
             "id": "ev.surface-tests",
-            "kind": "surface.claim",
-            "producer": "surface/fixture",
+            "kind": "trust.bundle",
+            "producer": "ci/fixture",
             "refs": [
               {
                 "href": "surface://claims/quality.tests/console-projection-fixture",
                 "id": "surface-claim-tests",
                 "kind": "surface",
-                "label": "Surface test claim"
+                "label": "Surface trust bundle companion"
               }
             ],
-            "requested_kind": "surface.claim",
+            "requested_kind": "trust.bundle",
             "status": "passed",
-            "stored_path": "evidence/surface-tests.json",
-            "trust_artifact": {
-              "artifact_type": "trust-report",
-              "claims": [
-                {
-                  "status": "trusted",
-                  "subject": "console-projection-fixture",
-                  "type": "quality.tests"
-                }
-              ],
-              "issued_at": "2026-06-07T14:12:00.000Z",
-              "producer": "surface/fixture",
-              "status": "trusted",
-              "subject": "console-projection-fixture"
-            }
+            "stored_path": "evidence/surface-tests.json"
           },
-          "requested_kind": "surface.claim",
+          "requested_kind": "trust.bundle",
           "route_reason": null,
           "status": "passed",
           "stored_path": "evidence/surface-tests.json",
-          "trust_artifact": {
-            "artifact_type": "trust-report",
-            "claims": [
-              {
-                "status": "trusted",
-                "subject": "console-projection-fixture",
-                "type": "quality.tests"
-              }
-            ],
-            "issued_at": "2026-06-07T14:12:00.000Z",
-            "producer": "surface/fixture",
-            "status": "trusted",
-            "subject": "console-projection-fixture"
-          }
+          "trust_artifact": null
         },
         {
           "authority_trace": null,
@@ -936,27 +983,21 @@
       ],
       "expectations": [
         {
-          "claim": {
-            "accepted_statuses": [
-              "trusted"
-            ],
-            "subject": "console-projection-fixture",
-            "type": "quality.tests"
-          },
-          "description": "Tests passed through Surface trust.",
+          "description": "Tests passed through Hachure trust bundle.",
           "id": "tests-passed",
-          "kind": "surface.claim",
+          "kind": "trust.bundle",
           "raw": {
-            "claim": {
+            "bundle_claim": {
               "accepted_statuses": [
-                "trusted"
+                "verified"
               ],
-              "subject": "console-projection-fixture",
-              "type": "quality.tests"
+              "claimType": "quality.tests",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step"
             },
-            "description": "Tests passed through Surface trust.",
+            "description": "Tests passed through Hachure trust bundle.",
             "id": "tests-passed",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true
           },
           "required": true
@@ -981,16 +1022,17 @@
       "raw": {
         "expects": [
           {
-            "claim": {
+            "bundle_claim": {
               "accepted_statuses": [
-                "trusted"
+                "verified"
               ],
-              "subject": "console-projection-fixture",
-              "type": "quality.tests"
+              "claimType": "quality.tests",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step"
             },
-            "description": "Tests passed through Surface trust.",
+            "description": "Tests passed through Hachure trust bundle.",
             "id": "tests-passed",
-            "kind": "surface.claim",
+            "kind": "trust.bundle",
             "required": true
           }
         ],

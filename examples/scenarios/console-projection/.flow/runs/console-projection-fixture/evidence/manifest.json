@@ -29,31 +29,79 @@
     {
       "id": "ev.surface-tests",
       "gate_id": "verify-gate",
-      "kind": "surface.claim",
-      "requested_kind": "surface.claim",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
       "status": "passed",
       "expectation_ids": [
         "tests-passed"
       ],
-      "producer": "surface/fixture",
-      "authority_trace": "surface:claim:tests",
+      "producer": "ci/fixture",
       "stored_path": "evidence/surface-tests.json",
-      "claim": {
-        "type": "quality.tests",
-        "subject": "console-projection-fixture",
-        "status": "trusted"
-      },
-      "trust_artifact": {
-        "artifact_type": "trust-report",
-        "subject": "console-projection-fixture",
-        "producer": "surface/fixture",
-        "status": "trusted",
-        "issued_at": "2026-06-07T14:12:00.000Z",
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "ci/fixture",
         "claims": [
           {
-            "type": "quality.tests",
-            "subject": "console-projection-fixture",
-            "status": "trusted"
+            "id": "claim.quality.tests.fixture",
+            "subjectType": "flow-step",
+            "subjectId": "console-projection-fixture",
+            "surface": "quality.developer-evidence",
+            "claimType": "quality.tests",
+            "fieldOrBehavior": "testSuite",
+            "value": "fixture tests passed",
+            "createdAt": "2026-06-07T14:12:00.000Z",
+            "updatedAt": "2026-06-07T14:12:00.000Z",
+            "impactLevel": "high",
+            "verificationPolicyId": "policy.software-evidence.commit"
+          }
+        ],
+        "evidence": [
+          {
+            "id": "evidence.tests.output",
+            "claimId": "claim.quality.tests.fixture",
+            "evidenceType": "test_output",
+            "method": "validation",
+            "sourceRef": "ci:fixture-run",
+            "excerptOrSummary": "All fixture tests passed.",
+            "observedAt": "2026-06-07T14:12:00.000Z",
+            "collectedBy": "ci/fixture"
+          }
+        ],
+        "policies": [
+          {
+            "id": "policy.software-evidence.commit",
+            "claimType": "software-evidence",
+            "requiredEvidence": [
+              "test_output"
+            ],
+            "requiredMethods": [
+              "validation"
+            ],
+            "requiresCorroboration": false,
+            "acceptanceCriteria": [
+              "tests pass"
+            ],
+            "reviewAuthority": "ci",
+            "validityRule": {
+              "kind": "commit"
+            },
+            "stalenessTriggers": [],
+            "conflictRules": [],
+            "impactLevel": "high"
+          }
+        ],
+        "events": [
+          {
+            "id": "event.tests.verified",
+            "claimId": "claim.quality.tests.fixture",
+            "status": "verified",
+            "actor": "ci/fixture",
+            "method": "npm test",
+            "evidenceIds": [
+              "evidence.tests.output"
+            ],
+            "createdAt": "2026-06-07T14:12:00.000Z",
+            "verifiedAt": "2026-06-07T14:12:00.000Z"
           }
         ]
       },
@@ -61,7 +109,7 @@
         {
           "id": "surface-claim-tests",
           "kind": "surface",
-          "label": "Surface test claim",
+          "label": "Surface trust bundle companion",
           "href": "surface://claims/quality.tests/console-projection-fixture"
         }
       ],

@@ -52,7 +52,7 @@ try {
   const drawer = page.locator('.drawer');
   await drawer.waitFor({ state: "visible" });
   await assert.match(await drawer.textContent(), /verify-gate/);
-  await assert.match(await drawer.textContent(), /Tests passed through Surface trust/);
+  await assert.match(await drawer.textContent(), /Tests passed through Hachure trust bundle/);
 
   // Checklist has items
   assert.ok((await drawer.locator(".checklist-item").count()) >= 1);

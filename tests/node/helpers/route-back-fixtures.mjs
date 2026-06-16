@@ -3,7 +3,7 @@ import { FLOW_SCHEMA_VERSION } from "../../../dist/index.js";
 export function routeBackDefinition(overrides = {}) {
   return {
     id: "route-back-fixture",
-    version: "1",
+    version: "2",
     steps: [
       { id: "plan", "next": "implement" },
       { id: "implement", "next": "verify" },
@@ -16,13 +16,14 @@ export function routeBackDefinition(overrides = {}) {
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
-            claim: {
-              type: "quality.tests",
-              subject: "builder.verify",
-              accepted_statuses: ["trusted"]
+            bundle_claim: {
+              claimType: "quality.tests",
+              subjectType: "flow-step",
+              subjectId: "builder.verify",
+              accepted_statuses: ["verified"]
             }
           }
         ],
@@ -52,10 +53,10 @@ export function failedEvidence(fields = {}) {
   return {
     id: fields.id ?? "ev.failed",
     gate_id: "verify-gate",
-    kind: "surface.claim",
-    requested_kind: "surface.claim",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
     status: "failed",
-    attached_at: "2026-05-26T00:00:00.000Z",
+    attached_at: "2026-06-15T00:00:00.000Z",
     ...fields
   };
 }

@@ -17,8 +17,6 @@ import type {
   VersionReleaseReportGap,
   VersionReleaseReportInput
 } from "../contracts/flow-types.js";
-import { defaultFlowConfig } from "../config/flow-config.js";
-import { evidenceMatchesExpectation } from "../gates/flow-gates.js";
 import { cloneJson, isObject, markdownText } from "../shared/flow-utils.js";
 
 function releaseStringArray(value) {
@@ -205,7 +203,6 @@ function releaseRequiredLanes(policy: ReleaseReadinessPolicy, riskClass: string)
 function laneCandidateEvidence(evidence: FlowEvidenceEntry[], lane: ReleaseLanePolicy) {
   const adapterIds = releaseStringArray(lane.adapter_ids);
   return evidence.filter((entry) => {
-    if (entry.kind !== "surface.claim" && entry.requested_kind !== "surface.claim") return false;
     if (adapterIds.length && !adapterIds.includes(String(entry.source_adapter_id ?? ""))) return false;
     if (entry.claim?.type !== lane.claim.type) return false;
     if (lane.claim.subject && entry.claim?.subject !== lane.claim.subject) return false;
@@ -223,18 +220,11 @@ function collectReleaseRefs(evidence: FlowEvidenceEntry[]) {
 function evaluateReleaseLane(
   lane: ReleaseLanePolicy,
   required: boolean,
-  evidence: FlowEvidenceEntry[],
-  config: MutableRecord
+  evidence: FlowEvidenceEntry[]
 ): ReleaseLaneOutcome {
   const candidates = laneCandidateEvidence(evidence, lane);
-  const expectation = {
-    id: lane.id,
-    kind: "surface.claim",
-    required,
-    description: lane.description,
-    claim: lane.claim
-  };
-  const match = candidates.find((entry) => evidenceMatchesExpectation(entry, expectation, config));
+  const acceptedStatuses = releaseStringArray(lane.claim.accepted_statuses ?? ["trusted"]);
+  const match = candidates.find((entry) => acceptedStatuses.includes(String(entry.claim?.status ?? "")));
   const refs = collectReleaseRefs(candidates);
   const status: ReleaseLaneStatus = !required ? "not_required" : match ? "pass" : candidates.length ? "hold" : "not_verified";
   return {
@@ -254,14 +244,13 @@ export function evaluateReleaseReadiness(policy: ReleaseReadinessPolicy, options
   if (!riskClass) throw new Error("release readiness requires riskClass");
   const subject = options.subject ?? "release";
   const evidence: FlowEvidenceEntry[] = options.evidence ?? [];
-  const config = options.config ?? defaultFlowConfig();
   const requiredLanes = releaseRequiredLanes(policy, riskClass);
   const laneIds = new Set(policy.lanes.map((lane) => lane.id));
   for (const laneId of requiredLanes) {
     if (!laneIds.has(laneId)) throw new Error(`risk class ${riskClass} requires unknown release lane: ${laneId}`);
   }
 
-  const lanes = policy.lanes.map((lane) => evaluateReleaseLane(lane, requiredLanes.includes(lane.id), evidence, config));
+  const lanes = policy.lanes.map((lane) => evaluateReleaseLane(lane, requiredLanes.includes(lane.id), evidence));
   const decision: ReleaseReadinessDecision = lanes.some((lane) => lane.required && lane.status !== "pass") ? "hold" : "pass";
   const allRefs = collectReleaseRefs(evidence);
   return {

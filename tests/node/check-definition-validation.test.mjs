@@ -23,11 +23,11 @@ import { routeBackDefinition } from "./helpers/route-back-fixtures.mjs";
 test("example definition matches the v0.1 runtime shape", async () => {
   const definition = await json("examples/agent-dev-flow.json");
   assert.equal(definition.id, "agent-dev-flow");
-  assert.equal(definition.version, "1");
+  assert.equal(definition.version, "2");
   assert.deepEqual(definition.steps.map((step) => step.id), ["plan", "implement", "verify", "publish"]);
-  assert.equal(definition.gates["verify-gate"].expects[0].kind, "surface.claim");
-  assert.equal(definition.gates["verify-gate"].expects[0].claim.subject, "builder.verify");
-  assert.notEqual(definition.gates["verify-gate"].expects[0].kind, "surface-claim");
+  assert.equal(definition.gates["verify-gate"].expects[0].kind, "trust.bundle");
+  assert.equal(definition.gates["verify-gate"].expects[0].bundle_claim.subjectId, "builder.verify");
+  assert.notEqual(definition.gates["verify-gate"].expects[0].kind, "trust-bundle");
   assert.deepEqual(definition.gates["verify-gate"].on_route_back, {
     implementation_defect: "implement",
     plan_gap: "plan",
@@ -45,7 +45,7 @@ test("Resource-shaped definition normalizes for runtime validation", async () =>
 
   assert.deepEqual(normalized, {
     id: "resource-contract-flow",
-    version: "1",
+    version: "2",
     steps: definition.spec.steps,
     gates: definition.spec.gates
   });
@@ -74,7 +74,7 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
 
   assert.equal(started.state.definition_id, "resource-contract-flow");
   assert.equal(storedDefinition.id, "resource-contract-flow");
-  assert.equal(storedDefinition.version, "1");
+  assert.equal(storedDefinition.version, "2");
   assert.equal(storedDefinition.apiVersion, undefined);
   assert.equal(storedState.definition_id, "resource-contract-flow");
   assert.equal(storedState.schema_version, FLOW_SCHEMA_VERSION);
@@ -85,7 +85,7 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
     schema_version: FLOW_SCHEMA_VERSION,
     run_id: "resource-contract-smoke",
     definition_id: "resource-contract-flow",
-    definition_version: "1",
+    definition_version: "2",
     evidence: []
   });
   assert.equal(storedReport.run_id, storedState.run_id);
@@ -175,10 +175,10 @@ test("flat definitions without route-back fields remain valid", () => {
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
-            claim: { type: "quality.tests", subject: "flat-flow", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "quality.tests", subjectId: "flat-flow", accepted_statuses: ["verified"] }
           }
         ]
       }
@@ -229,17 +229,17 @@ test("diagnostic validation preserves valid Builder Kit and flat definitions", a
         expects: [
           {
             id: "tests-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Tests passed.",
-            claim: { type: "quality.tests", subject: "flat-flow", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "quality.tests", subjectId: "flat-flow", accepted_statuses: ["verified"] }
           },
           {
             id: "lint-passed",
-            kind: "surface.claim",
+            kind: "trust.bundle",
             required: true,
             description: "Lint passed.",
-            claim: { type: "quality.lint", subject: "flat-flow", accepted_statuses: ["trusted"] }
+            bundle_claim: { claimType: "quality.lint", subjectId: "flat-flow", accepted_statuses: ["verified"] }
           }
         ]
       }
@@ -257,22 +257,22 @@ test("diagnostic validation reports invalid claim expectations and route targets
   const result = validateDefinitionWithDiagnostics(definition);
   assert.equal(result.valid, false);
   assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [
-    "definition.expectation.claim.required",
-    "definition.expectation.claim.type.required",
-    "definition.expectation.claim.accepted_statuses.invalid",
+    "definition.expectation.bundle_claim.required",
+    "definition.expectation.bundle_claim.claimType.required",
+    "definition.expectation.bundle_claim.accepted_statuses.invalid",
     "definition.expectation.kind.unsupported",
     "definition.gate.route_back.target.unknown",
     "definition.gate.route_back_policy.on_exceeded.unknown"
   ]);
   assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.path), [
-    "$.gates.verify-gate.expects[0].claim",
-    "$.gates.verify-gate.expects[1].claim.type",
-    "$.gates.verify-gate.expects[2].claim.accepted_statuses",
+    "$.gates.verify-gate.expects[0].bundle_claim",
+    "$.gates.verify-gate.expects[1].bundle_claim.claimType",
+    "$.gates.verify-gate.expects[2].bundle_claim.accepted_statuses",
     "$.gates.verify-gate.expects[3].kind",
     "$.gates.verify-gate.on_route_back.implementation_defect",
     "$.gates.verify-gate.route_back_policy.on_exceeded"
   ]);
-  assert.throws(() => validateDefinition(definition), /surface\.claim expectations must include claim/);
+  assert.throws(() => validateDefinition(definition), /trust\.bundle expectations must include bundle_claim/);
 });
 
 test("route-back definitions accept block on_exceeded and open route reasons", () => {

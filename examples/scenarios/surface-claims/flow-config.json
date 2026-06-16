@@ -1,13 +1,5 @@
 {
   "schema_version": "0.1",
-  "trusted_producers": {
-    "quality.tests": {
-      "producers": [
-        "surface-fixture/ci"
-      ],
-      "authority_traces": [
-        "project-policy:main"
-      ]
-    }
-  }
+  "trusted_producers": {},
+  "gate_overrides": {}
 }
