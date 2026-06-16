@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0](https://github.com/kontourai/flow/compare/v1.2.0...v1.3.0) (2026-06-16)
+
+
+### Features
+
+* gate evidence accepts trust.bundle (Hachure open format), replacing surface.claim ([#84](https://github.com/kontourai/flow/issues/84)) ([1e372f2](https://github.com/kontourai/flow/commit/1e372f2f13fc058977821c74a6c01fb5dc6bf62c))
+* hard-remove flow validate-kit alias ([e2ce388](https://github.com/kontourai/flow/commit/e2ce3886ddb2f18af9c98e9f5b82c3ba0004685a))
+* hard-remove flow validate-kit alias ([bea6181](https://github.com/kontourai/flow/commit/bea6181c22e6a8798e72cdd0ac0c69e8465f6b91))
+
 ## [1.2.0](https://github.com/kontourai/flow/compare/v1.1.0...v1.2.0) (2026-06-15)
 
 
