@@ -44,6 +44,30 @@ green ⇒ run green" in Flow — that is claim logic, which Surface owns. The ex
 shape depends on the answer to the Surface open question (rollup scope +
 propagation); block this sub-task on that answer.
 
+> **UNBLOCKED 2026-06-16 — Surface open question answered (see
+> `surface.md` Findings + design Decision #6).** Surface rollups are
+> **strictly intra-bundle**; there is no bundle-reference concept in Surface.
+> Concrete shape for this sub-task:
+> 1. Emit the per-stage `stage X passed` member claims **and** a `claimGroup`
+>    (the `run verified` group, `rollupPolicy.mode = "all-required"`) **into the
+>    same run-output bundle.** Surface then derives `run verified` from the
+>    members with automatic intra-bundle propagation — Flow computes nothing.
+> 2. The *evidence* for each member claim is still a **by-reference** pointer to
+>    that stage's gate-evidence bundle (`id + selector + statusFunctionVersion +
+>    asOf`) — references stay acyclic and are NOT inlined.
+> 3. **Cross-bundle freshness is Flow's job:** when a referenced child bundle
+>    goes stale, Surface will NOT propagate it across the reference edge. Flow
+>    re-derives each referenced level itself and propagates a Surface
+>    `FreshnessTransitionEvent` (from `diffFreshness`) up the Flow-owned
+>    reference graph, re-deriving parents. This is Thread-1's descendant cascade
+>    generalised to the bundle tree, and it is **Flow process logic**, not
+>    Surface claim logic.
+>
+> Still gated by the **`## Needs decision`** in `surface.md` (wall-clock decay
+> vs strictly event-driven): that decision only governs *when* Flow re-invokes
+> derivation/propagation, not the bundle shape above. Implement the shape;
+> wait on the owner for the trigger model before adding any scheduler.
+
 ## 3. Emit `.kontour/events` for the console plane
 
 Adopt `@kontourai/console-core` record/projection shapes and emit run lifecycle

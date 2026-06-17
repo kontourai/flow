@@ -300,11 +300,25 @@ it to the house pattern:
 5. **Console adoption depth** — depend on `@kontourai/console-core` and emit
    `.kontour/events`, vs keep `src/console` standalone (Thread 4).
 6. **Surface rollup scope** — can a derived/group claim depend on claims in a
-   *referenced* bundle, and does staleness propagate across that edge? If yes,
-   upward freshness propagation and the run-level `run verified` claim are
-   Surface rollups, not Flow logic — Flow keeps only the process cascade. If no,
-   Flow owns the cross-bundle re-resolution hop. (Open question in
-   `docs/handoff/surface.md`.)
+   *referenced* bundle, and does staleness propagate across that edge?
+   **RESOLVED 2026-06-16 (see `docs/handoff/surface.md` Findings):**
+   - Cross-bundle derivation/rollup: **NO.** Surface derivation and group
+     rollup are strictly **intra-bundle**; there is no "bundle reference"
+     concept in Surface at all. A claim cannot derive from a claim in another
+     bundle.
+   - Propagation: **YES, but only within a single bundle.** The derivation
+     ceiling recomputes from live input statuses on every `buildTrustReport`,
+     so intra-bundle staleness/dispute propagates automatically.
+
+   **Consequence:** **Flow owns the cross-bundle re-resolution hop.** A child
+   run going stale re-surfaces on the parent because *Flow* re-derives each
+   referenced bundle level and propagates a Surface `FreshnessTransitionEvent`
+   up the (Flow-owned) reference graph — Surface does not cross the boundary.
+   The run-level `run verified` claim IS a Surface rollup, but only because Flow
+   emits the per-stage member claims + the group definition **into the same
+   run-output bundle**; Surface then derives `run verified` intra-bundle. Flow
+   still must not hand-roll "all green ⇒ green". This blocks/decides
+   `flow-followups.md` §2.
 
 ## Non-Goals
 
