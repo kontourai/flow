@@ -88,6 +88,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "projectFlowRun",
     "projectFlowRunFromFiles",
     "projectVersionReleaseReport",
+    "reDeriveBundleReports",
     "readJson",
     "readyGates",
     "readySteps",

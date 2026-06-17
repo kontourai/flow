@@ -29,7 +29,7 @@ import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport } from "../reports/flow-reports.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
-import { buildTrustReport, validateTrustBundle } from "@kontourai/surface";
+import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 
 export async function ensureFlowLayout(cwd = process.cwd()) {
@@ -286,8 +286,62 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   return entry;
 }
 
+/**
+ * Re-derive each attached trust.bundle's report against the current `now`
+ * (Flow stays time-neutral: it picks `now`, Surface does the freshness math).
+ *
+ * - Updates `entry.bundle_report` to the LIVE report so gate evaluation sees
+ *   freshness as of this evaluation, not as of attach time.
+ * - Appends a frozen inquiry record (Surface DerivationCheckpoint) to
+ *   `entry.inquiry_records` — the immutable audit series + the checkpoint that
+ *   bounds the next re-derivation.
+ * - Returns the freshness transitions observed since the prior checkpoint, so
+ *   callers can react to fresh→stale without polling.
+ *
+ * Back-compat: a bundle with no freshness-bearing fields re-derives to the same
+ * statuses every time, so this is a no-op for legacy bundles beyond appending
+ * an identical inquiry record.
+ */
+export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[] {
+  const transitions: MutableRecord[] = [];
+  for (const entry of manifest.evidence ?? []) {
+    if (entry.superseded_by) continue;
+    if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") continue;
+    if (!entry.bundle) continue;
+    let validated: any;
+    try {
+      validated = validateTrustBundle(entry.bundle);
+    } catch {
+      continue; // leave invalid bundles for the gate diagnostics to report
+    }
+    const priorRecords: any[] = Array.isArray(entry.inquiry_records) ? entry.inquiry_records : [];
+    const since = priorRecords.length > 0 ? priorRecords[priorRecords.length - 1] : undefined;
+    let liveReport: any;
+    try {
+      liveReport = buildTrustReport(validated, since ? { now, since } : { now });
+    } catch {
+      continue;
+    }
+    // Emit freshness transitions vs the prior checkpoint before overwriting it.
+    if (since) {
+      for (const transition of diffFreshness(since, liveReport)) {
+        transitions.push({ evidence_id: entry.id, ...transition });
+      }
+    }
+    entry.bundle_report = liveReport;
+    entry.inquiry_records = [...priorRecords, checkpointFromReport(liveReport)];
+  }
+  return transitions;
+}
+
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
+  // §1: re-derive freshness-bearing reports with the current `now` BEFORE
+  // gates read them, so a claim that has gone stale flips the gate outcome.
+  // The existing route-back cascade (invalidateDescendants) then clears any
+  // downstream stale passes for free.
+  const now = options.now ? new Date(options.now) : new Date();
+  const freshnessTransitions = reDeriveBundleReports(run.manifest, now);
   const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
   if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
   const outcomes: GateOutcome[] = [];
@@ -307,7 +361,7 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
     if (outcome.status !== "pass") break;
   }
   await saveRun(run);
-  return { ...run, outcomes };
+  return { ...run, outcomes, freshness_transitions: freshnessTransitions };
 }
 
 export async function acceptException(runId, options) {

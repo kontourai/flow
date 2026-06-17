@@ -128,6 +128,7 @@ export {
   listRuns,
   loadRun,
   normalizeTrustBundle,
+  reDeriveBundleReports,
   saveRun,
   scaffoldDemoRun,
   sha256File,
