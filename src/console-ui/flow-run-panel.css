@@ -1,0 +1,37 @@
+/*
+ * Standalone theming entry for <flow-run-panel>.
+ *
+ * The element is fully self-styled inside its shadow root and reads the Kontour
+ * --k-* design tokens by cascade. Import this stylesheet in a host that does NOT
+ * already define the --k-* tokens to give the panel a sensible default palette
+ * (and a light variant). A host with its own token system can skip this file —
+ * the panel will theme itself from the host's --k-* values.
+ *
+ * Token names match <surface-trust-panel> where they overlap so a Flow panel and
+ * a nested Surface trust panel share one palette.
+ */
+flow-run-panel {
+  --k-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --k-text: #e7efe8;
+  --k-text-muted: #93a59a;
+  --k-panel: #141a16;
+  --k-panel-raised: #1b231d;
+  --k-line: rgba(120, 150, 130, 0.22);
+  --k-positive: #4fc28b;
+  --k-caution: #e0a64b;
+  --k-negative: #e06a6a;
+  --k-active: #5fd0b4;
+}
+
+flow-run-panel[data-theme="light"],
+[data-theme="light"] flow-run-panel {
+  --k-text: #17201b;
+  --k-text-muted: #657267;
+  --k-panel: #fffcf1;
+  --k-panel-raised: #fbf6e7;
+  --k-line: rgba(36, 68, 52, 0.16);
+  --k-positive: #0f8f66;
+  --k-caution: #a86612;
+  --k-negative: #c24141;
+  --k-active: #2f8f7a;
+}

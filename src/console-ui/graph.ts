@@ -1,4 +1,5 @@
-import type { ConsoleGate, ConsoleProjection, ConsoleStep } from "./types.js";
+import { renderGraph as renderGraphCore } from "./render-core.js";
+import type { ConsoleGate, ConsoleProjection } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Timeline state — preserved across live re-renders
@@ -11,14 +12,6 @@ export function isTimelineExpanded(): boolean {
 
 export function setTimelineExpanded(value: boolean): void {
   _timelineExpanded = value;
-}
-
-function statusForStep(step: ConsoleStep, gates: ConsoleGate[]) {
-  const stepGates = gates.filter((gate) => gate.step_id === step.id);
-  if (stepGates.some((gate) => gate.status === "block" || gate.status === "route-back")) return "block";
-  if (stepGates.some((gate) => gate.status === "wait")) return "wait";
-  if (stepGates.length && stepGates.every((gate) => gate.status === "pass")) return "pass";
-  return "pending";
 }
 
 function relativeTime(isoAt: string | null): string {
@@ -34,70 +27,15 @@ function relativeTime(isoAt: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function renderGraph(projection: ConsoleProjection, onNodeClick: (gate: ConsoleGate, projection: ConsoleProjection) => void) {
-  const graph = document.createElement("section");
-  graph.className = "graph";
-  graph.dataset.testid = "flow-console-graph";
-  graph.setAttribute("aria-label", "Flow graph");
-
-  const nodes = document.createElement("div");
-  nodes.className = "graph-nodes";
-  const gatesByStep = new Map(projection.steps.map((step) => [step.id, projection.gates.filter((gate) => gate.step_id === step.id)]));
-
-  for (const step of projection.steps) {
-    const node = document.createElement("article");
-    const current = step.id === projection.current_step;
-    const stepStatus = statusForStep(step, projection.gates);
-    node.className = `graph-node status-${stepStatus}${current ? " is-current" : ""}`;
-    node.dataset.stepId = step.id;
-    node.dataset.testid = "flow-console-node";
-
-    const gates = gatesByStep.get(step.id) ?? [];
-    const clickableGate = gates.find((g) => g.step_id === step.id) ?? gates[0];
-    if (clickableGate) {
-      node.setAttribute("role", "button");
-      node.setAttribute("tabindex", "0");
-      node.setAttribute("aria-label", `${step.label}: ${clickableGate.id} (${clickableGate.status}) — click for details`);
-      const handleClick = () => onNodeClick(clickableGate, projection);
-      node.addEventListener("click", handleClick);
-      node.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleClick();
-        }
-      });
-    }
-
-    const index = document.createElement("span");
-    index.className = "node-index";
-    index.textContent = String(step.index + 1).padStart(2, "0");
-
-    const title = document.createElement("strong");
-    title.textContent = step.label;
-
-    const meta = document.createElement("span");
-    meta.className = "node-meta";
-    meta.textContent = current ? "current" : step.next ? `next: ${step.next}` : "terminal";
-
-    const gateLine = document.createElement("span");
-    gateLine.className = "node-gates";
-    if (gates.length) {
-      for (const gate of gates) {
-        const g = document.createElement("span");
-        g.className = `node-gate-chip status-${gate.status.replace(/\s+/g, "-").toLowerCase()}`;
-        g.textContent = `${gate.id}: ${gate.status}`;
-        gateLine.append(g);
-      }
-    } else {
-      gateLine.textContent = "no gate";
-    }
-
-    node.append(index, title, meta, gateLine);
-    nodes.append(node);
-  }
-
-  graph.append(nodes);
-  return graph;
+export function renderGraph(
+  projection: ConsoleProjection,
+  onNodeClick: (gate: ConsoleGate, projection: ConsoleProjection) => void
+) {
+  // Delegate the DAG (stage statuses + gate chips) to the shared render-core so
+  // the loopback page and <flow-run-panel> render identical graphs.
+  return renderGraphCore(document, projection, {
+    onNodeActivate: (gate, proj) => onNodeClick(gate as ConsoleGate, proj as ConsoleProjection)
+  });
 }
 
 export function renderTimeline(projection: ConsoleProjection) {

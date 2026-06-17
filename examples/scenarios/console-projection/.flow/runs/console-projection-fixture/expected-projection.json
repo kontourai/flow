@@ -1750,6 +1750,9 @@
       "from_step": null,
       "gate_id": "verify-gate",
       "id": "gate_outcome.1",
+      "invalidated_steps": [
+        "release"
+      ],
       "limit_exceeded": false,
       "max_attempts": 2,
       "reason": "implementation_defect",
@@ -1770,6 +1773,9 @@
       "from_step": "verify",
       "gate_id": "verify-gate",
       "id": "tr.verify-build",
+      "invalidated_steps": [
+        "release"
+      ],
       "limit_exceeded": false,
       "max_attempts": 2,
       "reason": "implementation_defect",
@@ -1913,6 +1919,9 @@
         "from_step": "verify",
         "gate_id": "verify-gate",
         "id": "tr.verify-build",
+        "invalidated_steps": [
+          "release"
+        ],
         "max_attempts": 2,
         "reason": "tests failed",
         "route_reason": "implementation_defect",

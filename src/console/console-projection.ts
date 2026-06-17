@@ -168,6 +168,13 @@ export interface FlowConsoleRouteBackProjection {
   attempt: number | null;
   max_attempts: number | null;
   limit_exceeded: boolean;
+  /**
+   * Steps whose previously-passed outcomes were cleared by the route-back
+   * cascade (`invalidateDescendants`), passed through read-only so the console
+   * can show which downstream stages must re-run. Empty when the route-back
+   * invalidated nothing downstream.
+   */
+  invalidated_steps: string[];
   evidence_refs: string[];
   expectation_ids: string[];
 }
@@ -487,6 +494,7 @@ function projectRouteBack(source, index, sourceType) {
     attempt: source.attempt ?? null,
     max_attempts: source.max_attempts ?? null,
     limit_exceeded: source.limit_exceeded ?? false,
+    invalidated_steps: stableArray(source.invalidated_steps),
     evidence_refs: stableArray(source.evidence_refs),
     expectation_ids: stableArray(source.expectation_ids)
   };

@@ -21,7 +21,12 @@
       "types": "./dist/console/console-contract.d.ts",
       "import": "./dist/console/console-contract.js",
       "default": "./dist/console/console-contract.js"
-    }
+    },
+    "./flow-run-panel/element": {
+      "import": "./dist/console-ui/flow-run-panel.js",
+      "default": "./dist/console-ui/flow-run-panel.js"
+    },
+    "./flow-run-panel/standalone.css": "./dist/console-ui/flow-run-panel.css"
   },
   "files": [
     "dist/",
