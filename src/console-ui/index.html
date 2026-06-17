@@ -10,6 +10,13 @@
   </head>
   <body>
     <div id="app"></div>
+    <!--
+      Register Surface's dependency-free <surface-trust-panel> custom element so
+      the evidence drawer can mount it for trust.bundle evidence. Read-only,
+      fed a pre-derived TrustReport via its .report property. Vendored from
+      @kontourai/surface/trust-panel/element by scripts/sync-ui-assets.mjs.
+    -->
+    <script type="module" src="./vendor/surface/surface-trust-panel.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -88,6 +88,12 @@ export interface FlowConsoleEvidenceProjection {
   claim: Record<string, unknown> | null;
   trust_artifact: Record<string, unknown> | null;
   diagnostics: Record<string, unknown> | null;
+  /**
+   * The Surface-derived TrustReport for a trust.bundle entry, passed through
+   * read-only so the console drawer can mount a <surface-trust-panel>. Flow
+   * never re-derives in the browser; this is the already-derived report.
+   */
+  bundle_report: Record<string, unknown> | null;
   external_links: FlowConsoleExternalLinkRef[];
   raw: Record<string, unknown>;
 }
@@ -382,6 +388,7 @@ function projectEvidence(entry) {
     claim: entry.claim ? stableClone(entry.claim) : null,
     trust_artifact: entry.trust_artifact ? stableClone(entry.trust_artifact) : null,
     diagnostics: entry.diagnostics ? stableClone(entry.diagnostics) : null,
+    bundle_report: entry.bundle_report ? stableClone(entry.bundle_report) : null,
     external_links: evidenceLinks(entry),
     raw: stableClone(entry)
   };

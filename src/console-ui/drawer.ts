@@ -170,9 +170,52 @@ function renderEvidenceSection(gate: ConsoleGate): HTMLElement {
       row.append(renderLinkList(ev.external_links));
     }
 
+    // Nested Surface trust panel: when the evidence carries a pre-derived
+    // TrustReport, mount Surface's own read-only element to render it. Flow does
+    // NOT re-derive or re-style trust state here — it hands the element the
+    // already-derived report and lets Surface render it (by reference, not
+    // embedding, at the UI layer). Degrades gracefully: if the element module
+    // is not registered the unknown element renders empty and setting .report
+    // is harmless.
+    if (ev.bundle_report) {
+      const panel = document.createElement("surface-trust-panel") as HTMLElement & { report?: unknown };
+      panel.className = "evidence-trust-panel";
+      panel.setAttribute("heading", "Trust report");
+      // Map the console palette onto Surface's --k-* theming variables so the
+      // nested panel matches the drawer.
+      mapConsolePaletteToPanel(panel);
+      panel.report = ev.bundle_report;
+      row.append(panel);
+    }
+
     section.append(row);
   }
   return section;
+}
+
+/**
+ * Bridge the console palette onto the <surface-trust-panel>'s --k-* theming
+ * variables. The console already defines the Kontour --k-* tokens globally and
+ * CSS custom properties inherit across the shadow boundary, so the panel themes
+ * itself by cascade. This helper makes the contract explicit (and resilient if
+ * the panel is mounted outside the token scope) by re-asserting the variables
+ * the panel reads onto the element itself.
+ */
+function mapConsolePaletteToPanel(panel: HTMLElement): void {
+  const vars = [
+    "--k-text",
+    "--k-text-muted",
+    "--k-panel",
+    "--k-panel-raised",
+    "--k-line",
+    "--k-positive",
+    "--k-caution",
+    "--k-negative",
+    "--k-font-ui",
+  ];
+  for (const name of vars) {
+    panel.style.setProperty(name, `var(${name})`);
+  }
 }
 
 function renderRouteCallout(gate: ConsoleGate): HTMLElement | null {

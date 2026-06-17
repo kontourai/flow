@@ -4,10 +4,20 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const kitRoot = path.join(root, "node_modules", "@kontourai", "ui");
+const surfaceRoot = path.join(root, "node_modules", "@kontourai", "surface");
 const vendorRoot = path.join(root, "src", "console-ui", "vendor", "ui");
+const surfaceVendorRoot = path.join(root, "src", "console-ui", "vendor", "surface");
 const checkOnly = process.argv.includes("--check");
 
 const assets = [
+  {
+    label: "surface trust panel element",
+    // Stable subpath export confirmed in surface.md:
+    //   @kontourai/surface/trust-panel/element
+    source: path.join(surfaceRoot, "dist", "src", "trust-panel", "surface-trust-panel.js"),
+    target: path.join(surfaceVendorRoot, "surface-trust-panel.js"),
+    directory: false,
+  },
   {
     label: "tokens",
     source: path.join(kitRoot, "tokens"),
@@ -39,8 +49,10 @@ if (checkOnly) {
 async function syncAssets() {
   await assertPackageInstalled();
   await rm(vendorRoot, { recursive: true, force: true });
+  await rm(surfaceVendorRoot, { recursive: true, force: true });
   await mkdir(path.join(vendorRoot, "react"), { recursive: true });
   await mkdir(path.join(vendorRoot, "icons"), { recursive: true });
+  await mkdir(surfaceVendorRoot, { recursive: true });
 
   for (const asset of assets) {
     await cp(asset.source, asset.target, { recursive: asset.directory });
@@ -76,6 +88,10 @@ async function assertPackageInstalled() {
   const stat = await lstat(kitRoot).catch(() => undefined);
   if (!stat) {
     throw new Error("Missing @kontourai/ui. Run npm install from the flow package.");
+  }
+  const surfaceStat = await lstat(surfaceRoot).catch(() => undefined);
+  if (!surfaceStat) {
+    throw new Error("Missing @kontourai/surface. Run npm install from the flow package.");
   }
 }
 
