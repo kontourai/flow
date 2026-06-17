@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/kontourai/flow/compare/v1.3.0...v1.4.0) (2026-06-17)
+
+
+### Features
+
+* route-back cascade, trust freshness, bundle recursion, ConsoleSink, ingest contract + &lt;flow-run-panel&gt; ([#85](https://github.com/kontourai/flow/issues/85)) ([943e225](https://github.com/kontourai/flow/commit/943e225804a7a3093aa9358eb4abc8155a57a57f))
+
 ## [1.3.0](https://github.com/kontourai/flow/compare/v1.2.0...v1.3.0) (2026-06-16)
 
 
