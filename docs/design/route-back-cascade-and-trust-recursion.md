@@ -299,6 +299,12 @@ it to the house pattern:
 4. **Bundle-emission schema** — the run-output TrustBundle projection (Thread 3).
 5. **Console adoption depth** — depend on `@kontourai/console-core` and emit
    `.kontour/events`, vs keep `src/console` standalone (Thread 4).
+6. **Surface rollup scope** — can a derived/group claim depend on claims in a
+   *referenced* bundle, and does staleness propagate across that edge? If yes,
+   upward freshness propagation and the run-level `run verified` claim are
+   Surface rollups, not Flow logic — Flow keeps only the process cascade. If no,
+   Flow owns the cross-bundle re-resolution hop. (Open question in
+   `docs/handoff/surface.md`.)
 
 ## Non-Goals
 

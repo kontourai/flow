@@ -37,6 +37,13 @@ This is what lets a parent flow consume a child run as a single claim. Keep the
 reference graph acyclic (reuse the `needs` cycle-check discipline). Not an
 orchestrator — Flow still just emits an artifact (ADR 0001 holds).
 
+**The run-level `run verified` claim must be a Surface rollup, not Flow-computed.**
+Flow emits the per-stage member claims + the group definition; Surface derives
+whether the run is verified from the members. Do **not** hand-roll "all stages
+green ⇒ run green" in Flow — that is claim logic, which Surface owns. The exact
+shape depends on the answer to the Surface open question (rollup scope +
+propagation); block this sub-task on that answer.
+
 ## 3. Emit `.kontour/events` for the console plane
 
 Adopt `@kontourai/console-core` record/projection shapes and emit run lifecycle

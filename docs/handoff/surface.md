@@ -49,6 +49,28 @@ derivation supports both; the difference is whether anything re-invokes
 `buildTrustReport` as the clock passes `expiresAt` (Flow/scheduler concern) or
 only when a new event lands. Document which mode the status function assumes.
 
+## Open question — derived claims across referenced bundles (please answer back)
+
+Surface has **claim groups**, **policies**, and **conflict/confidence rollups**,
+so a claim's status can be derived from other claims. Two things we need
+confirmed before Flow builds (or *doesn't* build) recursion machinery:
+
+1. **Can a derived/group claim depend on claims in a *different, referenced*
+   bundle, or only on claims within the same bundle?**
+2. **Does staleness/dispute propagate automatically up the derivation edge** —
+   if a member/upstream claim goes `stale`, does the group/derived claim reflect
+   it on the next `buildTrustReport`?
+
+Why it matters: if rollups span referenced bundles **and** propagate, then the
+"a child run going stale re-surfaces on the parent" behaviour is **Surface's job,
+not Flow's** — Flow keeps only the process-side cascade
+(`invalidateDescendants`) and deletes any parent-freshness logic from its plate.
+If rollups are intra-bundle only, Flow still owns the cross-bundle *re-resolution*
+hop (re-deriving each referenced level), while Surface owns the within-run rollup.
+
+**Report the answer back per the return protocol in `README.md`** — it directly
+changes `flow-followups.md` §2.
+
 ## Acceptance criteria
 
 - `buildTrustReport(bundle, { now })` derives `stale` for an expired/revoked
