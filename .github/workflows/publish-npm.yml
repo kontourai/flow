@@ -13,7 +13,7 @@ permissions:
 # same tag; serialize them so the later run's already-published check skips
 # cleanly instead of colliding mid-publish (seen on v0.1.20, 2026-06-12).
 concurrency:
-  group: publish-npm-${{ github.ref }}
+  group: publish-npm
   cancel-in-progress: false
 
 jobs:
@@ -119,5 +119,5 @@ jobs:
 
       - name: Publish public package
         if: steps.published.outputs.published != 'true'
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         working-directory: flow
