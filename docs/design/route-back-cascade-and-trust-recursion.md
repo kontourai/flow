@@ -375,6 +375,12 @@ it to the house pattern:
      fork is SUPERSEDED: Flow neither emits `kontour.console.event` nor depends on
      console-core; the bridge remains the local seam and `HostedConsoleSink` is
      the optional push path for the SAME Flow-owned projection payload.
+
+   **RATIFIED 2026-06-16 — the hosted-ingest API contract is now v1 (provisional):**
+   see `docs/design/hosted-console-ingest-contract.md` (`POST <console-base>/ingest/flow`,
+   the `FlowIngestRequest` envelope, bearer auth, `<runId>:<seq>` idempotency).
+   `HostedConsoleSink` now POSTs that envelope; the caveat above narrows to console
+   standing up the endpoint (infra). Ephemeris reuses the same exposure.
 6. **Surface rollup scope** — can a derived/group claim depend on claims in a
    *referenced* bundle, and does staleness propagate across that edge?
    **RESOLVED 2026-06-16 (see `docs/handoff/surface.md` Findings):**

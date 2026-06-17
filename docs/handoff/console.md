@@ -151,17 +151,21 @@ Flow does NOT emit generic `.kontour/events` and does NOT depend on
 read-only bridge as the local seam. The earlier (A)/(B) fork is superseded — Flow
 neither emits `kontour.console.event` nor depends on console-core.
 
-**Hosted-ingest API contract (CONSOLE owner) — OPEN, tracked follow-up.**
-`HostedConsoleSink` POSTs Flow's `FlowConsoleProjection` to a configurable
-endpoint with `content-type: application/json` and optional bearer auth. The
-**console-side ingest endpoint does not exist yet** — its URL, auth scheme, and
-the envelope/ack semantics are a console contract still to be defined. The sink
-is functional against any URL today, but the request/response shape it assumes is
-**NOT a ratified console API**. Console owner to define:
-- the ingest route (path, method, expected status codes / ack body),
-- auth (bearer token? mTLS? signed?),
-- whether the body is the raw `FlowConsoleProjection` or a console-wrapped
-  envelope, and idempotency/dedup keys for re-POST safety.
-Until then, treat `HostedConsoleSink` as a functional-but-unwired push path; the
-default `FileConsoleSink` + read-only bridge is the supported model. Recorded,
-not fabricated.
+**Hosted-ingest API contract — RESOLVED 2026-06-16 → see
+`docs/design/hosted-console-ingest-contract.md`.** Ratified as **v1 (provisional —
+ratify when console confirms implementation)**: `POST <console-base>/ingest/flow`
+carrying the `FlowIngestRequest` envelope (`contractVersion "1"`, `source "flow"`,
+`type`, `idempotencyKey "<runId>:<seq>"`, `occurredAt`, `payload =
+FlowConsoleProjection`); `Authorization: Bearer <per-product token>` (absent ⇒
+`HostedConsoleSink` disabled, `FileConsoleSink` only); `202 { recordId }` on
+accept, `4xx { error }` on bad contractVersion/shape. Flow owns `payload`; console
+owns the `kontour.console.event` envelope it wraps on ingest. Flow EXPORTS
+`FlowIngestRequest` from `@kontourai/flow/console-contract` so console validates
+against Flow's type (dependency arrow stays console → flow). `HostedConsoleSink`
+now builds and POSTs exactly this envelope.
+
+**Still open (infra, not contract):** the hosted endpoint must actually be
+stood up **console-side** — real auth middleware + route mounting for
+`POST /ingest/flow`. Console ships a tested ingest *stub* handler against this
+contract; production server wiring is a console infra follow-up. With the
+contract ratified, `<flow-run-panel>` is now **unblocked** to build against it.

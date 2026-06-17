@@ -35,7 +35,8 @@ export type {
   ConsoleSink,
   ConsoleSinkConfig,
   FileConsoleSinkOptions,
-  HostedConsoleSinkOptions
+  HostedConsoleSinkOptions,
+  FlowIngestRequest
 } from "./console-sink.js";
 
 export {
