@@ -10,6 +10,16 @@ import path from "node:path";
 import { test } from "node:test";
 import { cliPath, execFile } from "./helpers/cli.mjs";
 
+// When this suite runs inside a git hook (e.g. pre-push), git exports
+// GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / etc. into the environment. Those
+// override the `-C <tmpdir>` on the fixture git commands below and would
+// redirect their commits onto the real repo. Run git with a scrubbed env so the
+// fixtures stay isolated regardless of how the suite is invoked.
+const gitEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))
+);
+const git = (args, opts = {}) => execFile("git", args, { ...opts, env: gitEnv });
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -182,19 +192,19 @@ test("flow kit install accepts a file:// git URL (local bare clone)", async () =
 
   // Create a bare git repo from the kit dir
   const bareRepo = await mkdtemp(path.join(tmpdir(), "flow-kit-bare-repo-"));
-  await execFile("git", ["init", "--bare", bareRepo]);
+  await git(["init", "--bare", bareRepo]);
 
   // Init a temp working copy, add files, push to bare
   const workDir = await mkdtemp(path.join(tmpdir(), "flow-kit-work-"));
-  await execFile("git", ["init", workDir]);
-  await execFile("git", ["-C", workDir, "config", "user.email", "test@test.local"]);
-  await execFile("git", ["-C", workDir, "config", "user.name", "Test"]);
+  await git(["init", workDir]);
+  await git(["-C", workDir, "config", "user.email", "test@test.local"]);
+  await git(["-C", workDir, "config", "user.name", "Test"]);
   // Copy kit files into working dir
   await cp(kitDir, workDir, { recursive: true });
-  await execFile("git", ["-C", workDir, "add", "."]);
-  await execFile("git", ["-C", workDir, "commit", "-m", "init"]);
-  await execFile("git", ["-C", workDir, "remote", "add", "origin", bareRepo]);
-  await execFile("git", ["-C", workDir, "push", "origin", "HEAD:main"]);
+  await git(["-C", workDir, "add", "."]);
+  await git(["-C", workDir, "commit", "-m", "init"]);
+  await git(["-C", workDir, "remote", "add", "origin", bareRepo]);
+  await git(["-C", workDir, "push", "origin", "HEAD:main"]);
 
   const dest = await mkdtemp(path.join(tmpdir(), "flow-kit-git-dest-"));
   const fileUrl = `file://${bareRepo}#main`;

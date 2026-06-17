@@ -4,6 +4,15 @@ set -eu
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
+# Git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / etc. into the hook
+# environment. Any test that shells out to `git` (e.g. the kit-operations
+# file:// fixtures) would otherwise inherit those vars — they override an
+# explicit `-C <tmpdir>` and redirect the fixture's commits onto THIS repo,
+# corrupting it. Scrub them so the suite's git commands stay isolated.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR \
+  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE \
+  GIT_QUARANTINE_PATH GIT_QUARANTINE_ID
+
 echo "pre-push: npm test"
 npm test
 
