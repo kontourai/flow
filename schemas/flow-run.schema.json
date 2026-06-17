@@ -125,6 +125,7 @@
         "attempt": { "type": "integer", "minimum": 1 },
         "max_attempts": { "type": "integer", "minimum": 1 },
         "limit_exceeded": { "type": "boolean" },
+        "invalidated_steps": { "type": "array", "items": { "type": "string" }, "description": "Steps whose gate outcomes were cleared by the route-back cascade (descendants of the route-back target)." },
         "evidence_refs": { "type": "array", "items": { "type": "string" } },
         "expectation_ids": { "type": "array", "items": { "type": "string" } },
         "classifier": { "type": "object", "additionalProperties": true },

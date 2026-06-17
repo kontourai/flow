@@ -2,12 +2,28 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const publicEntrypoints = ["."];
+const publicEntrypoints = [
+  ".",
+  "./console-contract",
+  // Dependency-free <flow-run-panel> custom element + its standalone theming
+  // CSS, exported as stable subpaths so the console plane can import/register
+  // the element next to <surface-trust-panel>. The element module is a browser
+  // custom element (references `HTMLElement`/`customElements`) and is therefore
+  // verified in the Playwright suite, not by a Node `import()` here.
+  "./flow-run-panel/element",
+  "./flow-run-panel/standalone.css"
+];
 
 const publicImports = [
   {
     specifier: "@kontourai/flow",
     exportName: "validateDefinition"
+  },
+  {
+    // Stable contract subpath (Task E.2): the console plane imports Flow's
+    // OWNED projection types + the ConsoleSink seam from here.
+    specifier: "@kontourai/flow/console-contract",
+    exportName: "createConsoleSink"
   }
 ];
 

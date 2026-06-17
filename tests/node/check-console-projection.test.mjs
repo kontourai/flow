@@ -111,6 +111,17 @@ test("AC2 projection preserves missing evidence, failed evidence, accepted excep
   assert.equal(failedEvidence.route_reason, "implementation_defect");
   assert.deepEqual(failedEvidence.expectation_ids, ["tests-passed"]);
 
+  // §4 nested trust panel: the projection passes a trust.bundle entry's
+  // pre-derived TrustReport through as bundle_report (null where absent), so
+  // the drawer can mount <surface-trust-panel> without re-deriving in browser.
+  const bundleEvidence = byId(projection.evidence, "ev.surface-tests");
+  assert.ok(bundleEvidence.bundle_report, "trust.bundle evidence carries bundle_report");
+  assert.ok(
+    Array.isArray(bundleEvidence.bundle_report.claims),
+    "bundle_report is a derived TrustReport with claims",
+  );
+  assert.equal(failedEvidence.bundle_report, null, "non-bundle evidence has null bundle_report");
+
   const acceptedException = byId(projection.exceptions, "ex.review-deferred");
   assert.equal(acceptedException.gate_id, "build-gate");
   assert.equal(acceptedException.authority, "fixture-owner");

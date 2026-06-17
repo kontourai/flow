@@ -66,6 +66,23 @@ test("opens gate detail drawer when a step node is clicked", async ({ page }) =>
   await expect(drawer.locator(".evidence-row")).not.toHaveCount(0);
   await expect(drawer.locator(".badge.badge-kind").first()).toBeVisible();
 
+  // §4 nested Surface trust panel: the trust.bundle evidence (ev.surface-tests)
+  // mounts Surface's own <surface-trust-panel> custom element, fed the
+  // pre-derived TrustReport. Assert the element is present, upgraded (custom
+  // element registered), and rendered its shadow content (derived claim view).
+  const panel = drawer.locator("surface-trust-panel");
+  await expect(panel).toHaveCount(1);
+  // The element registers from the vendored module; once defined it renders a
+  // shadow root with the report. Wait for the custom element to upgrade.
+  await page.waitForFunction(() => {
+    const el = document.querySelector("surface-trust-panel");
+    return Boolean(el && (el as HTMLElement).shadowRoot && (el as HTMLElement).shadowRoot!.childElementCount > 0);
+  });
+  // No trust derivation happens in the browser — the panel only received the
+  // already-derived report (set as the .report property by the drawer).
+  const hasReport = await panel.evaluate((el) => Boolean((el as unknown as { report?: unknown }).report));
+  expect(hasReport).toBe(true);
+
   // Close with Escape
   await page.keyboard.press("Escape");
   await expect(drawer).not.toBeVisible();

@@ -63,8 +63,20 @@ export interface FlowEvidenceEntry extends MutableRecord {
   status?: string;
   /** Hachure TrustBundle attached to a trust.bundle evidence entry */
   bundle?: MutableRecord;
-  /** Surface-derived TrustReport (derived statuses) stored alongside the bundle */
+  /**
+   * Surface-derived TrustReport (derived statuses) stored alongside the bundle.
+   * This is the LIVE report, re-derived at each evaluateRun with the current
+   * `now` — not a cache trusted across time. See inquiry_records for the
+   * frozen audit series.
+   */
   bundle_report?: MutableRecord;
+  /**
+   * Append-only series of point-in-time inquiry records (Surface
+   * DerivationCheckpoints), one per re-derivation. Each is the immutable audit
+   * receipt: status-by-claim + statusFunctionVersion + asOf + event high-water
+   * mark. Doubles as the Surface checkpoint that bounds the next re-derivation.
+   */
+  inquiry_records?: MutableRecord[];
   producer?: string;
   authority_trace?: string;
   authority_traces?: string[];

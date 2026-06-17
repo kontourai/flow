@@ -5,6 +5,7 @@ import {
   attachedEvidenceFor,
   findGate,
   getStep,
+  invalidateDescendants,
   nextActionForStep,
   routeBackDecision,
   routeReasonForFailedEvidence
@@ -287,6 +288,9 @@ export function applyEvaluation(definition, state, outcome) {
     }
   } else if (outcome.status === "route-back") {
     state.status = "active";
+    // Cascade: clear gate outcomes for every step downstream of the target so
+    // dependent stages re-run instead of keeping stale "passed" outcomes.
+    const invalidated = invalidateDescendants(definition, state, outcome.route_back_to);
     state.current_step = outcome.route_back_to;
     state.transitions.push({
       type: "route_back",
@@ -300,6 +304,7 @@ export function applyEvaluation(definition, state, outcome) {
       attempt: outcome.attempt,
       max_attempts: outcome.max_attempts,
       limit_exceeded: outcome.limit_exceeded,
+      invalidated_steps: invalidated.length ? invalidated : undefined,
       evidence_refs: outcome.evidence_refs,
       expectation_ids: outcome.expectation_ids,
       classifier: outcome.classifier,

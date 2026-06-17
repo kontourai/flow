@@ -34,6 +34,8 @@ export interface ConsoleEvidence {
   stored_path: string | null;
   route_reason: string | null;
   diagnostics: Record<string, unknown> | null;
+  /** Pre-derived Surface TrustReport for a trust.bundle entry (read-only). */
+  bundle_report: Record<string, unknown> | null;
   external_links: ConsoleLink[];
 }
 

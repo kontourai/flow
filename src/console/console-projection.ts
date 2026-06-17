@@ -88,6 +88,12 @@ export interface FlowConsoleEvidenceProjection {
   claim: Record<string, unknown> | null;
   trust_artifact: Record<string, unknown> | null;
   diagnostics: Record<string, unknown> | null;
+  /**
+   * The Surface-derived TrustReport for a trust.bundle entry, passed through
+   * read-only so the console drawer can mount a <surface-trust-panel>. Flow
+   * never re-derives in the browser; this is the already-derived report.
+   */
+  bundle_report: Record<string, unknown> | null;
   external_links: FlowConsoleExternalLinkRef[];
   raw: Record<string, unknown>;
 }
@@ -162,6 +168,13 @@ export interface FlowConsoleRouteBackProjection {
   attempt: number | null;
   max_attempts: number | null;
   limit_exceeded: boolean;
+  /**
+   * Steps whose previously-passed outcomes were cleared by the route-back
+   * cascade (`invalidateDescendants`), passed through read-only so the console
+   * can show which downstream stages must re-run. Empty when the route-back
+   * invalidated nothing downstream.
+   */
+  invalidated_steps: string[];
   evidence_refs: string[];
   expectation_ids: string[];
 }
@@ -382,6 +395,7 @@ function projectEvidence(entry) {
     claim: entry.claim ? stableClone(entry.claim) : null,
     trust_artifact: entry.trust_artifact ? stableClone(entry.trust_artifact) : null,
     diagnostics: entry.diagnostics ? stableClone(entry.diagnostics) : null,
+    bundle_report: entry.bundle_report ? stableClone(entry.bundle_report) : null,
     external_links: evidenceLinks(entry),
     raw: stableClone(entry)
   };
@@ -480,6 +494,7 @@ function projectRouteBack(source, index, sourceType) {
     attempt: source.attempt ?? null,
     max_attempts: source.max_attempts ?? null,
     limit_exceeded: source.limit_exceeded ?? false,
+    invalidated_steps: stableArray(source.invalidated_steps),
     evidence_refs: stableArray(source.evidence_refs),
     expectation_ids: stableArray(source.expectation_ids)
   };

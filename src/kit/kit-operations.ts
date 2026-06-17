@@ -10,6 +10,16 @@ export type { KitContainerDiagnostic, KitContainerValidationResult } from "./flo
 
 const execFile = promisify(execFileCallback);
 
+// A clone into a fresh temp dir must not inherit an ambient git context
+// (GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / ...). When `flow kit install` runs
+// inside a git hook those vars are exported and would redirect the clone onto
+// the caller's repo. Scrub them for git subprocesses.
+function gitCleanEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -133,7 +143,7 @@ export async function kitInstall(
     const cloneArgs = ["clone", "--depth", "1"];
     if (parsed.ref) cloneArgs.push("--branch", parsed.ref);
     cloneArgs.push(parsed.url, tempDir);
-    await execFile("git", cloneArgs);
+    await execFile("git", cloneArgs, { env: gitCleanEnv() });
     kitDir = tempDir;
   } else {
     // npm

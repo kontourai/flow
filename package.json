@@ -16,7 +16,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./console-contract": {
+      "types": "./dist/console/console-contract.d.ts",
+      "import": "./dist/console/console-contract.js",
+      "default": "./dist/console/console-contract.js"
+    },
+    "./flow-run-panel/element": {
+      "import": "./dist/console-ui/flow-run-panel.js",
+      "default": "./dist/console-ui/flow-run-panel.js"
+    },
+    "./flow-run-panel/standalone.css": "./dist/console-ui/flow-run-panel.css"
   },
   "files": [
     "dist/",
@@ -77,8 +87,8 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@kontourai/surface": "^1.0.1",
+    "@kontourai/surface": "^1.2.0",
     "ajv": "^8.20.0",
-    "hachure": "^0.4.0"
+    "hachure": "^0.5.0"
   }
 }

@@ -1,4 +1,9 @@
 import { renderLinkList } from "./links.js";
+import {
+  renderGateChecklist as renderGateChecklistCore,
+  renderEvidenceSection as renderEvidenceSectionCore,
+  renderRouteCallout as renderRouteCalloutCore
+} from "./render-core.js";
 import type { ConsoleGate, ConsoleProjection } from "./types.js";
 
 let _currentProjection: ConsoleProjection | null = null;
@@ -53,147 +58,56 @@ function clampedText(text: string, className: string): HTMLElement {
   return wrapper;
 }
 
-function badge(value: string, modClass?: string): HTMLElement {
-  const b = document.createElement("span");
-  b.className = `badge${modClass ? ` badge-${modClass}` : ""}`;
-  b.textContent = value;
-  return b;
-}
-
 function getStatusClass(status: string | null | undefined) {
   if (!status) return "status-unknown";
   return `status-${status.replace(/\s+/g, "-").toLowerCase()}`;
 }
 
 function renderGateChecklist(gate: ConsoleGate): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "drawer-section";
-  const title = document.createElement("h3");
-  title.className = "drawer-section-title";
-  title.textContent = "What this gate needs";
-  section.append(title);
-
-  if (!gate.expectations.length) {
-    const none = document.createElement("p");
-    none.className = "drawer-empty";
-    none.textContent = "No expectations defined.";
-    section.append(none);
-    return section;
-  }
-
-  const list = document.createElement("ul");
-  list.className = "checklist";
-
-  for (const exp of gate.expectations) {
-    const isMissing = gate.missing.includes(exp.id) || gate.optional_missing.includes(exp.id);
-    const item = document.createElement("li");
-    item.className = `checklist-item ${isMissing ? "checklist-missing" : "checklist-met"}`;
-
-    const check = document.createElement("span");
-    check.className = "checklist-check";
-    check.setAttribute("aria-hidden", "true");
-    check.textContent = isMissing ? "✗" : "✓";
-
-    const label = document.createElement("span");
-    label.className = "checklist-label";
-    const desc = exp.description ?? exp.id;
-
-    if (desc.length > 100) {
-      label.append(...[desc.slice(0, 100)]);
-      const expandSpan = document.createElement("span");
-      expandSpan.className = "checklist-overflow hidden";
-      expandSpan.textContent = desc.slice(100);
-      const moreBtn = document.createElement("button");
-      moreBtn.className = "clamp-toggle inline";
-      moreBtn.textContent = "…more";
-      moreBtn.addEventListener("click", () => {
-        const shown = expandSpan.classList.toggle("hidden");
-        moreBtn.textContent = shown ? "…more" : " less";
-      });
-      label.append(moreBtn, expandSpan);
-    } else {
-      label.textContent = desc;
-    }
-
-    if (!exp.required) {
-      const optBadge = document.createElement("span");
-      optBadge.className = "badge badge-neutral";
-      optBadge.textContent = "optional";
-      item.append(check, label, optBadge);
-    } else {
-      item.append(check, label);
-    }
-
-    list.append(item);
-  }
-  section.append(list);
-  return section;
+  // Shared render-core builds the checklist (expectations + missing markers).
+  return renderGateChecklistCore(document, gate);
 }
 
 function renderEvidenceSection(gate: ConsoleGate): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "drawer-section";
-  const title = document.createElement("h3");
-  title.className = "drawer-section-title";
-  title.textContent = "Evidence";
-  section.append(title);
+  // Shared render-core builds evidence rows and mounts the nested
+  // <surface-trust-panel> for any pre-derived bundle_report. The page injects
+  // its own link renderer and palette bridge.
+  return renderEvidenceSectionCore(document, gate, {
+    // The page's link renderer narrows kind to ConsoleLink["kind"]; the console
+    // projection only ever produces those kinds, so the cast is sound.
+    renderLinks: (_doc, links) => renderLinkList(links as unknown as Parameters<typeof renderLinkList>[0]),
+    themeTrustPanel: mapConsolePaletteToPanel
+  });
+}
 
-  if (!gate.evidence.length) {
-    const none = document.createElement("p");
-    none.className = "drawer-empty";
-    none.textContent = "No evidence attached.";
-    section.append(none);
-    return section;
+/**
+ * Bridge the console palette onto the <surface-trust-panel>'s --k-* theming
+ * variables. The console already defines the Kontour --k-* tokens globally and
+ * CSS custom properties inherit across the shadow boundary, so the panel themes
+ * itself by cascade. This helper makes the contract explicit (and resilient if
+ * the panel is mounted outside the token scope) by re-asserting the variables
+ * the panel reads onto the element itself.
+ */
+function mapConsolePaletteToPanel(panel: HTMLElement): void {
+  const vars = [
+    "--k-text",
+    "--k-text-muted",
+    "--k-panel",
+    "--k-panel-raised",
+    "--k-line",
+    "--k-positive",
+    "--k-caution",
+    "--k-negative",
+    "--k-font-ui",
+  ];
+  for (const name of vars) {
+    panel.style.setProperty(name, `var(${name})`);
   }
-
-  for (const ev of gate.evidence) {
-    const row = document.createElement("article");
-    row.className = "evidence-row";
-
-    const head = document.createElement("div");
-    head.className = "evidence-head";
-
-    const idSpan = document.createElement("strong");
-    idSpan.className = "evidence-id";
-    idSpan.textContent = ev.id;
-
-    const badges = document.createElement("span");
-    badges.className = "evidence-badges";
-    if (ev.kind) badges.append(badge(ev.kind, "kind"));
-    if (ev.status) badges.append(badge(ev.status, getStatusClass(ev.status)));
-    if (ev.producer) badges.append(badge(ev.producer, "producer"));
-
-    head.append(idSpan, badges);
-    row.append(head);
-
-    if (ev.external_links.length) {
-      row.append(renderLinkList(ev.external_links));
-    }
-
-    section.append(row);
-  }
-  return section;
 }
 
 function renderRouteCallout(gate: ConsoleGate): HTMLElement | null {
-  if (!gate.route_reason && !gate.route_back_to) return null;
-  const callout = document.createElement("div");
-  callout.className = "route-callout";
-  if (gate.route_back_to) {
-    const routeTitle = document.createElement("strong");
-    routeTitle.textContent = `Route back to ${gate.route_back_to}`;
-    callout.append(routeTitle);
-  }
-  if (gate.route_reason) {
-    callout.append(clampedText(gate.route_reason, "route-reason"));
-  }
-  if (gate.attempt) {
-    const attemptNote = document.createElement("span");
-    attemptNote.className = "route-attempt";
-    attemptNote.textContent = `Attempt ${gate.attempt} of ${gate.max_attempts ?? "?"}`;
-    callout.append(attemptNote);
-  }
-  return callout;
+  // Shared render-core builds the per-gate route callout.
+  return renderRouteCalloutCore(document, gate);
 }
 
 function renderGateMeta(gate: ConsoleGate): HTMLElement {

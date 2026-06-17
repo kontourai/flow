@@ -64,6 +64,9 @@
           "label": "Failing CI route",
           "href": "https://ci.example.test/kontourai/flow/actions/runs/4242"
         }
+      ],
+      "invalidated_steps": [
+        "release"
       ]
     }
   ],
@@ -103,7 +106,10 @@
           "href": "https://github.com/kontourai/flow/pull/18"
         }
       ],
-      "at": "2026-06-07T14:20:00.000Z"
+      "at": "2026-06-07T14:20:00.000Z",
+      "invalidated_steps": [
+        "release"
+      ]
     }
   ],
   "exceptions": [

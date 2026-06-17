@@ -80,6 +80,8 @@ export {
   gatesForStep,
   getStep,
   initialState,
+  descendantsOf,
+  invalidateDescendants,
   nextActionForStep,
   openGates,
   predecessorsOf,
@@ -126,6 +128,7 @@ export {
   listRuns,
   loadRun,
   normalizeTrustBundle,
+  reDeriveBundleReports,
   saveRun,
   scaffoldDemoRun,
   sha256File,
@@ -139,6 +142,12 @@ export {
   reportJson,
   sortStatus
 } from "./reports/flow-reports.js";
+export {
+  projectRunOutputBundle,
+  assertEvidenceReferencesAcyclic,
+  EvidenceReferenceCycleError
+} from "./reports/flow-run-bundle.js";
+export type { RunOutputBundleOptions } from "./reports/flow-run-bundle.js";
 export {
   projectFlowRun,
   projectFlowRunFromFiles
@@ -167,6 +176,18 @@ export type {
   FlowConsoleServerHandle,
   FlowConsoleServerOptions
 } from "./console/console-server.js";
+export {
+  FileConsoleSink,
+  HostedConsoleSink,
+  createConsoleSink
+} from "./console/console-sink.js";
+export type {
+  ConsoleSink,
+  ConsoleSinkConfig,
+  FileConsoleSinkOptions,
+  HostedConsoleSinkOptions,
+  FlowIngestRequest
+} from "./console/console-sink.js";
 export {
   validateKitContainer,
   validateKitContainerFile

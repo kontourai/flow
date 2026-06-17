@@ -1,14 +1,35 @@
 import type {
   FlowConfig,
+  FlowConsoleProjection,
   FlowDefinition,
   FlowDiagnostic,
   FlowEvidenceEntry,
   FlowExpectation,
   FlowGate,
+  FlowIngestRequest,
   FlowRunState,
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
+
+// FlowIngestRequest — the hosted-console ingest contract v1 envelope. console
+// imports THIS to validate ingest bodies (dependency arrow console → flow).
+const validIngestRequest: FlowIngestRequest = {
+  contractVersion: "1",
+  source: "flow",
+  type: "flow.console.projection.0.1",
+  idempotencyKey: "run-1:0",
+  occurredAt: "2026-06-16T00:00:00.000Z",
+  payload: {} as FlowConsoleProjection
+};
+
+// @ts-expect-error contractVersion is the literal "1".
+const ingestBadVersion: FlowIngestRequest = { ...validIngestRequest, contractVersion: "2" };
+
+// @ts-expect-error source is the literal "flow".
+const ingestBadSource: FlowIngestRequest = { ...validIngestRequest, source: "surface" };
+
+void [validIngestRequest, ingestBadVersion, ingestBadSource];
 
 const validStep: FlowStep = { id: "verify", next: "publish" };
 const validTerminalStep: FlowStep = { id: "publish", next: null };

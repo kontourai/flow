@@ -29,6 +29,30 @@ The single-cursor `current_step` model is unchanged. `evaluateRun`,
 `applyEvaluation`, and the run-state schema are unchanged.  Existing
 linear definitions that only use `next` work identically.
 
+### Phase 1.5 — Route-back cascade (implemented)
+
+When a run routes back to an upstream target, the stages **downstream** of that
+target were produced from work that is now being redone, so their recorded
+`pass` outcomes are stale. Without intervention, `readySteps` filters them out
+as "already passed" and they never re-run (and a single-`next` cursor cannot
+re-reach fan-out branches at all). Phase 1.5 clears those stale passes on
+route-back so the run re-derives everything below the target.
+
+Two pure/mutating helpers:
+
+- `descendantsOf(definition, stepId)` — transitive dependents of a step
+  (inverse of `predecessorsOf`), in definition order.
+- `invalidateDescendants(definition, state, targetStep)` — clears the stale
+  `pass` gate outcomes and `allowed` transitions for every descendant of
+  `targetStep`; preserves non-pass outcomes (the triggering failure, for
+  reports) and all route-back transitions (so `routeBackAttempt` counting is
+  unaffected). Returns the descendant step ids for audit.
+
+`applyEvaluation` calls `invalidateDescendants` in its `route-back` branch and
+records the result on the route-back transition as `invalidated_steps`. The
+target itself is untouched — it becomes `current_step` and re-runs through the
+normal cursor.
+
 ### Phase 2 — Concurrent multi-step execution (explicit NON-GOAL for Phase 1)
 
 Concurrent execution across multiple ready steps at the same time requires a

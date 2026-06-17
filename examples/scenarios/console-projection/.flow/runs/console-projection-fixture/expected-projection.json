@@ -87,6 +87,7 @@
     {
       "authority_trace": null,
       "authority_traces": [],
+      "bundle_report": null,
       "claim": null,
       "diagnostics": {
         "summary": "Unit test failed for projection edge case."
@@ -155,6 +156,7 @@
     {
       "authority_trace": null,
       "authority_traces": [],
+      "bundle_report": null,
       "claim": null,
       "diagnostics": null,
       "expectation_ids": [
@@ -220,6 +222,153 @@
     {
       "authority_trace": null,
       "authority_traces": [],
+      "bundle_report": {
+        "authorityTrace": [],
+        "changeRecords": [],
+        "claimGroupRollups": [],
+        "claimGroups": [],
+        "claims": [
+          {
+            "claimType": "quality.tests",
+            "createdAt": "2026-06-07T14:12:00.000Z",
+            "fieldOrBehavior": "testSuite",
+            "freshness": {
+              "asOf": "2026-06-10T00:00:00.000Z",
+              "stale": false
+            },
+            "id": "claim.quality.tests.fixture",
+            "impactLevel": "high",
+            "status": "verified",
+            "subjectId": "console-projection-fixture",
+            "subjectType": "flow-step",
+            "surface": "quality.developer-evidence",
+            "updatedAt": "2026-06-07T14:12:00.000Z",
+            "value": "fixture tests passed",
+            "verificationPolicyId": "policy.software-evidence.commit"
+          }
+        ],
+        "events": [
+          {
+            "actor": "ci/fixture",
+            "claimId": "claim.quality.tests.fixture",
+            "createdAt": "2026-06-07T14:12:00.000Z",
+            "evidenceIds": [
+              "evidence.tests.output"
+            ],
+            "id": "event.tests.verified",
+            "method": "npm test",
+            "status": "verified",
+            "verifiedAt": "2026-06-07T14:12:00.000Z"
+          }
+        ],
+        "evidence": [
+          {
+            "claimId": "claim.quality.tests.fixture",
+            "collectedBy": "ci/fixture",
+            "evidenceType": "test_output",
+            "excerptOrSummary": "All fixture tests passed.",
+            "id": "evidence.tests.output",
+            "method": "validation",
+            "observedAt": "2026-06-07T14:12:00.000Z",
+            "sourceRef": "ci:fixture-run"
+          }
+        ],
+        "evidenceRequirementsByClaimId": {
+          "claim.quality.tests.fixture": {
+            "notes": "tests pass",
+            "requiredAuthority": "ci",
+            "requiredEvidenceTypes": [
+              "test_output"
+            ],
+            "requiredMethods": [
+              "validation"
+            ],
+            "requiresCorroboration": false
+          }
+        },
+        "generatedAt": "2026-06-10T00:00:00.000Z",
+        "id": "surface-1781049600000",
+        "identityLinks": [],
+        "policies": [
+          {
+            "acceptanceCriteria": [
+              "tests pass"
+            ],
+            "claimType": "software-evidence",
+            "conflictRules": [],
+            "id": "policy.software-evidence.commit",
+            "impactLevel": "high",
+            "requiredEvidence": [
+              "test_output"
+            ],
+            "requiredMethods": [
+              "validation"
+            ],
+            "requiresCorroboration": false,
+            "reviewAuthority": "ci",
+            "stalenessTriggers": [],
+            "validityRule": {
+              "kind": "commit"
+            }
+          }
+        ],
+        "schemaVersion": 3,
+        "source": "ci/fixture",
+        "statusFunctionVersion": "2",
+        "subjectGroups": [
+          {
+            "canonicalKey": "flow-step::console-projection-fixture",
+            "claimIds": [
+              "claim.quality.tests.fixture"
+            ],
+            "members": [
+              {
+                "subjectId": "console-projection-fixture",
+                "subjectType": "flow-step"
+              }
+            ]
+          }
+        ],
+        "summary": {
+          "byStatus": {
+            "assumed": 0,
+            "disputed": 0,
+            "proposed": 0,
+            "rejected": 0,
+            "revoked": 0,
+            "stale": 0,
+            "superseded": 0,
+            "unknown": 0,
+            "verified": 1
+          },
+          "bySurface": {
+            "quality.developer-evidence": 1
+          },
+          "confidenceBasis": {
+            "averageExtractionConfidence": null,
+            "conflictedClaims": [],
+            "corroboratedClaims": 0,
+            "evidenceStrength": {},
+            "freshnessAtRisk": [],
+            "reviewerAuthority": {},
+            "sourceQuality": {}
+          },
+          "disputedClaims": [],
+          "highImpactUnsupported": [],
+          "recomputeNeededClaims": [],
+          "staleClaims": [],
+          "totalClaims": 1,
+          "transparencyGapsByType": {
+            "contradiction": 0,
+            "corroboration_absent": 0,
+            "freshness_breach": 0,
+            "policy_violation": 0,
+            "provenance_gap": 0,
+            "unsupported_inference": 0
+          }
+        },
+        "transparencyGaps": []
+      },
       "claim": null,
       "diagnostics": null,
       "expectation_ids": [
@@ -317,6 +466,153 @@
           "schemaVersion": 3,
           "source": "ci/fixture"
         },
+        "bundle_report": {
+          "authorityTrace": [],
+          "changeRecords": [],
+          "claimGroupRollups": [],
+          "claimGroups": [],
+          "claims": [
+            {
+              "claimType": "quality.tests",
+              "createdAt": "2026-06-07T14:12:00.000Z",
+              "fieldOrBehavior": "testSuite",
+              "freshness": {
+                "asOf": "2026-06-10T00:00:00.000Z",
+                "stale": false
+              },
+              "id": "claim.quality.tests.fixture",
+              "impactLevel": "high",
+              "status": "verified",
+              "subjectId": "console-projection-fixture",
+              "subjectType": "flow-step",
+              "surface": "quality.developer-evidence",
+              "updatedAt": "2026-06-07T14:12:00.000Z",
+              "value": "fixture tests passed",
+              "verificationPolicyId": "policy.software-evidence.commit"
+            }
+          ],
+          "events": [
+            {
+              "actor": "ci/fixture",
+              "claimId": "claim.quality.tests.fixture",
+              "createdAt": "2026-06-07T14:12:00.000Z",
+              "evidenceIds": [
+                "evidence.tests.output"
+              ],
+              "id": "event.tests.verified",
+              "method": "npm test",
+              "status": "verified",
+              "verifiedAt": "2026-06-07T14:12:00.000Z"
+            }
+          ],
+          "evidence": [
+            {
+              "claimId": "claim.quality.tests.fixture",
+              "collectedBy": "ci/fixture",
+              "evidenceType": "test_output",
+              "excerptOrSummary": "All fixture tests passed.",
+              "id": "evidence.tests.output",
+              "method": "validation",
+              "observedAt": "2026-06-07T14:12:00.000Z",
+              "sourceRef": "ci:fixture-run"
+            }
+          ],
+          "evidenceRequirementsByClaimId": {
+            "claim.quality.tests.fixture": {
+              "notes": "tests pass",
+              "requiredAuthority": "ci",
+              "requiredEvidenceTypes": [
+                "test_output"
+              ],
+              "requiredMethods": [
+                "validation"
+              ],
+              "requiresCorroboration": false
+            }
+          },
+          "generatedAt": "2026-06-10T00:00:00.000Z",
+          "id": "surface-1781049600000",
+          "identityLinks": [],
+          "policies": [
+            {
+              "acceptanceCriteria": [
+                "tests pass"
+              ],
+              "claimType": "software-evidence",
+              "conflictRules": [],
+              "id": "policy.software-evidence.commit",
+              "impactLevel": "high",
+              "requiredEvidence": [
+                "test_output"
+              ],
+              "requiredMethods": [
+                "validation"
+              ],
+              "requiresCorroboration": false,
+              "reviewAuthority": "ci",
+              "stalenessTriggers": [],
+              "validityRule": {
+                "kind": "commit"
+              }
+            }
+          ],
+          "schemaVersion": 3,
+          "source": "ci/fixture",
+          "statusFunctionVersion": "2",
+          "subjectGroups": [
+            {
+              "canonicalKey": "flow-step::console-projection-fixture",
+              "claimIds": [
+                "claim.quality.tests.fixture"
+              ],
+              "members": [
+                {
+                  "subjectId": "console-projection-fixture",
+                  "subjectType": "flow-step"
+                }
+              ]
+            }
+          ],
+          "summary": {
+            "byStatus": {
+              "assumed": 0,
+              "disputed": 0,
+              "proposed": 0,
+              "rejected": 0,
+              "revoked": 0,
+              "stale": 0,
+              "superseded": 0,
+              "unknown": 0,
+              "verified": 1
+            },
+            "bySurface": {
+              "quality.developer-evidence": 1
+            },
+            "confidenceBasis": {
+              "averageExtractionConfidence": null,
+              "conflictedClaims": [],
+              "corroboratedClaims": 0,
+              "evidenceStrength": {},
+              "freshnessAtRisk": [],
+              "reviewerAuthority": {},
+              "sourceQuality": {}
+            },
+            "disputedClaims": [],
+            "highImpactUnsupported": [],
+            "recomputeNeededClaims": [],
+            "staleClaims": [],
+            "totalClaims": 1,
+            "transparencyGapsByType": {
+              "contradiction": 0,
+              "corroboration_absent": 0,
+              "freshness_breach": 0,
+              "policy_violation": 0,
+              "provenance_gap": 0,
+              "unsupported_inference": 0
+            }
+          },
+          "transparencyGaps": []
+        },
         "expectation_ids": [
           "tests-passed"
         ],
@@ -345,6 +641,7 @@
     {
       "authority_trace": null,
       "authority_traces": [],
+      "bundle_report": null,
       "claim": null,
       "diagnostics": null,
       "expectation_ids": [
@@ -581,6 +878,7 @@
         {
           "authority_trace": null,
           "authority_traces": [],
+          "bundle_report": null,
           "claim": null,
           "diagnostics": null,
           "expectation_ids": [
@@ -711,6 +1009,153 @@
         {
           "authority_trace": null,
           "authority_traces": [],
+          "bundle_report": {
+            "authorityTrace": [],
+            "changeRecords": [],
+            "claimGroupRollups": [],
+            "claimGroups": [],
+            "claims": [
+              {
+                "claimType": "quality.tests",
+                "createdAt": "2026-06-07T14:12:00.000Z",
+                "fieldOrBehavior": "testSuite",
+                "freshness": {
+                  "asOf": "2026-06-10T00:00:00.000Z",
+                  "stale": false
+                },
+                "id": "claim.quality.tests.fixture",
+                "impactLevel": "high",
+                "status": "verified",
+                "subjectId": "console-projection-fixture",
+                "subjectType": "flow-step",
+                "surface": "quality.developer-evidence",
+                "updatedAt": "2026-06-07T14:12:00.000Z",
+                "value": "fixture tests passed",
+                "verificationPolicyId": "policy.software-evidence.commit"
+              }
+            ],
+            "events": [
+              {
+                "actor": "ci/fixture",
+                "claimId": "claim.quality.tests.fixture",
+                "createdAt": "2026-06-07T14:12:00.000Z",
+                "evidenceIds": [
+                  "evidence.tests.output"
+                ],
+                "id": "event.tests.verified",
+                "method": "npm test",
+                "status": "verified",
+                "verifiedAt": "2026-06-07T14:12:00.000Z"
+              }
+            ],
+            "evidence": [
+              {
+                "claimId": "claim.quality.tests.fixture",
+                "collectedBy": "ci/fixture",
+                "evidenceType": "test_output",
+                "excerptOrSummary": "All fixture tests passed.",
+                "id": "evidence.tests.output",
+                "method": "validation",
+                "observedAt": "2026-06-07T14:12:00.000Z",
+                "sourceRef": "ci:fixture-run"
+              }
+            ],
+            "evidenceRequirementsByClaimId": {
+              "claim.quality.tests.fixture": {
+                "notes": "tests pass",
+                "requiredAuthority": "ci",
+                "requiredEvidenceTypes": [
+                  "test_output"
+                ],
+                "requiredMethods": [
+                  "validation"
+                ],
+                "requiresCorroboration": false
+              }
+            },
+            "generatedAt": "2026-06-10T00:00:00.000Z",
+            "id": "surface-1781049600000",
+            "identityLinks": [],
+            "policies": [
+              {
+                "acceptanceCriteria": [
+                  "tests pass"
+                ],
+                "claimType": "software-evidence",
+                "conflictRules": [],
+                "id": "policy.software-evidence.commit",
+                "impactLevel": "high",
+                "requiredEvidence": [
+                  "test_output"
+                ],
+                "requiredMethods": [
+                  "validation"
+                ],
+                "requiresCorroboration": false,
+                "reviewAuthority": "ci",
+                "stalenessTriggers": [],
+                "validityRule": {
+                  "kind": "commit"
+                }
+              }
+            ],
+            "schemaVersion": 3,
+            "source": "ci/fixture",
+            "statusFunctionVersion": "2",
+            "subjectGroups": [
+              {
+                "canonicalKey": "flow-step::console-projection-fixture",
+                "claimIds": [
+                  "claim.quality.tests.fixture"
+                ],
+                "members": [
+                  {
+                    "subjectId": "console-projection-fixture",
+                    "subjectType": "flow-step"
+                  }
+                ]
+              }
+            ],
+            "summary": {
+              "byStatus": {
+                "assumed": 0,
+                "disputed": 0,
+                "proposed": 0,
+                "rejected": 0,
+                "revoked": 0,
+                "stale": 0,
+                "superseded": 0,
+                "unknown": 0,
+                "verified": 1
+              },
+              "bySurface": {
+                "quality.developer-evidence": 1
+              },
+              "confidenceBasis": {
+                "averageExtractionConfidence": null,
+                "conflictedClaims": [],
+                "corroboratedClaims": 0,
+                "evidenceStrength": {},
+                "freshnessAtRisk": [],
+                "reviewerAuthority": {},
+                "sourceQuality": {}
+              },
+              "disputedClaims": [],
+              "highImpactUnsupported": [],
+              "recomputeNeededClaims": [],
+              "staleClaims": [],
+              "totalClaims": 1,
+              "transparencyGapsByType": {
+                "contradiction": 0,
+                "corroboration_absent": 0,
+                "freshness_breach": 0,
+                "policy_violation": 0,
+                "provenance_gap": 0,
+                "unsupported_inference": 0
+              }
+            },
+            "transparencyGaps": []
+          },
           "claim": null,
           "diagnostics": null,
           "expectation_ids": [
@@ -808,6 +1253,153 @@
               "schemaVersion": 3,
               "source": "ci/fixture"
             },
+            "bundle_report": {
+              "authorityTrace": [],
+              "changeRecords": [],
+              "claimGroupRollups": [],
+              "claimGroups": [],
+              "claims": [
+                {
+                  "claimType": "quality.tests",
+                  "createdAt": "2026-06-07T14:12:00.000Z",
+                  "fieldOrBehavior": "testSuite",
+                  "freshness": {
+                    "asOf": "2026-06-10T00:00:00.000Z",
+                    "stale": false
+                  },
+                  "id": "claim.quality.tests.fixture",
+                  "impactLevel": "high",
+                  "status": "verified",
+                  "subjectId": "console-projection-fixture",
+                  "subjectType": "flow-step",
+                  "surface": "quality.developer-evidence",
+                  "updatedAt": "2026-06-07T14:12:00.000Z",
+                  "value": "fixture tests passed",
+                  "verificationPolicyId": "policy.software-evidence.commit"
+                }
+              ],
+              "events": [
+                {
+                  "actor": "ci/fixture",
+                  "claimId": "claim.quality.tests.fixture",
+                  "createdAt": "2026-06-07T14:12:00.000Z",
+                  "evidenceIds": [
+                    "evidence.tests.output"
+                  ],
+                  "id": "event.tests.verified",
+                  "method": "npm test",
+                  "status": "verified",
+                  "verifiedAt": "2026-06-07T14:12:00.000Z"
+                }
+              ],
+              "evidence": [
+                {
+                  "claimId": "claim.quality.tests.fixture",
+                  "collectedBy": "ci/fixture",
+                  "evidenceType": "test_output",
+                  "excerptOrSummary": "All fixture tests passed.",
+                  "id": "evidence.tests.output",
+                  "method": "validation",
+                  "observedAt": "2026-06-07T14:12:00.000Z",
+                  "sourceRef": "ci:fixture-run"
+                }
+              ],
+              "evidenceRequirementsByClaimId": {
+                "claim.quality.tests.fixture": {
+                  "notes": "tests pass",
+                  "requiredAuthority": "ci",
+                  "requiredEvidenceTypes": [
+                    "test_output"
+                  ],
+                  "requiredMethods": [
+                    "validation"
+                  ],
+                  "requiresCorroboration": false
+                }
+              },
+              "generatedAt": "2026-06-10T00:00:00.000Z",
+              "id": "surface-1781049600000",
+              "identityLinks": [],
+              "policies": [
+                {
+                  "acceptanceCriteria": [
+                    "tests pass"
+                  ],
+                  "claimType": "software-evidence",
+                  "conflictRules": [],
+                  "id": "policy.software-evidence.commit",
+                  "impactLevel": "high",
+                  "requiredEvidence": [
+                    "test_output"
+                  ],
+                  "requiredMethods": [
+                    "validation"
+                  ],
+                  "requiresCorroboration": false,
+                  "reviewAuthority": "ci",
+                  "stalenessTriggers": [],
+                  "validityRule": {
+                    "kind": "commit"
+                  }
+                }
+              ],
+              "schemaVersion": 3,
+              "source": "ci/fixture",
+              "statusFunctionVersion": "2",
+              "subjectGroups": [
+                {
+                  "canonicalKey": "flow-step::console-projection-fixture",
+                  "claimIds": [
+                    "claim.quality.tests.fixture"
+                  ],
+                  "members": [
+                    {
+                      "subjectId": "console-projection-fixture",
+                      "subjectType": "flow-step"
+                    }
+                  ]
+                }
+              ],
+              "summary": {
+                "byStatus": {
+                  "assumed": 0,
+                  "disputed": 0,
+                  "proposed": 0,
+                  "rejected": 0,
+                  "revoked": 0,
+                  "stale": 0,
+                  "superseded": 0,
+                  "unknown": 0,
+                  "verified": 1
+                },
+                "bySurface": {
+                  "quality.developer-evidence": 1
+                },
+                "confidenceBasis": {
+                  "averageExtractionConfidence": null,
+                  "conflictedClaims": [],
+                  "corroboratedClaims": 0,
+                  "evidenceStrength": {},
+                  "freshnessAtRisk": [],
+                  "reviewerAuthority": {},
+                  "sourceQuality": {}
+                },
+                "disputedClaims": [],
+                "highImpactUnsupported": [],
+                "recomputeNeededClaims": [],
+                "staleClaims": [],
+                "totalClaims": 1,
+                "transparencyGapsByType": {
+                  "contradiction": 0,
+                  "corroboration_absent": 0,
+                  "freshness_breach": 0,
+                  "policy_violation": 0,
+                  "provenance_gap": 0,
+                  "unsupported_inference": 0
+                }
+              },
+              "transparencyGaps": []
+            },
             "expectation_ids": [
               "tests-passed"
             ],
@@ -836,6 +1428,7 @@
         {
           "authority_trace": null,
           "authority_traces": [],
+          "bundle_report": null,
           "claim": null,
           "diagnostics": null,
           "expectation_ids": [
@@ -907,6 +1500,7 @@
         {
           "authority_trace": null,
           "authority_traces": [],
+          "bundle_report": null,
           "claim": null,
           "diagnostics": {
             "summary": "Unit test failed for projection edge case."
@@ -1156,6 +1750,9 @@
       "from_step": null,
       "gate_id": "verify-gate",
       "id": "gate_outcome.1",
+      "invalidated_steps": [
+        "release"
+      ],
       "limit_exceeded": false,
       "max_attempts": 2,
       "reason": "implementation_defect",
@@ -1176,6 +1773,9 @@
       "from_step": "verify",
       "gate_id": "verify-gate",
       "id": "tr.verify-build",
+      "invalidated_steps": [
+        "release"
+      ],
       "limit_exceeded": false,
       "max_attempts": 2,
       "reason": "implementation_defect",
@@ -1319,6 +1919,9 @@
         "from_step": "verify",
         "gate_id": "verify-gate",
         "id": "tr.verify-build",
+        "invalidated_steps": [
+          "release"
+        ],
         "max_attempts": 2,
         "reason": "tests failed",
         "route_reason": "implementation_defect",
