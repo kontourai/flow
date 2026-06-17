@@ -228,6 +228,17 @@ Guardrails: keep the reference graph **acyclic** (reuse the DAG cycle-check
 discipline, or freshness propagation loops), and make Flow **emit** as well as
 consume.
 
+> **2026-06-16 — acyclicity is now a RUNTIME guard, not just discipline.**
+> Verification found the evidence-reference graph was acyclic *by construction*
+> but with NO actual check (the existing DFS cycle check guards only the
+> unrelated `needs` step-DAG). `projectRunOutputBundle` now runs
+> `assertEvidenceReferencesAcyclic(bundle, bundlesByEvidenceId)` (in
+> `src/reports/flow-run-bundle.ts`): a three-colour DFS over the reference graph
+> that throws `EvidenceReferenceCycleError` if any reference path loops back to
+> the run-output bundle being emitted or revisits a node on the stack. Tested in
+> `tests/node/check-run-output-bundle.test.mjs` (root-back-reference, deep
+> multi-hop cycle, and a poisoned leaf that references the emitted run).
+
 ---
 
 ## Thread 4 — Ecosystem Alignment & Web Components
@@ -292,6 +303,26 @@ it to the house pattern:
 
 1. **Freshness fork** — autonomous wall-clock time-decay vs strictly
    event-driven invalidation (Thread 2).
+   **RESOLVED 2026-06-16 — NO SCHEDULER ANYWHERE. Strictly reactive,
+   event-driven.** Neither Surface nor Flow has a scheduler, timer, daemon,
+   cron, or background wake-up; nothing fires on its own as a wall clock crosses
+   `expiresAt`. Flow's only clock is the `now` captured at an `evaluateRun` that
+   some EXTERNAL actor (producer/CI/agent/person) triggers. During an in-progress
+   `evaluateRun`, Flow re-derives claim status at the current `now` via Surface
+   (`reDeriveBundleReports` → `buildTrustReport({ now, since })`); a
+   previously-passed stage whose claim is now wall-clock-stale flips its gate →
+   route-back → `invalidateDescendants` clears downstream stale passes. The
+   route-back only MARKS the stage for redo; an external actor does the redo and
+   triggers the next `evaluateRun`. A claim that silently expires at 2am is
+   observed at the next externally-invoked evaluation; there is no proactive
+   emission. This is the Thread-1 "derived-status-flipped → gate re-eval →
+   route-back" seam EXTENDED to the wall-clock-expiry case, not just explicit
+   revocation events — and it was **already wired**: verification found the §1
+   seam covers wall-clock expiry end-to-end, so only a time-based test
+   (`tests/node/check-wallclock-expiry-routeback.test.mjs`, two explicit
+   `evaluateRun` calls at T0/T1, **no timer**) + this doc/handoff record were
+   needed. **No new machinery.** Freshness expectation is data on the
+   CLAIM/bundle (`expiresAt`/`ttlSeconds`), never a Flow scheduling config.
 2. **Surface signature** — `buildTrustReport(bundle, { now })` and a
    derive-from-checkpoint entry point (Threads 2, 2b). Cross-repo with Surface.
 3. **Hachure schema bump** — `expiresAt` + invalidation event type (Thread 2).
@@ -313,6 +344,33 @@ it to the house pattern:
    and models freshness; the only net-new console work is embedding a
    `<flow-run-panel>` once Flow extracts one as a subpath-exported element. This
    is parked under `## Needs decision` in `console.md`.
+
+   **RESOLVED 2026-06-16 — ConsoleSink seam (replaces the generic
+   `.kontour/events` model entirely):** Flow does NOT emit generic
+   `@kontourai/console-core` records and depends on **NO** console package.
+   Instead:
+   - Flow OWNS the typed projection contract (`FlowConsoleProjection`) and a
+     `ConsoleSink` seam (`src/console/console-sink.ts`) with two impls:
+     `FileConsoleSink` (today's local write/serve, DEFAULT) and
+     `HostedConsoleSink` (POSTs the SAME projection payload over HTTP to a
+     configurable console ingest endpoint — console.kontourai.io OR self-hosted;
+     config-gated, OFF by default, importing nothing from any console package —
+     it knows only an HTTP contract whose body Flow owns).
+   - Flow exports the projection contract from a stable subpath
+     `@kontourai/flow/console-contract` (mirrors Surface's element export).
+     Console depends on that subpath and types its flow-bridge against Flow's
+     exported types instead of redefining them. Console wraps the payload in its
+     own `kontour.console.event` envelope on ingest (the existing flow-bridge
+     already does this for the local/pull case) — authority stays put.
+   - **Caveat (flagged, not invented):** the hosted ingest endpoint's
+     URL/auth/envelope is a CONSOLE-side contract that does not exist yet.
+     `HostedConsoleSink` is functional against any configurable URL; the concrete
+     API shape is tracked under `## Needs decision` in `console.md`
+     ("hosted-ingest API contract"). Not fabricated as real.
+   - The earlier "keep bridge vs Flow pushes `kontour.console.event` directly"
+     fork is SUPERSEDED: Flow neither emits `kontour.console.event` nor depends on
+     console-core; the bridge remains the local seam and `HostedConsoleSink` is
+     the optional push path for the SAME Flow-owned projection payload.
 6. **Surface rollup scope** — can a derived/group claim depend on claims in a
    *referenced* bundle, and does staleness propagate across that edge?
    **RESOLVED 2026-06-16 (see `docs/handoff/surface.md` Findings):**

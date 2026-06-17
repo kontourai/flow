@@ -2,12 +2,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const publicEntrypoints = ["."];
+const publicEntrypoints = [".", "./console-contract"];
 
 const publicImports = [
   {
     specifier: "@kontourai/flow",
     exportName: "validateDefinition"
+  },
+  {
+    // Stable contract subpath (Task E.2): the console plane imports Flow's
+    // OWNED projection types + the ConsoleSink seam from here.
+    specifier: "@kontourai/flow/console-contract",
+    exportName: "createConsoleSink"
   }
 ];
 

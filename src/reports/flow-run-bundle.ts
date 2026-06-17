@@ -77,6 +77,91 @@ function bundleReferencesForStep(
   return refs;
 }
 
+/**
+ * Error thrown when the evidence-reference graph of a run-output bundle is not
+ * acyclic — i.e. a reference path loops back to the bundle being emitted (or to
+ * any bundle already on the path). Recursion is by reference and MUST stay
+ * acyclic, otherwise freshness propagation up the reference tree would loop.
+ */
+export class EvidenceReferenceCycleError extends Error {
+  readonly cycle: string[];
+  constructor(cycle: string[]) {
+    super(`evidence-reference cycle detected: ${cycle.join(" -> ")}`);
+    this.name = "EvidenceReferenceCycleError";
+    this.cycle = cycle;
+  }
+}
+
+/** Stable node identity for a bundle in the reference graph. */
+function bundleNodeId(bundle: any, fallback: string): string {
+  const source = bundle?.source;
+  return typeof source === "string" && source.length > 0 ? source : fallback;
+}
+
+/**
+ * Collect the evidence-bundle identities a bundle references by walking its
+ * claims' `metadata.bundleReferences` and resolving each to the referenced
+ * bundle when it is available in `bundlesByEvidenceId`. Returns `[evidenceId,
+ * resolvedBundle | undefined]` pairs so the DFS can both name the edge and
+ * recurse into a referenced bundle that itself carries references.
+ */
+function outgoingReferences(
+  bundle: any,
+  bundlesByEvidenceId: Map<string, any>,
+): Array<{ evidenceId: string; bundle: any | undefined }> {
+  const out: Array<{ evidenceId: string; bundle: any | undefined }> = [];
+  const claims = Array.isArray(bundle?.claims) ? bundle.claims : [];
+  for (const claim of claims) {
+    const refs = claim?.metadata?.bundleReferences;
+    if (!Array.isArray(refs)) continue;
+    for (const ref of refs) {
+      const evidenceId = ref?.evidenceId;
+      if (typeof evidenceId !== "string") continue;
+      out.push({ evidenceId, bundle: bundlesByEvidenceId.get(evidenceId) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Runtime acyclicity guard for the evidence-reference graph (Task C). The graph
+ * is acyclic by construction (references only point *down* to leaf gate-evidence
+ * bundles already on the run), but "by construction" is not a check. This walks
+ * the reference graph with three-colour DFS and throws
+ * `EvidenceReferenceCycleError` if any reference path revisits a node currently
+ * on the stack — including a reference that loops back to the run-output bundle
+ * being emitted. Independent of (and not guarded by) the `needs` step-DAG check.
+ */
+export function assertEvidenceReferencesAcyclic(
+  rootBundle: any,
+  bundlesByEvidenceId: Map<string, any>,
+): void {
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>();
+  const rootId = bundleNodeId(rootBundle, "flow-run-output");
+
+  const visit = (bundle: any, nodeId: string, path: string[]): void => {
+    const state = color.get(nodeId);
+    if (state === BLACK) return;
+    if (state === GRAY) {
+      const start = path.indexOf(nodeId);
+      throw new EvidenceReferenceCycleError([...path.slice(start >= 0 ? start : 0), nodeId]);
+    }
+    color.set(nodeId, GRAY);
+    for (const { evidenceId, bundle: child } of outgoingReferences(bundle, bundlesByEvidenceId)) {
+      const childId = child ? bundleNodeId(child, evidenceId) : evidenceId;
+      // A reference that points straight back at the root is the most direct cycle.
+      if (childId === rootId) {
+        throw new EvidenceReferenceCycleError([...path, nodeId, childId]);
+      }
+      visit(child, childId, [...path, nodeId]);
+    }
+    color.set(nodeId, BLACK);
+  };
+
+  visit(rootBundle, rootId, []);
+}
+
 export function projectRunOutputBundle(
   definition: any,
   state: any,
@@ -181,7 +266,7 @@ export function projectRunOutputBundle(
     notes: "Stage passed in the flow run.",
   }));
 
-  return {
+  const bundle: MutableRecord = {
     schemaVersion: 4,
     source: options.source ?? `flow-run:${def.id}:${state.run_id}`,
     claims,
@@ -190,4 +275,17 @@ export function projectRunOutputBundle(
     events,
     claimGroups,
   };
+
+  // Task C — real acyclicity guard on the evidence-reference graph. Build a
+  // lookup from each referenced gate-evidence bundle's id to the bundle itself
+  // (so the DFS can recurse into a referenced bundle that is itself a
+  // flow-output bundle with its own references), then assert no reference path
+  // loops back to this run-output bundle or revisits any node on the stack.
+  const bundlesByEvidenceId = new Map<string, any>();
+  for (const entry of evidence) {
+    if (entry?.id && entry?.bundle) bundlesByEvidenceId.set(entry.id, entry.bundle);
+  }
+  assertEvidenceReferencesAcyclic(bundle, bundlesByEvidenceId);
+
+  return bundle;
 }

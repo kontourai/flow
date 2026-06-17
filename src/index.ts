@@ -142,7 +142,11 @@ export {
   reportJson,
   sortStatus
 } from "./reports/flow-reports.js";
-export { projectRunOutputBundle } from "./reports/flow-run-bundle.js";
+export {
+  projectRunOutputBundle,
+  assertEvidenceReferencesAcyclic,
+  EvidenceReferenceCycleError
+} from "./reports/flow-run-bundle.js";
 export type { RunOutputBundleOptions } from "./reports/flow-run-bundle.js";
 export {
   projectFlowRun,
@@ -172,6 +176,17 @@ export type {
   FlowConsoleServerHandle,
   FlowConsoleServerOptions
 } from "./console/console-server.js";
+export {
+  FileConsoleSink,
+  HostedConsoleSink,
+  createConsoleSink
+} from "./console/console-sink.js";
+export type {
+  ConsoleSink,
+  ConsoleSinkConfig,
+  FileConsoleSinkOptions,
+  HostedConsoleSinkOptions
+} from "./console/console-sink.js";
 export {
   validateKitContainer,
   validateKitContainerFile

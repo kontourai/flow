@@ -16,6 +16,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./console-contract": {
+      "types": "./dist/console/console-contract.d.ts",
+      "import": "./dist/console/console-contract.js",
+      "default": "./dist/console/console-contract.js"
     }
   },
   "files": [

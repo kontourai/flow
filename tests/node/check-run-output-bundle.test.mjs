@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   projectRunOutputBundle,
+  assertEvidenceReferencesAcyclic,
+  EvidenceReferenceCycleError,
   evaluateGate,
   initialState,
   defaultFlowConfig
@@ -197,4 +199,84 @@ test("run-output bundle round-trips as evidence into a parent flow's gate", () =
 
   const outcome = evaluateGate(parentDef, parentState, parentManifest, "integrate-gate", defaultFlowConfig());
   assert.equal(outcome.status, "pass", "parent gate passes consuming the child run as a single claim");
+});
+
+// ---------------------------------------------------------------------------
+// Task C — real acyclicity guard on the evidence-reference graph.
+// ---------------------------------------------------------------------------
+
+test("projectRunOutputBundle passes the evidence-reference acyclicity guard", () => {
+  const { definition, state, manifest } = passedRun();
+  // The guard runs inside projectRunOutputBundle; emission must not throw.
+  assert.doesNotThrow(() => projectRunOutputBundle(definition, state, manifest, { now: NOW }));
+});
+
+test("acyclicity guard accepts a normal down-only reference graph", () => {
+  // root references one leaf gate-evidence bundle that references nothing.
+  const root = {
+    source: "flow-run:child:r1",
+    claims: [
+      { id: "c1", metadata: { bundleReferences: [{ evidenceId: "ev.leaf" }] } }
+    ]
+  };
+  const leaf = { source: "ci/leaf", claims: [] };
+  const byId = new Map([["ev.leaf", leaf]]);
+  assert.doesNotThrow(() => assertEvidenceReferencesAcyclic(root, byId));
+});
+
+test("acyclicity guard THROWS when a reference loops back to the root", () => {
+  // root -> leaf -> root : a cycle introduced via a back-reference.
+  const root = {
+    source: "flow-run:child:r1",
+    claims: [
+      { id: "c1", metadata: { bundleReferences: [{ evidenceId: "ev.leaf" }] } }
+    ]
+  };
+  const leaf = {
+    source: "ci/leaf",
+    // The leaf (itself a flow-output bundle) references back up to the root.
+    claims: [
+      { id: "c2", metadata: { bundleReferences: [{ evidenceId: "ev.root" }] } }
+    ]
+  };
+  const byId = new Map([
+    ["ev.leaf", leaf],
+    ["ev.root", root]
+  ]);
+
+  assert.throws(
+    () => assertEvidenceReferencesAcyclic(root, byId),
+    (err) => {
+      assert.ok(err instanceof EvidenceReferenceCycleError, "must be an EvidenceReferenceCycleError");
+      assert.ok(err.cycle.includes("flow-run:child:r1"), "cycle names the root");
+      return true;
+    }
+  );
+});
+
+test("acyclicity guard THROWS on a deeper multi-hop cycle (a -> b -> c -> a)", () => {
+  const a = { source: "bundle.a", claims: [{ id: "ca", metadata: { bundleReferences: [{ evidenceId: "ev.b" }] } }] };
+  const b = { source: "bundle.b", claims: [{ id: "cb", metadata: { bundleReferences: [{ evidenceId: "ev.c" }] } }] };
+  const c = { source: "bundle.c", claims: [{ id: "cc", metadata: { bundleReferences: [{ evidenceId: "ev.a" }] } }] };
+  const byId = new Map([
+    ["ev.a", a],
+    ["ev.b", b],
+    ["ev.c", c]
+  ]);
+  assert.throws(() => assertEvidenceReferencesAcyclic(a, byId), EvidenceReferenceCycleError);
+});
+
+test("projectRunOutputBundle THROWS when a leaf bundle references the run being emitted", () => {
+  const { definition, state, manifest } = passedRun();
+  // Poison the leaf gate-evidence bundle so it references the run-output bundle
+  // that projectRunOutputBundle is about to emit (source flow-run:child-flow:child-run).
+  manifest.evidence[0].bundle.claims[0].metadata = {
+    bundleReferences: [{ evidenceId: "ev.verify" }] // self-reference via its own id -> the leaf -> ... loop
+  };
+  // Add a second manifest entry whose bundle points back at the run output,
+  // forming root -> ev.verify(leaf) -> ev.verify (cycle on the leaf node).
+  assert.throws(
+    () => projectRunOutputBundle(definition, state, manifest, { now: NOW }),
+    EvidenceReferenceCycleError
+  );
 });

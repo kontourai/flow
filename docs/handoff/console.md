@@ -98,20 +98,70 @@ return protocol rather than guessed.
 transitions (it now does, via `diffFreshness`), the fresh→stale flip can ride
 the existing stream. No console change is needed beyond wiring the new panel.
 
+## Findings — 2026-06-16 (verification pass: typed flow-bridge ingest)
+
+**Repo/PR:** kontourai/console, branch `claude/flow-contract-typed-ingest`
+(off `main`; committed locally, not pushed). The checkout had UNRELATED dirty
+work (`console-ui/public/surface-trust-panel.js`, `demo/grounded-answer/*`, a
+stash) — left untouched; only my two files were staged.
+
+**Task E.3 — flow-bridge now consumes Flow's EXPORTED contract types
+(RESOLVED DECISION 2).** Replaces the original §3 "Flow must emit generic
+`.kontour/events`" plan and the (A)/(B) fork below. The integration model is the
+ConsoleSink seam:
+- Added `@kontourai/flow` (`^1.3.0`) as a dependency of `console-server`.
+- `console-server/src/console-foundation/flow-bridge.ts` now imports Flow's
+  exported `FlowConsoleTransitionProjection` / `FlowConsoleRunIdentity` from the
+  stable subpath `@kontourai/flow/console-contract` (type-only import with
+  `resolution-mode: "import"` — the bridge is CJS, Flow is ESM) and uses them to
+  type the on-disk transition/run-state shapes instead of redefining them inline.
+- Authority is unchanged: the bridge stays **read-only** over Flow-owned files,
+  pulls in **no** Flow runtime (the type imports erase at compile time — the
+  compiled `flow-bridge.js` has zero `@kontourai/flow` reference), and console
+  still wraps everything in its own `kontour.console.event` envelope on ingest.
+  Console does NOT centralize authority.
+- **Tested:** full console `typecheck` (all 4 workspaces) clean; console-server
+  build clean; `console-server/test/flow-bridge.test.ts` (5) + the full
+  console-server suite (126) + console-core (45) + content-boundary all pass.
+  **Not run here:** the top-level `npm test` end-to-end (Playwright + dev-local)
+  — the changed surface is type-only and covered by the bridge tests + typecheck.
+- **Vendoring note (publish-before-merge):** `@kontourai/flow` 1.3.0 (with the
+  new `./console-contract` subpath) and the updated `@kontourai/surface` are not
+  published; Flow's built `dist` was vendored into console's
+  `node_modules/@kontourai/flow` to typecheck/build. Publish Flow 1.3.0 (and the
+  freshness-bearing Surface) before merging console. A runtime `import` of the
+  contract module from console currently fails only because console's vendored
+  Surface is 1.0.1 (lacks `checkpointFromReport`/`diffFreshness`); the bridge
+  uses **type-only** imports so this never executes — but bump console's Surface
+  when the freshness-bearing Surface ships.
+
+**`<flow-run-panel>` (console.md change #2) remains a separate net-new task**,
+unchanged by this pass: Flow still ships only `<surface-trust-panel>` (vendored)
+in its console drawer; a dependency-free `<flow-run-panel>` subpath element has
+not been extracted. Not in scope for this verification pass.
+
 ## Needs decision
 
-**§3 integration model (Flow owner).** Two viable paths, both authority-correct:
-- **(A) Keep the read-only bridge (recommended, zero Flow change for §3):** the
-  console `flow-bridge` already derives `kontour.console.event` v0.1 from Flow's
-  owned run files. Flow ships nothing new for §3; the §2 run-output bundle and
-  §1 freshness transitions become richer payloads the bridge can pick up.
-- **(B) Flow pushes `kontour.console.event` v0.1 directly:** Flow depends on
-  `@kontourai/console-core`, emits the records itself, and the bridge is retired.
-  More moving parts; only worth it if a push model is required. If chosen, the
-  exact `kontour.console.event` shape must be agreed with the console owner
-  before Flow implements it.
+**§3 integration model (Flow owner) — RESOLVED 2026-06-16: ConsoleSink seam.**
+Flow does NOT emit generic `.kontour/events` and does NOT depend on
+`@kontourai/console-core`. Flow owns the `FlowConsoleProjection` payload and a
+`ConsoleSink` seam: `FileConsoleSink` (local, default) + `HostedConsoleSink`
+(optional HTTP push of the SAME payload). Console depends on
+`@kontourai/flow/console-contract` for the types (done above) and keeps the
+read-only bridge as the local seam. The earlier (A)/(B) fork is superseded — Flow
+neither emits `kontour.console.event` nor depends on console-core.
 
-**STOP — do not implement §3's `.kontour/events` emitter or build
-`<flow-run-panel>` until the Flow owner picks (A) or (B).** Implementing the
-generic `.kontour/events` schema as originally written would conflict with the
-existing bridge contract. Recorded, not guessed.
+**Hosted-ingest API contract (CONSOLE owner) — OPEN, tracked follow-up.**
+`HostedConsoleSink` POSTs Flow's `FlowConsoleProjection` to a configurable
+endpoint with `content-type: application/json` and optional bearer auth. The
+**console-side ingest endpoint does not exist yet** — its URL, auth scheme, and
+the envelope/ack semantics are a console contract still to be defined. The sink
+is functional against any URL today, but the request/response shape it assumes is
+**NOT a ratified console API**. Console owner to define:
+- the ingest route (path, method, expected status codes / ack body),
+- auth (bearer token? mTLS? signed?),
+- whether the body is the raw `FlowConsoleProjection` or a console-wrapped
+  envelope, and idempotency/dedup keys for re-POST safety.
+Until then, treat `HostedConsoleSink` as a functional-but-unwired push path; the
+default `FileConsoleSink` + read-only bridge is the supported model. Recorded,
+not fabricated.

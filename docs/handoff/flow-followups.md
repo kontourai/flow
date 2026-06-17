@@ -163,3 +163,69 @@ from `@kontourai/console-core`. So:
   `@kontourai/console-core`) so the bridge can be retired — but align the exact
   shape with the console owner first. Do NOT have Flow invent a parallel
   `.kontour/events` schema.
+
+## Findings — 2026-06-16 (verification pass: acyclicity guard, wall-clock test, ConsoleSink)
+
+**Repo/branch:** kontourai/flow worktree, `claude/route-backs-dag-deps-h07yat`
+(committed locally, not pushed). Second pass after independent verification.
+All **176 node tests + 15 chromium Playwright + console smoke** pass; `typecheck`
+and the contracts typecheck (`tsconfig.types.json`) are clean.
+
+**Task C — evidence-reference acyclicity is now a real RUNTIME guard.**
+Verification was right: the reference graph was acyclic *by construction* with no
+check; the existing DFS guarded only the `needs` step-DAG. Added
+`assertEvidenceReferencesAcyclic(rootBundle, bundlesByEvidenceId)` +
+`EvidenceReferenceCycleError` in `src/reports/flow-run-bundle.ts` (exported from
+`index.ts`). `projectRunOutputBundle` builds an evidenceId→bundle lookup from the
+manifest and runs the guard before returning, so emission throws if a reference
+path loops back to the run-output bundle or revisits a node. Tests added to
+`tests/node/check-run-output-bundle.test.mjs`: down-only graph passes; root
+back-reference, an a→b→c→a multi-hop cycle, and a poisoned leaf that references
+the emitted run all throw.
+
+**Task D — wall-clock expiry routes back through the §1 seam; NO new machinery
+(RESOLVED DECISION 1).** Verification outcome: **the §1 seam already covers
+wall-clock expiry end-to-end.** `evaluateRun` → `reDeriveBundleReports(now)` →
+`buildTrustReport({ now, since })` makes an `expiresAt`/`ttlSeconds` claim derive
+`stale` purely from time; the current-step gate then no longer matches
+`accepted_statuses` and routes back, and `invalidateDescendants` clears the
+downstream stale pass. Only a test + docs were needed — **no scheduler, timer,
+cadence, or re-runner was added.** New test
+`tests/node/check-wallclock-expiry-routeback.test.mjs` drives TWO explicit
+`evaluateRun` calls at T0 (fresh → pass → advance) and T1 (wall-clock-expired →
+route-back to prepare + invalidate the `release` descendant) against a real temp
+run dir. NO timer in the test; both calls are explicit, exactly as an external
+producer/CI/agent/person would invoke them. Surface does all the staleness math;
+Flow only reacts to the derived status at evaluation `now`.
+
+**§3 — RESOLVED as the ConsoleSink seam (RESOLVED DECISION 2; supersedes the
+prior "keep bridge vs push kontour.console.event" fork and the original generic
+`.kontour/events` plan).** Flow does NOT emit generic `@kontourai/console-core`
+records and depends on NO console package. Implemented (Task E):
+- **`ConsoleSink` seam** (`src/console/console-sink.ts`): `ConsoleSink` interface
+  + `FileConsoleSink` (writes the projection under the run dir — today's
+  local/pull behaviour, DEFAULT) + `HostedConsoleSink` (POSTs the SAME
+  `FlowConsoleProjection` payload over HTTP to a configurable console ingest
+  endpoint; gated via `createConsoleSink({ mode: "hosted", hosted: { endpoint }
+  })`, OFF by default, imports nothing from any console package — it knows only
+  an HTTP contract whose body Flow owns). All exported from `index.ts`.
+- **Stable contract subpath** `@kontourai/flow/console-contract`
+  (`src/console/console-contract.ts`, declared in `package.json` `exports`,
+  mirroring Surface's `trust-panel/element`): re-exports the
+  `FlowConsoleProjection` contract types + the sink. Console depends on this and
+  types its flow-bridge against Flow's exported types (see `console.md`).
+- Console wraps the payload in its own `kontour.console.event` envelope on
+  ingest — Flow never produces that envelope; authority stays put.
+- Tests: `tests/node/check-console-sink.test.mjs` (file sink writes the exact
+  payload; hosted sink POSTs the same payload with auth/headers via injected
+  fetch; rejects non-OK; hosted is never the default; subpath re-export). The
+  package API-boundary + export-stability tests were updated to admit the new
+  `./console-contract` entrypoint and the new named exports.
+- **Caveat FLAGGED (not invented):** the hosted ingest endpoint URL/auth/envelope
+  is a console-side contract that does not exist yet. `HostedConsoleSink` is
+  functional against any configurable URL; the concrete API shape is tracked as
+  a follow-up in `console.md` (`## Needs decision — hosted-ingest API contract`).
+
+**§1/§2/§4 unchanged from the first pass** beyond Task C's guard on §2's output.
+The first-pass re-derive/checkpoint path (§1) now sits on a real Surface
+checkpoint (Surface Task A fixed the `since` no-op); no Flow change was needed.

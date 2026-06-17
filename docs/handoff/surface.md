@@ -171,24 +171,90 @@ bumped to `^0.5.0` (publish hachure 0.5.0 before merging surface).
 The design doc (`route-back-cascade-and-trust-recursion.md`, Decision #6) is
 updated to record this answer; see also `flow-followups.md` §2 note.
 
-## Needs decision
+## Findings — 2026-06-16 (verification pass: checkpoint no-op fix + back-compat pin)
+
+**Repo/PR:** kontourai/surface, branch `claude/time-aware-derivation-freshness`
+(committed locally, not pushed). Second pass after independent verification found
+the checkpoint feature was a no-op.
+
+**Task A — checkpointed derivation was unimplemented; now real.** Verification
+was correct: `buildTrustReport({ now, since })` accepted `since` but never read
+it — every call did a full `deriveTrustSnapshot(input, { now })`, and the
+"identical results" expectation passed only vacuously (no test even exercised
+`since`). Fixed:
+- `deriveTrustSnapshot` now accepts `{ since, instrument }`
+  (`DeriveTrustSnapshotOptions`). Events are indexed by `claimId` once. For each
+  claim it computes the **tail** = events newer than that claim's own high-water
+  mark. When the checkpoint is usable and a claim's tail is empty, the claim is
+  **served from the checkpoint** (`statusByClaimId`) and only the time-based
+  freshness window is re-applied against the new `now` via the new
+  `reapplyVerifiedFreshness()` (exported from `status.ts`) — folding **zero** of
+  that claim's events. A claim with tail events is fully re-folded.
+- **Identity proof:** the status function is pure, so a checkpointed derivation
+  is byte-identical to a full derivation for the same `now`. Test asserts a
+  deep-equal of claims/changeRecords/transparencyGaps/summary/rollups between the
+  two paths, both with and without a tail event present.
+- **Tail-only proof (the part that was missing):** the new `instrument` hook
+  reports per-claim `{ eventsFolded, eventsTotal, fromCheckpoint }`. The test
+  asserts the full run folds each claim's whole ledger while the checkpointed run
+  folds **0** events for the unchanged claim (and still correctly flips it to
+  `stale` from the time window alone), and that total events folded is strictly
+  smaller under the checkpoint. A separate case proves a claim WITH a tail event
+  is re-folded while its sibling without one is served from the checkpoint.
+- **Correctness fix found while implementing:** a single GLOBAL
+  `throughEventCreatedAt` is unsafe for tail detection — an event can land for
+  one claim with a `createdAt` older than the global max but newer than that
+  claim's last folded event, and be silently dropped. Added an additive
+  (optional) `throughEventCreatedAtByClaimId` to `DerivationCheckpoint`;
+  `checkpointFromReport` populates it; tail detection uses the per-claim mark.
+  Legacy checkpoints without it (and checkpoints from a different
+  `statusFunctionVersion`) fall back to full replay for safety — also tested.
+- Files: `src/trust-snapshot.ts`, `src/status.ts` (new `reapplyVerifiedFreshness`),
+  `src/report.ts` (wire `since`/`instrument`, per-claim mark), `src/types.ts`
+  (optional `throughEventCreatedAtByClaimId`, `DeriveTrustSnapshotOptions`/
+  `SnapshotEventProbe` exported via `trust-snapshot.ts`).
+  Test: `tests/checkpoint-derivation.test.ts` (4 tests).
+
+**Task B — dedicated back-compat pin.** Added `tests/back-compat-no-freshness.ts`
+(`tests/back-compat-no-freshness.test.ts`): a bundle with NONE of the new
+freshness fields (`expiresAt`/`ttlSeconds`/invalidation events) is proven to
+derive identically across two `now` values **decades apart** (deep-equal of all
+derivation outputs, modulo the `asOf` echo and instant-stamped id/generatedAt),
+and to carry no intrinsic expiry and no time-staleness on any claim. This pins
+prior behaviour directly rather than relying only on the indirect
+`sf-no-freshness-fields` spec vector.
+
+**Tested:** `npm run build` + `npm test` → **322 node tests pass** (was 316; +6
+new: 4 checkpoint, 2 back-compat) + serial + external-adapter green;
+`npm run typecheck` clean. **Not run:** `test:browser` (no browser env — panel
+path unchanged). No lint script in this repo.
+
+**Impact on Flow:** §1 already uses `buildTrustReport(bundle, { now, since })`;
+its checkpoints are now a genuine cost lever, not a no-op. Flow should keep
+storing `checkpointFromReport(report)` as the inquiry record; the new per-claim
+high-water field is populated automatically and requires no Flow change.
+
+## Needs decision — RESOLVED 2026-06-16 (Flow owner)
 
 **Autonomous wall-clock decay vs strictly event-driven invalidation** (the Open
-decision in this file / Decision #1 in the design doc). Surface now *supports
-both cheaply*: time-based freshness is recomputed against whatever `now` Flow
-passes, and `diffFreshness` surfaces a transition whenever it flips — but
-**nothing in Surface re-invokes `buildTrustReport` as the clock crosses
-`expiresAt`.** That trigger is a Flow/scheduler concern. The decision the Flow
-owner must make:
+decision in this file / Decision #1 in the design doc).
 
-- **Event-driven only (default, simpler):** Flow re-derives on `evaluateRun` and
-  when a new bundle event lands. A claim that silently expires at 2am is only
-  observed at the next evaluation. No scheduler.
-- **Autonomous wall-clock decay:** Flow/a scheduler re-invokes `buildTrustReport`
-  when `now` is about to cross a claim's `expiresAt` (Surface already exposes
-  `freshness.expiresAt` per claim to drive a timer), emitting the
-  fresh→stale transition proactively.
-
-Surface implements neither trigger (staying time-neutral about *when* to
-re-derive, per the invariant). **STOP — Flow owner to choose** before
-flow-followups.md §1/§3 wire any scheduler. Recorded, not guessed.
+> **RESOLVED: NO SCHEDULER ANYWHERE — strictly reactive, event-driven.** Neither
+> Surface nor Flow has a scheduler, timer, daemon, cron, or background wake-up.
+> Nothing fires on its own as a wall-clock passes `expiresAt`. Surface stays
+> time-neutral and implements neither trigger (correct, unchanged). Flow's only
+> clock is the `now` captured at an `evaluateRun` that some EXTERNAL actor (a
+> producer, CI, an agent, a person) triggers. During an in-progress
+> `evaluateRun`, Flow re-derives claim status at the current `now` via Surface;
+> a previously-passed stage whose claim is now wall-clock-stale (Surface says
+> so) flips its gate → route-back → `invalidateDescendants`. The route-back only
+> MARKS the stage for redo; an external actor does the redo and triggers the
+> next `evaluateRun`. A claim that silently expires at 2am is simply observed at
+> the next externally-invoked evaluation — there is no proactive emission. This
+> is the §1 "derived-status-flipped → gate re-eval → route-back" seam extended to
+> cover the wall-clock-expiry case, not only explicit revocation events.
+>
+> Freshness expectation is data on the CLAIM/bundle (`expiresAt`/`ttlSeconds` —
+> Surface/Hachure), never a Flow scheduling config. Flow reads derived staleness;
+> it neither computes nor schedules it. See `surface.md` Findings (Task A/D),
+> `flow-followups.md` (§1 Findings), and design Decision #1.
