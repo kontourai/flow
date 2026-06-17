@@ -498,6 +498,78 @@ export function predecessorsOf(definition: any, stepId: string): string[] {
 }
 
 /**
+ * Return the transitive set of step ids that depend on `stepId` — its
+ * descendants in the dependency DAG.  A step `D` is a descendant of `T` when
+ * `T` is one of `D`'s transitive effective predecessors.  `stepId` itself is
+ * excluded.  Result is in definition order for determinism.
+ */
+export function descendantsOf(definition: any, stepId: string): string[] {
+  const steps = normalizedSteps(definition);
+  // Forward adjacency: predecessor id -> ids of steps that need it.
+  const children = new Map<string, string[]>();
+  for (const step of steps) {
+    for (const pred of predecessorsOf(definition, step.id)) {
+      const list = children.get(pred) ?? [];
+      list.push(step.id);
+      children.set(pred, list);
+    }
+  }
+  const seen = new Set<string>();
+  const queue = [...(children.get(stepId) ?? [])];
+  while (queue.length) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const child of children.get(id) ?? []) {
+      if (!seen.has(child)) queue.push(child);
+    }
+  }
+  return steps.map((s) => s.id).filter((id) => seen.has(id));
+}
+
+/**
+ * Route-back cascade (Phase 1.5).
+ *
+ * When a run routes back to `targetStep`, the work that produced every step
+ * downstream of the target is now suspect and must re-run.  This clears the
+ * stale `pass` gate outcomes — and the `allowed` transitions — for every
+ * descendant of `targetStep`, so `readySteps`/`stageStatuses` stop treating
+ * them as passed and the run re-derives them as the cursor advances again.
+ *
+ * Only `pass` outcomes are cleared: a `pass` is what wrongly suppresses a
+ * re-run.  Non-pass outcomes (`block`/`route-back`/`wait`) are diagnostic
+ * records — including the failure that triggered this route-back — and are
+ * preserved so reports and attempt counting (`routeBackAttempt`) keep working.
+ * The target itself is untouched: it becomes `current_step` and is
+ * re-evaluated through the normal cursor.
+ *
+ * Mutates `state` in place.  Returns the descendant step ids (definition
+ * order) marked for re-run, for audit.
+ */
+export function invalidateDescendants(definition: any, state: any, targetStep: string): string[] {
+  const def = normalizeFlowDefinition(definition);
+  const descendants = descendantsOf(def, targetStep);
+  if (descendants.length === 0) return [];
+  const descendantSet = new Set(descendants);
+  const descendantGateIds = new Set(
+    (Object.entries(def.gates ?? {}) as Array<[string, any]>)
+      .filter(([, gate]) => descendantSet.has(gate.step))
+      .map(([id]) => id)
+  );
+  if (Array.isArray(state.gate_outcomes)) {
+    state.gate_outcomes = state.gate_outcomes.filter(
+      (outcome: any) => !(descendantGateIds.has(outcome.gate_id) && outcome.status === "pass")
+    );
+  }
+  if (Array.isArray(state.transitions)) {
+    state.transitions = state.transitions.filter(
+      (transition: any) => !(transition.status === "allowed" && descendantSet.has(transition.from_step))
+    );
+  }
+  return descendants;
+}
+
+/**
  * Determine whether every predecessor of `stepId` has a passed gate.
  * A step with no predecessors is considered unblocked.
  */

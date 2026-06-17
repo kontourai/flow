@@ -80,6 +80,8 @@ export {
   gatesForStep,
   getStep,
   initialState,
+  descendantsOf,
+  invalidateDescendants,
   nextActionForStep,
   openGates,
   predecessorsOf,
