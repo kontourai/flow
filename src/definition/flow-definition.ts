@@ -15,7 +15,7 @@ function isFlowDefinitionResource(definition: any) {
     );
 }
 
-function normalizeFlowDefinition(definition: any) {
+export function normalizeFlowDefinition(definition: any) {
   if (!isFlowDefinitionResource(definition)) return definition;
   const metadata = isObject(definition.metadata) ? definition.metadata : {};
   const spec = isObject(definition.spec) ? definition.spec : {};

@@ -142,6 +142,8 @@ export {
   reportJson,
   sortStatus
 } from "./reports/flow-reports.js";
+export { projectRunOutputBundle } from "./reports/flow-run-bundle.js";
+export type { RunOutputBundleOptions } from "./reports/flow-run-bundle.js";
 export {
   projectFlowRun,
   projectFlowRunFromFiles

@@ -87,6 +87,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "previewFlowConfigMergeFile",
     "projectFlowRun",
     "projectFlowRunFromFiles",
+    "projectRunOutputBundle",
     "projectVersionReleaseReport",
     "reDeriveBundleReports",
     "readJson",
