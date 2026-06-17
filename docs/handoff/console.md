@@ -53,3 +53,65 @@ Surface's dependency-free web components — without centralizing authority.
 - Element tag names + subpath exports: confirm `<flow-run-panel>` (Flow) and the
   `<surface-trust-panel>` export (Surface) so the React app can import/register
   both.
+
+## Findings — 2026-06-16
+
+**Repo:** kontourai/console (inspected at branch `main`; the checkout was on
+`ci/standardize-release-machinery`, base branch is `main`). **No code changes
+made here** — this task is largely PRE-EXISTING, and the parts that aren't are
+blocked on a Flow-owner decision + a new Flow web component. Recorded per the
+return protocol rather than guessed.
+
+**What already exists in console (so this task is mostly done):**
+- **Ingest Flow events — DONE.** `console-server/src/console-foundation/flow-bridge.ts`
+  (`deriveFlowRunEvents`) reads Flow's owned `.flow/runs/<run-id>/state.json`
+  read-only and derives `kontour.console.event` (v0.1) records, then
+  `buildPipeline()` from `@kontourai/console-core`. Authority is correct (Console
+  never owns Flow state). This supersedes `flow-followups.md` §3's assumption
+  that Flow must emit a generic `.kontour/events/**/*.jsonl` — the real contract
+  is **`kontour.console.event` v0.1** and the seam is a read-only bridge.
+- **Embed `<surface-trust-panel>` — DONE.** `console-ui/public/surface-trust-panel.js`
+  + `console-ui/src/surface-trust-panel-loader.ts` already register and mount the
+  Surface element in the React tree.
+- **Surface freshness — present.** `console-core/src/operating-state.ts` carries
+  `freshness { status, asOf }` and `statusFunctionVersion`; `process-flow.ts`
+  renders `freshness: <status>` on claim nodes.
+
+**The real gaps (the only net-new work):**
+1. **`<flow-run-panel>` does not exist yet.** console.md change #2 (embed the
+   Flow web component) is blocked on Flow shipping a dependency-free
+   `<flow-run-panel>` with a stable subpath export (mirroring how Surface now
+   ships `@kontourai/surface/trust-panel/element` — see `surface.md`). Flow today
+   has a bespoke `src/console-ui` (a full page, not a single embeddable element).
+   **Action on Flow first:** extract a `<flow-run-panel>` custom element fed the
+   already-derived `FlowConsoleProjection`, export it as a subpath, then console
+   embeds it next to `<surface-trust-panel>`.
+2. **§3 integration model is a decision, not an implementation.** Because the
+   bridge already ingests Flow, do NOT add a second emitter. Confirm with the
+   Flow owner whether to keep the bridge (Flow unchanged) or move Flow to push
+   `kontour.console.event` v0.1 directly (then retire the bridge). See
+   `## Needs decision`.
+
+**Live SSE freshness (change #3):** the SSE `/stream` (`ready`/`state`/
+`record.accepted`) and freshness model already exist in console; once a
+`<flow-run-panel>` is embedded and Flow's §1 re-derivation emits freshness
+transitions (it now does, via `diffFreshness`), the fresh→stale flip can ride
+the existing stream. No console change is needed beyond wiring the new panel.
+
+## Needs decision
+
+**§3 integration model (Flow owner).** Two viable paths, both authority-correct:
+- **(A) Keep the read-only bridge (recommended, zero Flow change for §3):** the
+  console `flow-bridge` already derives `kontour.console.event` v0.1 from Flow's
+  owned run files. Flow ships nothing new for §3; the §2 run-output bundle and
+  §1 freshness transitions become richer payloads the bridge can pick up.
+- **(B) Flow pushes `kontour.console.event` v0.1 directly:** Flow depends on
+  `@kontourai/console-core`, emits the records itself, and the bridge is retired.
+  More moving parts; only worth it if a push model is required. If chosen, the
+  exact `kontour.console.event` shape must be agreed with the console owner
+  before Flow implements it.
+
+**STOP — do not implement §3's `.kontour/events` emitter or build
+`<flow-run-panel>` until the Flow owner picks (A) or (B).** Implementing the
+generic `.kontour/events` schema as originally written would conflict with the
+existing bridge contract. Recorded, not guessed.

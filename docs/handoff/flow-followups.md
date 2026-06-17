@@ -94,3 +94,72 @@ Playwright assertion.
   second flow's gate.
 - `.kontour/events` consumed by the console without Flow owning authoritative
   state.
+
+## Findings — 2026-06-16
+
+**Repo/PR:** kontourai/flow, branch `claude/route-backs-dag-deps-h07yat` (this
+worktree; committed locally, not pushed). Deps bumped: `hachure ^0.5.0`,
+`@kontourai/surface ^1.2.0` (both vendored locally to run tests — publish before
+merge). All 162 node tests + 9 chromium-desktop Playwright tests pass.
+
+**§1 — re-derive instead of caching `bundle_report`: DONE.**
+- `reDeriveBundleReports(manifest, now)` (in `src/runtime/flow-run-store.ts`,
+  exported) re-derives each trust.bundle entry via Surface
+  `buildTrustReport(bundle, { now, since: lastCheckpoint })`; updates the LIVE
+  `entry.bundle_report` and appends a frozen `DerivationCheckpoint` to
+  `entry.inquiry_records` (append-only audit series + the checkpoint that bounds
+  the next derivation). Emits `diffFreshness` transitions.
+- `evaluateRun` calls it BEFORE gates read `bundle_report`, so a claim gone
+  stale flips the gate → route-back → the existing `invalidateDescendants`
+  cascade fires. The seam is wired; Flow stays time-neutral (picks `now`,
+  Surface does the math).
+- Proof: `tests/node/check-rederive-freshness.test.mjs` — fresh at T0, stale at
+  T1; append-only records; legacy (no-freshness) bundle is time-invariant.
+
+**§2 — emit a run-output TrustBundle: DONE (unblocked by the Surface answer).**
+- `projectRunOutputBundle(definition, state, manifest, { now })` (in
+  `src/reports/flow-run-bundle.ts`, exported). claims = passed stages; evidence
+  = **by-reference** pointers to each stage's gate-evidence bundle (id + claim
+  selector + `statusFunctionVersion` + `asOf`; never inlined); events = per-stage
+  verifications. The run-level `run verified` is a **Surface rollup** (an
+  all-required `claimGroup` over the member claims in the SAME bundle) — Flow
+  computes nothing. Reference graph stays acyclic (refs point only down to leaf
+  gate-evidence already on the run).
+- Proof: `tests/node/check-run-output-bundle.test.mjs` — validates vs Hachure
+  schema + Surface; the run-verified rollup derives `verified`; evidence is
+  by-reference; round-trips as evidence into a parent flow's gate as one claim.
+
+**§4 — nested Surface trust panel in the console drawer: DONE.**
+- Projection passthrough (`bundle_report`) in `console-projection.ts` +
+  `ConsoleEvidence`; drawer mounts `<surface-trust-panel>` per trust.bundle
+  evidence (`src/console-ui/drawer.ts`), fed the pre-derived report, themed via
+  `--k-*`; vendored the element from `@kontourai/surface/trust-panel/element`
+  via `sync-ui-assets` and registered in `index.html`.
+- Proof: `check-console-projection.test.mjs` updated (exact deepEqual, fixture
+  regenerated with a derived `bundle_report`); Playwright asserts the nested
+  panel mounts, upgrades, renders shadow content, and has `.report` set (no
+  in-browser derivation).
+
+**§3 — `.kontour/events` for the console plane: REFRAMED, not implemented.**
+This finding changes the §3 assumption (see design-doc update + `console.md`).
+The console repo **already ingests Flow** read-only via
+`console-server/.../flow-bridge.ts` (`deriveFlowRunEvents`), which reads Flow's
+owned `.flow/runs/<run-id>/state.json` and derives `kontour.console.event`
+(schema `kontour.console.event`, version `0.1`) records, then `buildPipeline`
+from `@kontourai/console-core`. So:
+- The actual record contract is **`kontour.console.event` v0.1** (fields:
+  `producer`, `scope`, `subject`, `actor`, `correlationId`, `sequence`,
+  `payload.after`), **not** a generic `@kontourai/console-core` projection that
+  Flow redefines and writes to `.kontour/events/**/*.jsonl`.
+- Authority is already correct: the bridge is read-only over Flow-owned files;
+  Flow owns run state, Console aggregates. Having Flow *also* emit
+  `.kontour/events` would **duplicate** the bridge and risk two emitters of the
+  same records.
+- **Recommended (needs Flow-owner confirmation, see `console.md`):** either
+  (a) keep the bridge as the integration seam (Flow changes nothing for §3 — it
+  already exposes everything the bridge needs, and §2's run-output bundle is a
+  natural next payload), or (b) if a push model is wanted, have Flow emit the
+  **`kontour.console.event` v0.1** shape directly (depend on
+  `@kontourai/console-core`) so the bridge can be retired — but align the exact
+  shape with the console owner first. Do NOT have Flow invent a parallel
+  `.kontour/events` schema.

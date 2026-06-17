@@ -299,6 +299,20 @@ it to the house pattern:
 4. **Bundle-emission schema** — the run-output TrustBundle projection (Thread 3).
 5. **Console adoption depth** — depend on `@kontourai/console-core` and emit
    `.kontour/events`, vs keep `src/console` standalone (Thread 4).
+   **CORRECTED 2026-06-16 (see `docs/handoff/console.md` Findings):** the
+   premise is partly stale. The `kontourai/console` repo **already ingests Flow**
+   via a read-only bridge (`console-server/.../flow-bridge.ts`,
+   `deriveFlowRunEvents`) that reads Flow's owned `.flow/runs/<id>/state.json`
+   and derives **`kontour.console.event` v0.1** records, then `buildPipeline()`
+   from `@kontourai/console-core`. So the real record contract is
+   `kontour.console.event` v0.1 (not a generic `.kontour/events` projection Flow
+   redefines), and the seam already exists and is authority-correct. **Flow
+   should NOT add a second emitter.** The open decision narrows to: keep the
+   bridge (Flow unchanged for §3) vs have Flow push `kontour.console.event` v0.1
+   directly and retire the bridge. Console already embeds `<surface-trust-panel>`
+   and models freshness; the only net-new console work is embedding a
+   `<flow-run-panel>` once Flow extracts one as a subpath-exported element. This
+   is parked under `## Needs decision` in `console.md`.
 6. **Surface rollup scope** — can a derived/group claim depend on claims in a
    *referenced* bundle, and does staleness propagate across that edge?
    **RESOLVED 2026-06-16 (see `docs/handoff/surface.md` Findings):**
