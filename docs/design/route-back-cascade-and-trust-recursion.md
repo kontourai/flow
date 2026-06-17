@@ -323,6 +323,10 @@ it to the house pattern:
    `evaluateRun` calls at T0/T1, **no timer**) + this doc/handoff record were
    needed. **No new machinery.** Freshness expectation is data on the
    CLAIM/bundle (`expiresAt`/`ttlSeconds`), never a Flow scheduling config.
+   The EXTERNAL actor for the *wall-clock* case is productized as a future
+   standalone scheduler — **Ephemeris** — which reads the emitted bundle's
+   `expiresAt` and fires an idempotent `evaluateRun` trigger at T (it triggers,
+   never authors). See `docs/design/ephemeris-freshness-scheduler.md`.
 2. **Surface signature** — `buildTrustReport(bundle, { now })` and a
    derive-from-checkpoint entry point (Threads 2, 2b). Cross-repo with Surface.
 3. **Hachure schema bump** — `expiresAt` + invalidation event type (Thread 2).
