@@ -9,9 +9,11 @@ import {
   FLOW_RUN_EVIDENCE_MANIFEST_PATH,
   FLOW_RUN_LAYOUT,
   FLOW_RUN_STATE_FILE,
+  FLOW_RUN_TRUST_RUN_BUNDLE_PATH,
   examplePath,
   flowConfigPath,
   flowRoot,
+  flowRunTrustGateBundlePath,
   readJson,
   runDir,
   writeJson
@@ -26,6 +28,7 @@ import {
   validateDefinition
 } from "../definition/flow-definition.js";
 import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
+import { buildFlowTrustBundle, buildGateTrustBundle } from "../gates/flow-trust-emit.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport } from "../reports/flow-reports.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
@@ -182,10 +185,32 @@ export async function loadRun(runId, cwd = process.cwd()) {
   return { dir, definition, state, manifest, config };
 }
 
+/**
+ * Emit trust bundles for a run: a per-gate bundle for every recorded gate
+ * outcome and a run-level aggregate, written under <run.dir>/trust/ alongside
+ * report.json. The console bridge and Surface trust panel pick these up.
+ */
+export async function writeTrustBundles(run): Promise<{ runBundlePath: string; gateBundlePaths: string[] }> {
+  const runBundle = buildFlowTrustBundle({ state: run.state });
+  const runBundlePath = path.join(run.dir, FLOW_RUN_TRUST_RUN_BUNDLE_PATH);
+  await writeJson(runBundlePath, runBundle);
+
+  const gateBundlePaths: string[] = [];
+  const outcomes = Array.isArray(run.state?.gate_outcomes) ? run.state.gate_outcomes : [];
+  for (const outcome of outcomes) {
+    const gateBundle = buildGateTrustBundle(outcome, { runId: run.state.run_id });
+    const gatePath = path.join(run.dir, flowRunTrustGateBundlePath(outcome.gate_id));
+    await writeJson(gatePath, gateBundle);
+    gateBundlePaths.push(gatePath);
+  }
+  return { runBundlePath, gateBundlePaths };
+}
+
 export async function saveRun(run) {
   await writeJson(path.join(run.dir, FLOW_RUN_STATE_FILE), run.state);
   await writeJson(path.join(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), run.manifest);
   await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
+  await writeTrustBundles(run);
 }
 
 export async function sha256File(file) {

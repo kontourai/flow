@@ -43,8 +43,13 @@ export {
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
   FLOW_RUN_STATE_FILE,
+  FLOW_RUN_TRUST_DIR,
+  FLOW_RUN_TRUST_RUN_BUNDLE_FILE,
+  FLOW_RUN_TRUST_RUN_BUNDLE_PATH,
   flowConfigPath,
   flowRoot,
+  flowRunTrustGateBundleFile,
+  flowRunTrustGateBundlePath,
   moduleRoot,
   readJson,
   runDir,
@@ -106,6 +111,18 @@ export {
   mergeGateOutcome
 } from "./gates/flow-gates.js";
 export {
+  buildFlowTrustBundle,
+  buildGateTrustBundle,
+  FLOW_GATE_OUTCOME_CLAIM_TYPE,
+  FLOW_RUN_OUTCOME_CLAIM_TYPE,
+  FLOW_TRUST_SURFACE,
+  gateOutcomeEventStatus
+} from "./gates/flow-trust-emit.js";
+export {
+  validateTrustBundleSchema
+} from "./gates/trust-bundle-validator.js";
+export type { TrustBundleValidationResult } from "./gates/trust-bundle-validator.js";
+export {
   validateEvaluationTransition
 } from "./transition/flow-evaluation-transition.js";
 export {
@@ -129,7 +146,8 @@ export {
   saveRun,
   scaffoldDemoRun,
   sha256File,
-  startRun
+  startRun,
+  writeTrustBundles
 } from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,

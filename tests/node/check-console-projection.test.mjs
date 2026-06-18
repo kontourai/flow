@@ -48,7 +48,9 @@ test("AC1 fixture Flow Run state follows the checked run schema contract", async
     evidenceDirectory: "evidence",
     evidenceManifest: "evidence/manifest.json",
     reportJson: "report.json",
-    reportMarkdown: "report.md"
+    reportMarkdown: "report.md",
+    trustDirectory: "trust",
+    trustRunBundle: "trust/run.json"
   });
   await readFixtureJson(FLOW_RUN_DEFINITION_FILE);
   await readFixtureJson(FLOW_RUN_STATE_FILE);

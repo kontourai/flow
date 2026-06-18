@@ -27,15 +27,21 @@ test("package root exports stay stable across source-domain splits", () => {
   const expectedRuntimeExports = [
     "BUILTIN_EVIDENCE_KINDS",
     "FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION",
+    "FLOW_GATE_OUTCOME_CLAIM_TYPE",
     "FLOW_RUN_DEFINITION_FILE",
     "FLOW_RUN_EVIDENCE_DIR",
     "FLOW_RUN_EVIDENCE_MANIFEST_FILE",
     "FLOW_RUN_EVIDENCE_MANIFEST_PATH",
     "FLOW_RUN_LAYOUT",
+    "FLOW_RUN_OUTCOME_CLAIM_TYPE",
     "FLOW_RUN_REPORT_JSON_FILE",
     "FLOW_RUN_REPORT_MARKDOWN_FILE",
     "FLOW_RUN_STATE_FILE",
+    "FLOW_RUN_TRUST_DIR",
+    "FLOW_RUN_TRUST_RUN_BUNDLE_FILE",
+    "FLOW_RUN_TRUST_RUN_BUNDLE_PATH",
     "FLOW_SCHEMA_VERSION",
+    "FLOW_TRUST_SURFACE",
     "acceptException",
     "acceptedExceptionFor",
     "applyEvaluation",
@@ -43,6 +49,8 @@ test("package root exports stay stable across source-domain splits", () => {
     "assertSafeRunId",
     "attachEvidence",
     "attachedEvidenceFor",
+    "buildFlowTrustBundle",
+    "buildGateTrustBundle",
     "changeManagementFixtureAdapter",
     "continuationLine",
     "createDiagnostic",
@@ -63,7 +71,10 @@ test("package root exports stay stable across source-domain splits", () => {
     "flowConfigPath",
     "flowReadme",
     "flowRoot",
+    "flowRunTrustGateBundleFile",
+    "flowRunTrustGateBundlePath",
     "freezeStateFixtureAdapter",
+    "gateOutcomeEventStatus",
     "gatesForStep",
     "getStep",
     "initialState",
@@ -117,7 +128,9 @@ test("package root exports stay stable across source-domain splits", () => {
     "validateKitContainerFile",
     "validateRunTransition",
     "validateTransitionRequest",
-    "writeJson"
+    "validateTrustBundleSchema",
+    "writeJson",
+    "writeTrustBundles"
   ];
   assert.deepEqual(Object.keys(flowRuntime).sort(), expectedRuntimeExports);
   assert.equal(Object.hasOwn(flowRuntime, "evaluateGate"), true);

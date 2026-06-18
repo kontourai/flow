@@ -355,7 +355,9 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     evidenceDirectory: "evidence",
     evidenceManifest: "evidence/manifest.json",
     reportJson: "report.json",
-    reportMarkdown: "report.md"
+    reportMarkdown: "report.md",
+    trustDirectory: "trust",
+    trustRunBundle: "trust/run.json"
   });
   assert.equal(storedDefinition.apiVersion, undefined);
   assert.equal(storedDefinition.kind, undefined);
