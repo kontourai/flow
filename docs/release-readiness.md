@@ -7,7 +7,7 @@ Release readiness is Flow's local-file-first contract for one question: **should
 A release readiness policy ([`schemas/release-readiness-policy.schema.json`](../schemas/release-readiness-policy.schema.json)) describes:
 
 - open lane ids such as `change-approval`, `deployment-window`, and `freeze-state`
-- the `surface.claim` each lane requires
+- the lane claim each release lane requires
 - open risk classes such as `medium` or `high`
 - which lanes are required for each risk class
 
@@ -15,7 +15,7 @@ Lane and risk-class ids are open vocabularies — name the lanes your org actual
 
 ## Adapters: provider records become evidence
 
-Fixture adapters map provider-shaped local JSON into Flow evidence — real claims, not opaque approval booleans. Each adapter emits `kind: "surface.claim"` evidence with `claim.type`, `claim.subject`, `claim.status`, `producer`, `authority_traces`, plus copied `external_links` and `native_refs` so the result still points at the systems of record:
+Fixture adapters map provider-shaped local JSON into Flow evidence — real claims, not opaque approval booleans. Flow gate examples use `kind: "trust.bundle"` evidence with `bundle_claim` selectors; release-readiness lane policy keeps its lane-level `claim` fields while copied `external_links` and `native_refs` point at the systems of record:
 
 ```ts
 import {

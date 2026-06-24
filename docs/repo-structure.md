@@ -113,7 +113,7 @@ Flow owns Flow Definitions, Flow Runs, Steps, Gates, Transitions, Gate Evidence,
 
 Local Flow Run directories under `.flow/runs/<run-id>/` are generated runtime state. `definition.json` is the normalized definition snapshot, `state.json` is the authoritative continuation state, `evidence/manifest.json` is the evidence index, `evidence/<id>.*` are copied artifacts, and `report.md`/`report.json` are derived reports. Keep authored Resource Contract inputs separate from these generated run files unless a future migration deliberately changes the run contract.
 
-Surface owns trust semantics. Flow consumes Surface-shaped artifacts where a gate expects `kind: "surface.claim"`, but Flow does not define global Surface trust meaning.
+Surface owns trust semantics. Flow consumes TrustBundle-compatible artifacts where a gate expects `kind: "trust.bundle"`, but Flow does not define global Surface trust meaning.
 
 Veritas owns repo and change governance. Flow may record Veritas readiness as Gate Evidence, but Flow does not own Veritas requirements or merge readiness policy.
 

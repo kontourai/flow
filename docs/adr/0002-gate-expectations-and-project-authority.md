@@ -6,6 +6,8 @@ Date: 2026-05-26
 
 Accepted
 
+Superseded in part by the Flow 1.3 trust-bundle migration: current claim-backed gate expectations use `kind: "trust.bundle"` with `bundle_claim`. The original `surface.claim` vocabulary below is retained as historical context for the project-authority decision.
+
 ## Context
 
 Flow gates need to express more than unstructured evidence kinds. A gate may need a rich claim about a Flow run, step, work item, change, pull request, release, decision, or artifact. That claim may need to come from a trusted producer and may need a project-specific override for whether it is required or which statuses are accepted.
@@ -14,7 +16,7 @@ Flow Agents can package and install useful kits and adapters, but Flow must stay
 
 ## Decision
 
-Flow gates use typed `expects` entries for gate expectations. A rich claim-backed expectation uses `kind: "surface.claim"` exactly.
+Flow gates use typed `expects` entries for gate expectations. Historically, a rich claim-backed expectation used `kind: "surface.claim"` exactly. Current Flow authoring uses `kind: "trust.bundle"` with `bundle_claim`.
 
 A `surface.claim` expectation has:
 

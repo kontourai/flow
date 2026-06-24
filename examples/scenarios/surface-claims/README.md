@@ -1,16 +1,16 @@
-# Surface Claim Fixtures
+# Legacy Surface Claim Fixture Directory
 
-These fixtures exercise Flow matching for neutral Surface-shaped claim evidence. They are disk-backed examples for tests and contributors, not generated reports and not provider-specific contracts.
+This directory name is legacy. The fixtures now exercise Flow matching for neutral `trust.bundle` evidence and current `bundle_claim` gate expectations. They are disk-backed examples for tests and contributors, not generated reports and not provider-specific contracts.
 
 ## Files
 
-- `flow-definition.json` defines `surface-claim-fixture-flow` with one required `surface.claim` expectation, `tests-passed`.
+- `flow-definition.json` defines `surface-claim-fixture-flow` with one required `trust.bundle` expectation, `tests-passed`.
 - `flow-config.json` defines neutral trusted producer policy for `quality.tests`.
 - `evidence/*.json` files are Flow gate evidence manifests. Each file is valid JSON shaped for `gate-evidence.schema.json`.
 
-## Surface Shape
+## Trust Bundle Shape
 
-Evidence entries use neutral Surface TrustReport / Trust Snapshot fields under `trust_artifact`: `artifact_type`, `subject`, `producer`, `status`, `issued_at`, `expires_at`, `authority_traces`, `claims`, and `integrity`.
+Evidence entries use neutral Hachure TrustBundle fields under `bundle`: `schemaVersion`, `source`, `claims`, `evidence`, `policies`, and `events`.
 
 Producer ids are intentionally generic, such as `surface-fixture/ci`, `surface-fixture/review`, and `external/untrusted`. The fixtures do not encode generated tool internals or provider-specific readiness concepts.
 
@@ -28,7 +28,7 @@ Producer ids are intentionally generic, such as `surface-fixture/ci`, `surface-f
 | `fail-integrity-mismatch.json` | `route-back`, missing `tests-passed` | `integrity_mismatch` |
 | `fail-authority-gap.json` | `route-back`, missing `tests-passed` | `authority_gap` |
 
-`fail-missing-claim.json` uses an empty evidence manifest. A trust artifact without `claims` is invalid for normalization, so runtime missing-claim behavior is represented as no matching `surface.claim` evidence instead of a malformed artifact.
+`fail-missing-claim.json` uses an empty evidence manifest. A trust bundle without `claims` is invalid for normalization, so runtime missing-claim behavior is represented as no matching `trust.bundle` evidence instead of a malformed artifact.
 
 ## Naming
 

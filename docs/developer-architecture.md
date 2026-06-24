@@ -57,7 +57,7 @@ flowchart TD
   Missing -->|yes| Block["gate outcome: block"]
   Missing -->|no| Failed{"Attached evidence failed?"}
   Failed -->|yes| RouteBack["gate outcome: route-back"]
-  Failed -->|no| Claims{"surface.claim expectations satisfied?"}
+  Failed -->|no| Claims{"trust.bundle expectations satisfied?"}
   Claims -->|no| Block
   Claims -->|yes| Pass
   Pass --> Transition["Validate proposed transition against definition"]
@@ -142,14 +142,14 @@ flowchart TD
 
 Current implementation: reports and console projections are generated explanations. They are not the source of authority for gate evaluation. The source of authority remains the Flow Definition, Flow Run state, evidence manifest, accepted exceptions, and project config.
 
-## Surface Claim Evidence
+## Trust Bundle Evidence
 
-Flow gates are authored with typed `expects` entries. Rich claim-backed expectations use `kind: "surface.claim"`.
+Flow gates are authored with typed `expects` entries. Rich claim-backed expectations use `kind: "trust.bundle"` with a `bundle_claim` selector.
 
 ```mermaid
 flowchart TD
-  Expectation["Gate expects surface.claim"] --> MatchType["Match claim.type"]
-  MatchType --> MatchSubject{"claim.subject configured?"}
+  Expectation["Gate expects trust.bundle"] --> MatchType["Match bundle_claim.claimType"]
+  MatchType --> MatchSubject{"bundle_claim subject configured?"}
   MatchSubject -->|yes| Subject["Match subject"]
   MatchSubject -->|no| Status["Check accepted statuses"]
   Subject --> Status
@@ -161,9 +161,9 @@ flowchart TD
   Decision -->|no| Diagnostic["Report reason code: stale, rejected, untrusted_producer, authority_gap, integrity_mismatch, or subject_mismatch"]
 ```
 
-Current implementation: a copied Surface TrustReport or Trust Snapshot can back a `surface.claim` evidence entry. Flow consumes neutral fields such as `artifact_type`, `subject`, `producer`, `status`, timestamps, `authority_traces`, `claims`, and local integrity metadata. Flow projects those fields into normal claim matching and diagnostics.
+Current implementation: a copied Hachure TrustBundle backs a `trust.bundle` evidence entry. Flow consumes neutral bundle fields such as `source`, `claims`, `evidence`, `policies`, and `events`. Flow matches `bundle_claim` selectors against bundle claims and events to produce normal diagnostics.
 
-Flow does not import Surface services or Veritas-specific schema fields as the runtime contract. Veritas may produce compatible evidence, but Flow evaluates only Surface-shaped artifact fields under the Flow Definition and `.flow/config.json`.
+Flow does not import Surface services or Veritas-specific schema fields as the runtime contract. Veritas may produce compatible evidence, but Flow evaluates only TrustBundle fields under the Flow Definition and `.flow/config.json`.
 
 ## Local Relationship Map
 
@@ -174,13 +174,13 @@ flowchart LR
   FlowConfig -->|preview/apply merge| Flow["Flow core"]
   FlowDefinition["Flow Definition"] --> Flow
   FlowRun["Flow Run state"] --> Flow
-  Surface["Surface-shaped trust artifacts"] -->|claims, statuses, freshness, producers, authority traces| Flow
-  Veritas["Veritas governance checks"] -->|repo readiness evidence emitted as Surface-shaped artifacts| Surface
+  Surface["TrustBundle-compatible artifacts"] -->|claims, statuses, freshness, producers, authority traces| Flow
+  Veritas["Veritas governance checks"] -->|repo readiness evidence emitted as TrustBundles| Surface
   Flow -->|gate outcomes, reports, continuation| FlowReport["Flow Reports"]
   Flow -->|read-only projection| Console["Local Flow Console"]
 ```
 
-Current implementation: Flow consumes Surface claim and trust evidence through Surface-shaped artifacts. Veritas governance evidence reaches Flow only when a Veritas tool emits or provides a compatible Surface-shaped artifact. Flow Agents can coordinate kits and adapters, but Flow core still decides gate outcomes and transition legality from Flow-owned contracts.
+Current implementation: Flow consumes claim and trust evidence through TrustBundle-compatible artifacts. Veritas governance evidence reaches Flow only when a Veritas tool emits or provides a compatible TrustBundle. Flow Agents can coordinate kits and adapters, but Flow core still decides gate outcomes and transition legality from Flow-owned contracts.
 
 Future Resource Contract alignment: durable Flow contracts should gradually align to Kontour Resource Contract shape where migration or mapping improves clarity. Neutral Surface trust artifact projection remains an exception because wrapping it as a Flow-owned resource would blur product ownership.
 
@@ -191,7 +191,7 @@ The canonical product ownership summary lives in the Boundaries section of [prod
 - Flow owns provider-neutral process semantics: definitions, runs, steps, gates, transitions, route-back policy, evidence manifests, accepted exceptions, reports, continuation, transition validation, config merge semantics, and local console projection.
 - Flow decides whether a gate passes, blocks, routes back, waits, or is allowed by accepted exception from Flow-owned contracts and local project config.
 - `.flow/config.json` is the Flow authority source for trusted producer mappings and gate overrides during gate evaluation.
-- Surface-shaped trust artifacts are evidence inputs; Flow does not decide global Surface trust meaning or call Surface services in v0.1 gate evaluation.
+- TrustBundle-compatible artifacts are evidence inputs; Flow does not decide global Surface trust meaning or call Surface services in v0.1 gate evaluation.
 - Veritas readiness can appear as compatible evidence; Flow does not import Veritas policy semantics.
 - Flow Agents and Builder Kit can package, install, adapt, or propose Flow definitions/config, but Flow core does not special-case agent runtimes or step names.
 
@@ -207,7 +207,7 @@ Current implementation:
 - Flow v0.1 is local and file-backed.
 - Flow Definitions, Flow Runs, evidence manifests, Flow Reports, project config, transition validation, release readiness outputs, and version release reports use the current v0.1 schemas.
 - Console projection is read-only and derived from local Flow run files.
-- Surface claim evidence is consumed through neutral copied artifacts.
+- TrustBundle evidence is consumed through neutral copied artifacts.
 - Veritas is an optional evidence producer, not a runtime dependency.
 - Flow Agents and Builder Kit are consumers or packagers of Flow contracts, not owners of Flow gate semantics.
 
@@ -215,7 +215,7 @@ Future Resource Contract alignment:
 
 - Flow Definition, Flow Run, Flow Project Config, future console projections, future run control records, review queues, and review items are migration candidates.
 - Flow Reports, evidence manifests, config merge reports, definition validation results, and transition validation results should likely keep current useful shapes while adding explicit mappings if persisted or exposed through consoles/providers.
-- Neutral Surface TrustReport and Trust Snapshot evidence projection should remain Surface-shaped rather than become a Flow-owned Resource Contract.
+- Neutral TrustBundle evidence projection should remain trust-artifact-shaped rather than become a Flow-owned Resource Contract.
 - Any migration needs a dedicated compatibility slice with schema, runtime, fixture, and documentation verification. This guide does not perform that migration.
 
 ## Non-Goals

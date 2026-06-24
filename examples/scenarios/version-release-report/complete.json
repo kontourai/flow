@@ -244,19 +244,33 @@
     "evidence": [
       {
         "id": "ev.release.change.CHG-1847",
-        "kind": "surface.claim",
-        "requested_kind": "surface.claim",
+        "kind": "trust.bundle",
+        "requested_kind": "trust.bundle",
         "status": "passed",
         "attached_at": "2026-06-07T20:02:00.000Z",
-        "claim": {
-          "type": "release.change.approved",
-          "subject": "release:kai-2026.06",
-          "status": "trusted"
-        },
-        "producer": "release-fixture/change-management",
-        "authority_traces": [
-          "fixture:change-management"
-        ]
+        "bundle": {
+          "schemaVersion": 3,
+          "source": "release-fixture/change-management",
+          "claims": [
+            {
+              "id": "claim.release.change.approved",
+              "subjectType": "release",
+              "subjectId": "release:kai-2026.06",
+              "claimType": "release.change.approved"
+            }
+          ],
+          "evidence": [],
+          "policies": [],
+          "events": [
+            {
+              "id": "event.release.change.approved.verified",
+              "claimId": "claim.release.change.approved",
+              "status": "verified",
+              "actor": "release-fixture/change-management",
+              "createdAt": "2026-06-07T20:02:00.000Z"
+            }
+          ]
+        }
       }
     ],
     "report_data": {

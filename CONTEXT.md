@@ -32,8 +32,8 @@ _Avoid_: Veritas requirement, generic approval, hidden prompt instruction
 A typed entry in a gate's `expects` array. A gate expectation states what evidence or claim must be present for the gate to pass, whether it is required, and how a human or agent should explore the missing evidence.
 _Avoid_: Unstructured checklist item, hidden prompt instruction, provider-specific rule
 
-**Surface Claim Expectation**:
-A gate expectation with `kind: "surface.claim"` for rich evidence backed by a Surface claim. It names an expectation `id`, `required`, `description`, `claim.type`, optional `claim.subject`, optional `claim.accepted_statuses`, and optional `explore_hint`.
+**Trust Bundle Expectation**:
+A gate expectation with `kind: "trust.bundle"` for rich evidence backed by a trust bundle. It names an expectation `id`, `required`, `description`, `bundle_claim.type`, optional `bundle_claim.subject`, optional `bundle_claim.accepted_statuses`, and optional `explore_hint`.
 _Avoid_: Provider-specific evidence kind, hardcoded adapter behavior
 
 **Claim Subject**:
