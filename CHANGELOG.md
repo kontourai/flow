@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/kontourai/flow/compare/v1.4.0...v1.4.1) (2026-06-24)
+
+
+### Documentation
+
+* **lessons:** capture release-train gotchas (GIT_* hook leak, stale lock, statusFunctionVersion drift) ([#89](https://github.com/kontourai/flow/issues/89)) ([b208436](https://github.com/kontourai/flow/commit/b208436993bfa0511e231131b33e1be0a3c4d6ef))
+
 ## [1.4.0](https://github.com/kontourai/flow/compare/v1.3.0...v1.4.0) (2026-06-17)
 
 
