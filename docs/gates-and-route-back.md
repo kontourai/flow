@@ -16,7 +16,7 @@ For the current step, `flow evaluate` applies the v0.1 rules in order:
 
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory — the blocked expectation, its `explore_hint`, and the next action all land in the run state and reports.
 
-How `surface.claim` expectations are matched (type, subject, status, freshness, producer trust, integrity) is covered in [Evidence](evidence.md).
+How `trust.bundle` expectations are matched (claim type, subject, status, freshness, producer trust, integrity) is covered in [Evidence](evidence.md).
 
 ## Exceptions
 
@@ -145,6 +145,6 @@ flow validate-definition .flow/definitions/agent-dev-flow.json
 flow validate-definition examples/invalid-claim-expectation-flow.json --json
 ```
 
-`--json` emits a stable payload with `valid`, `path`, `error_count`, and `diagnostics`; the command exits non-zero for invalid definitions, so it slots directly into CI. Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects` entries, and invalid `surface.claim` fields.
+`--json` emits a stable payload with `valid`, `path`, `error_count`, and `diagnostics`; the command exits non-zero for invalid definitions, so it slots directly into CI. Diagnostics cover shape errors, unknown gate step references, route-back targets, malformed `expects` entries, and invalid `trust.bundle` / `bundle_claim` fields.
 
 Flow accepts two authoring shapes — the flat v0.1 shape (top-level `id`, `version`, `steps`, `gates`) and the Resource Contract shape (`apiVersion`, `kind: "FlowDefinition"`, `metadata`, `spec`) shown in [`examples/flow-definition-resource-contract.json`](../examples/flow-definition-resource-contract.json). Both map to the same runtime model (`metadata.name` → `id`, `spec.version` → `version`, `spec.steps` → `steps`, `spec.gates` → `gates`), and existing flat definitions never need to migrate.

@@ -32,7 +32,7 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
       "code": "definition.expectation.claim.required",
       "severity": "error",
       "path": "$.gates.verify-gate.expects[0].claim",
-      "message": "surface.claim expectations must include claim"
+      "message": "trust.bundle expectations must include bundle_claim"
     }
   ]
 }

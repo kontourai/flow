@@ -162,7 +162,7 @@ Public usage is limited to the package root and the `flow` CLI; `dist/` subpaths
 | --- | --- |
 | [Getting Started](docs/getting-started.md) | install → first run → evidence → route-back → resume, with real output |
 | [Use Cases](docs/use-cases.md) | realistic team scenarios with copyable definitions |
-| [Evidence](docs/evidence.md) | evidence kinds, `surface.claim` expectations, trust artifacts, diagnostics |
+| [Evidence](docs/evidence.md) | evidence kinds, `trust.bundle` expectations, bundle claims, trust artifacts and bundles, diagnostics |
 | [Gates & Route-Back](docs/gates-and-route-back.md) | gate evaluation rules, transitions, route-back policy, exceptions |
 | [Agent Hooks](docs/agent-hooks.md) | enforcing gates from Claude Code hooks, GitHub Actions, Git hooks |
 | [Project Config](docs/project-config.md) | trusted producers, gate overrides, config merge preview/apply |

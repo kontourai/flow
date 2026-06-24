@@ -16,17 +16,33 @@
     {
       "id": "ev.verify.tests",
       "gate_id": "verify-gate",
-      "kind": "surface.claim",
-      "requested_kind": "surface.claim",
+      "kind": "trust.bundle",
+      "requested_kind": "trust.bundle",
       "status": "passed",
       "attached_at": "2026-06-07T20:00:00.000Z",
-      "claim": {
-        "type": "quality.tests",
-        "subject": "release:kai-2026.06",
-        "status": "trusted"
-      },
-      "producer": "fixture/test-runner",
-      "authority_traces": ["fixture:local-tests"]
+      "bundle": {
+        "schemaVersion": 3,
+        "source": "fixture/test-runner",
+        "claims": [
+          {
+            "id": "claim.quality.tests.release",
+            "subjectType": "release",
+            "subjectId": "release:kai-2026.06",
+            "claimType": "quality.tests"
+          }
+        ],
+        "evidence": [],
+        "policies": [],
+        "events": [
+          {
+            "id": "event.quality.tests.release.verified",
+            "claimId": "claim.quality.tests.release",
+            "status": "verified",
+            "actor": "fixture/test-runner",
+            "createdAt": "2026-06-07T20:00:00.000Z"
+          }
+        ]
+      }
     }
   ],
   "release_readiness": {

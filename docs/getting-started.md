@@ -44,13 +44,14 @@ The sample definition models the first-wedge agentic development path — `plan 
     "expects": [
       {
         "id": "acceptance-criteria",
-        "kind": "surface.claim",
+        "kind": "trust.bundle",
         "required": true,
         "description": "Acceptance criteria are ready for implementation.",
-        "claim": {
-          "type": "builder.acceptance",
-          "subject": "builder.plan",
-          "accepted_statuses": ["trusted", "reviewed"]
+        "bundle_claim": {
+          "claimType": "builder.acceptance",
+          "subjectType": "flow-step",
+          "subjectId": "builder.plan",
+          "accepted_statuses": ["verified"]
         }
       }
     ]
@@ -90,31 +91,43 @@ Flow snapshots the definition and creates the authoritative run state:
 
 ## 3. Attach evidence and evaluate
 
-The plan gate expects a `builder.acceptance` claim. Create a small trust artifact that carries it — in a real team this is produced by a reviewer, a CI job, or a Veritas check rather than written by hand:
+The plan gate expects a `builder.acceptance` claim. Create a small trust bundle that carries it — in a real team this is produced by a reviewer, a CI job, or a Veritas check rather than written by hand:
 
 ```sh
-cat > acceptance-claim.json <<'EOF'
+cat > acceptance-bundle.json <<'EOF'
 {
-  "schema_version": "0.1",
-  "artifact_type": "trust-report",
-  "subject": "builder.plan",
-  "producer": "team/reviewer",
-  "status": "trusted",
-  "issued_at": "2026-06-10T00:00:00.000Z",
+  "schemaVersion": 3,
+  "source": "team/reviewer",
   "claims": [
-    { "type": "builder.acceptance", "subject": "builder.plan", "status": "trusted" }
+    {
+      "id": "claim.builder.acceptance",
+      "subjectType": "flow-step",
+      "subjectId": "builder.plan",
+      "claimType": "builder.acceptance"
+    }
+  ],
+  "evidence": [],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.builder.acceptance.verified",
+      "claimId": "claim.builder.acceptance",
+      "status": "verified",
+      "actor": "team/reviewer",
+      "createdAt": "2026-06-10T00:00:00.000Z"
+    }
   ]
 }
 EOF
 
 npx flow attach-evidence dev-1847 --gate plan-gate \
-  --file ./acceptance-claim.json --trust-artifact
+  --file ./acceptance-bundle.json --kind trust.bundle
 ```
 
 ```text
 attached evidence: ev.1781101620469.1
 gate: plan-gate
-kind: surface.claim
+kind: trust.bundle
 ```
 
 The file is **copied** into `.flow/runs/dev-1847/evidence/` and indexed in the manifest — the run directory stays self-contained even if the original file changes or disappears. Now evaluate:
@@ -214,6 +227,6 @@ An accepted exception counts as a pass, and it is permanently recorded in the ru
 
 - [Use Cases](use-cases.md) — realistic team scenarios with definitions you can copy.
 - [Agent Hooks](agent-hooks.md) — make agents unable to stop or push while gates are open.
-- [Evidence](evidence.md) — evidence kinds, `surface.claim` expectations, trust artifacts, and diagnostics.
+- [Evidence](evidence.md) — evidence kinds, `trust.bundle` expectations, trust artifacts, and diagnostics.
 - [Gates & Route-Back](gates-and-route-back.md) — the complete evaluation and routing rules.
 - [CLI Reference](cli.md) — every command, flag, and format.

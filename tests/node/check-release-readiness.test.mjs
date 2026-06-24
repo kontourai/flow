@@ -6,14 +6,20 @@ import {
   evaluateReleaseReadiness,
   freezeStateFixtureAdapter
 } from "../../dist/index.js";
+import { validateTrustBundle } from "@kontourai/surface";
 import { releaseReadinessFixture } from "./helpers/fixtures.mjs";
 
-test("release readiness fixture adapters emit Surface-shaped evidence and preserve refs", async () => {
+test("release readiness fixture adapters emit trust-bundle evidence and preserve refs", async () => {
   const changeRecord = await releaseReadinessFixture("change-records/approved.json");
   const evidence = changeManagementFixtureAdapter(changeRecord, { subject: "kai-2026.06", gate_id: "release-readiness-gate", attached_at: "2026-06-07T20:00:00.000Z" });
   assert.equal(evidence.length, 1);
-  assert.equal(evidence[0].kind, "surface.claim");
-  assert.equal(evidence[0].requested_kind, "surface.claim");
+  assert.equal(evidence[0].kind, "trust.bundle");
+  assert.equal(evidence[0].requested_kind, "trust.bundle");
+  assert.deepEqual(evidence[0].bundle_claim, {
+    claimType: "release.change.approved",
+    subjectId: "release:kai-2026.06",
+    accepted_statuses: ["trusted"]
+  });
   assert.deepEqual(evidence[0].claim, {
     type: "release.change.approved",
     subject: "release:kai-2026.06",
@@ -21,6 +27,19 @@ test("release readiness fixture adapters emit Surface-shaped evidence and preser
   });
   assert.equal(evidence[0].producer, "release-fixture/change-management");
   assert.deepEqual(evidence[0].authority_traces, ["fixture:change-management"]);
+  assert.doesNotThrow(() => validateTrustBundle(evidence[0].bundle));
+  assert.equal(evidence[0].bundle.schemaVersion, 3);
+  assert.equal(evidence[0].bundle.source, "release-fixture/change-management");
+  assert.equal(evidence[0].bundle.claims[0].claimType, "release.change.approved");
+  assert.equal(evidence[0].bundle.claims[0].subjectType, "release");
+  assert.equal(evidence[0].bundle.claims[0].subjectId, "release:kai-2026.06");
+  assert.equal(evidence[0].bundle.claims[0].value, "trusted");
+  assert.equal(evidence[0].bundle.evidence[0].claimId, evidence[0].bundle.claims[0].id);
+  assert.equal(evidence[0].bundle.events[0].status, "verified");
+  assert.equal("schema_version" in evidence[0].bundle, false);
+  assert.equal("artifact_type" in evidence[0].bundle, false);
+  assert.equal("type" in evidence[0].bundle.claims[0], false);
+  assert.equal("subject" in evidence[0].bundle.claims[0], false);
   assert.equal(evidence[0].trust_artifact.claims[0].type, "release.change.approved");
   assert.equal(evidence[0].external_links[0].url, "https://change.example.test/changes/CHG-1847");
   assert.equal(evidence[0].external_links[0].provider, "change-fixture");

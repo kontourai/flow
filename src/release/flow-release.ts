@@ -59,17 +59,32 @@ function mergeReleaseNativeRefs(value, fallback: ReleaseNativeRef): ReleaseNativ
   return exists ? refs : [...refs, cloneJson(fallback)];
 }
 
+function releaseTrustEventStatus(status) {
+  if (status === "trusted") return "verified";
+  if (status === "rejected") return "rejected";
+  return "unknown";
+}
+
 function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
   const claim = fields.claim ?? {};
   const subject = claim.subject ?? fields.subject;
   const producer = fields.producer ?? "release-fixture/adapter";
   const authorityTraces = releaseStringArray(fields.authority_traces);
+  const claimId = `${fields.id}.claim`;
+  const evidenceId = `${fields.id}.evidence`;
+  const eventId = `${fields.id}.verified`;
+  const bundleClaim = {
+    claimType: claim.type,
+    subjectId: subject,
+    accepted_statuses: ["trusted"]
+  };
   return {
     id: fields.id,
     gate_id: fields.gate_id,
-    kind: "surface.claim",
-    requested_kind: "surface.claim",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
     status: "passed",
+    bundle_claim: bundleClaim,
     claim: {
       type: claim.type,
       subject,
@@ -78,6 +93,48 @@ function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
     producer,
     authority_traces: authorityTraces,
     ...(authorityTraces[0] ? { authority_trace: authorityTraces[0] } : {}),
+    bundle: {
+      schemaVersion: 3,
+      source: producer,
+      claims: [
+        {
+          id: claimId,
+          subjectType: "release",
+          subjectId: subject,
+          surface: "release-readiness",
+          claimType: claim.type,
+          fieldOrBehavior: "releaseLane",
+          value: claim.status,
+          createdAt: fields.issued_at,
+          updatedAt: fields.issued_at
+        }
+      ],
+      evidence: [
+        {
+          id: evidenceId,
+          claimId,
+          evidenceType: "human_attestation",
+          method: "attestation",
+          sourceRef: String(fields.source_adapter_id ?? producer),
+          excerptOrSummary: `${claim.type} is ${claim.status}`,
+          observedAt: fields.issued_at,
+          collectedBy: producer
+        }
+      ],
+      policies: [],
+      events: [
+        {
+          id: eventId,
+          claimId,
+          status: releaseTrustEventStatus(claim.status),
+          actor: producer,
+          method: "attestation",
+          evidenceIds: [evidenceId],
+          createdAt: fields.issued_at,
+          ...(claim.status === "trusted" ? { verifiedAt: fields.issued_at } : {})
+        }
+      ]
+    },
     trust_artifact: {
       schema_version: FLOW_SCHEMA_VERSION,
       artifact_type: "trust-report",

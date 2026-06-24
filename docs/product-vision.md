@@ -109,7 +109,7 @@ The first publishable version is a local npm package:
 - JSON Schemas for Flow Definitions, Flow Runs, gate evidence, reports, transition validation, release readiness, and version release reports
 - a local file-backed run store and a small gate evaluator
 - the `flow` CLI: init, validate, start, status, attach-evidence, evaluate, accept-exception, config, report, resume, list, console
-- typed gate expectations (`expects`, including `surface.claim`) and documented evidence kinds
+- typed gate expectations (`expects`, including `trust.bundle` with `bundle_claim`) and documented evidence kinds
 - project config for trusted producer mappings and gate overrides
 - Markdown and JSON Flow Reports; continuation from `.flow/runs/<run-id>/` without chat memory
 - a loopback-only local Flow Console
