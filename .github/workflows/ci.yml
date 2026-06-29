@@ -11,6 +11,13 @@ permissions:
   contents: read
 
 jobs:
+  # Suite-wide secret-scan gate, one normative source (kontourai/.github).
+  secret-scan:
+    name: Secret Scan
+    uses: kontourai/.github/.github/workflows/secret-scan.yml@main
+    permissions:
+      contents: read
+
   test:
     name: Test and package
     runs-on: ubuntu-latest
