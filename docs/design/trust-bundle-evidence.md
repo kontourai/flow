@@ -16,8 +16,8 @@ Flow 1.x wired gate expectations and evidence to `kind: "surface.claim"` — a p
 
 | Role | Package | What it is |
 |------|---------|------------|
-| **Format contract** | `hachure@0.4.0` | Open-format JSON Schemas for `TrustBundle`, `Claim`, `Evidence`, etc. + conformance test vectors + `statusFunctionVersion`. This is the neutral *schema* layer — no runtime behaviour, just the normative shape. |
-| **Implementation** | `@kontourai/surface@1.0.1` | `buildTrustReport(bundle): TrustReport` derives claim statuses from a bundle according to the Hachure status function. Also exports `TrustBundle` / `Claim` TypeScript types and `validateTrustBundle`. |
+| **Format contract** | `hachure@0.9.0` | Open-format JSON Schemas for `TrustBundle`, `Claim`, `Evidence`, etc. + conformance test vectors + `statusFunctionVersion`. This is the neutral *schema* layer — no runtime behaviour, just the normative shape. |
+| **Implementation** | `@kontourai/surface@2.0.0` | `buildTrustReport(bundle): TrustReport` derives claim statuses from a bundle according to the Hachure status function. Also exports `TrustBundle` / `Claim` TypeScript types and `validateTrustBundle`. |
 
 Flow imports Hachure for schema validation and Surface for status derivation. Neither depends on a hosted service.
 
