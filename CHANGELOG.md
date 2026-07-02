@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/kontourai/flow/compare/v1.4.1...v2.0.0) (2026-07-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* flow emits hachure 0.9.0-format trust bundles (Claim.facet, schemaVersion 5) and validates attached bundles against the hachure 0.9 schema strictly (legacy schemaVersion 2-4 bundles are rejected at the Ajv layer). The functional change landed in #100 as a chore: commit, which release-please does not release; this commit records the correct semver signal.
+
+### Features
+
+* trust bundles now emit facet + schemaVersion 5 (surface 2.0, hachure 0.9) ([#101](https://github.com/kontourai/flow/issues/101)) ([f5092cc](https://github.com/kontourai/flow/commit/f5092cc443ab190441d96682a8af204c8ed2b274))
+
 ## [1.4.1](https://github.com/kontourai/flow/compare/v1.4.0...v1.4.1) (2026-06-24)
 
 
