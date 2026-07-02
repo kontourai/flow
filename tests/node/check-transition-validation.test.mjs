@@ -74,13 +74,13 @@ test("transition validator accepts Resource-shaped request definitions", async (
         requested_kind: "trust.bundle",
         status: "passed",
         bundle: {
-          schemaVersion: 3,
+          schemaVersion: 5,
           source: "ci/acceptance",
           claims: [{
             id: "claim.builder.acceptance",
             subjectType: "flow-step",
             subjectId: "resource-contract-flow",
-            surface: "builder.acceptance",
+            facet: "builder.acceptance",
             claimType: "builder.acceptance",
             fieldOrBehavior: "acceptanceCriteria",
             value: "criteria met",

@@ -203,7 +203,7 @@
           <dl>
             <dt>Value</dt><dd>${escapeHtml(formatValue(claim.value))}</dd>
             <dt>Claim</dt><dd>${escapeHtml(asText(claim.id))}</dd>
-            <dt>Surface</dt><dd>${escapeHtml(asText(claim.surface))}</dd>
+            <dt>Facet</dt><dd>${escapeHtml(asText(claim.facet ?? claim.surface))}</dd>
             <dt>Impact</dt><dd>${escapeHtml(asText(claim.impactLevel, "unspecified"))}</dd>
             ${claim.verificationPolicyId ? `<dt>Policy</dt><dd>${escapeHtml(asText(claim.verificationPolicyId))}</dd>` : ""}
           </dl>

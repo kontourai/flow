@@ -202,7 +202,7 @@ export function projectRunOutputBundle(
       id: claimId,
       subjectType: "flow-stage",
       subjectId: `${def.id}:${step.id}`,
-      surface: "flow.process",
+      facet: "flow.process",
       claimType: RUN_CLAIM_TYPE,
       fieldOrBehavior: "stagePassed",
       value: true,
@@ -267,7 +267,7 @@ export function projectRunOutputBundle(
   }));
 
   const bundle: MutableRecord = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     source: options.source ?? `flow-run:${def.id}:${state.run_id}`,
     claims,
     evidence: bundleEvidence,

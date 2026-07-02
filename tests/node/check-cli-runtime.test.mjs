@@ -224,13 +224,13 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
   const definition = await resourceDefinitionFixture();
   await writeFile(path.join(flowCwd, "flow-definition.json"), `${JSON.stringify(definition, null, 2)}\n`);
   const acceptanceBundle = {
-    schemaVersion: 3,
+    schemaVersion: 5,
     source: "cli/acceptance",
     claims: [{
       id: "claim.builder.acceptance.cwd",
       subjectType: "flow-step",
       subjectId: "resource-contract-flow",
-      surface: "builder.acceptance",
+      facet: "builder.acceptance",
       claimType: "builder.acceptance",
       fieldOrBehavior: "acceptanceCriteria",
       value: "acceptance criteria linked",
@@ -587,13 +587,13 @@ test("CLI attaches trust.bundle evidence and reports claim diagnostics", async (
   await writeFile(definitionPath, `${JSON.stringify(routeBackDefinition(), null, 2)}\n`);
 
   const verifiedBundle = {
-    schemaVersion: 3,
+    schemaVersion: 5,
     source: "ci/main",
     claims: [{
       id: "claim.quality.tests.verify",
       subjectType: "flow-step",
       subjectId: "builder.verify",
-      surface: "quality.developer-evidence",
+      facet: "quality.developer-evidence",
       claimType: "quality.tests",
       fieldOrBehavior: "testSuite",
       value: "all tests passed",

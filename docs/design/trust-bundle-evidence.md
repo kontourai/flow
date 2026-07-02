@@ -33,14 +33,14 @@ A `trust.bundle` evidence entry replaces `surface.claim`. The `bundle` field is 
   "requested_kind": "trust.bundle",
   "status": "passed",
   "bundle": {
-    "schemaVersion": 3,
+    "schemaVersion": 5,
     "source": "ci/main",
     "claims": [
       {
         "id": "claim.quality.tests",
         "subjectType": "flow-step",
         "subjectId": "builder.verify",
-        "surface": "quality.developer-evidence",
+        "facet": "quality.developer-evidence",
         "claimType": "quality.tests",
         "fieldOrBehavior": "testSuite",
         "value": "all tests passed",
@@ -118,7 +118,7 @@ The JSON Schema validation uses the Hachure-exported `trust-bundle.schema.json` 
 1. Replace `kind: "surface.claim"` with `kind: "trust.bundle"` in gate definitions.
 2. Replace `claim: { type, subject, accepted_statuses }` with `bundle_claim: { claimType, subjectType, subjectId, accepted_statuses }`.
 3. Attach evidence as `--kind trust.bundle --bundle <path>` (or library `options.bundle`).
-4. The bundle file must conform to the Hachure `TrustBundle` schema (`schemaVersion` 2 or 3).
+4. The bundle file must conform to the Hachure `TrustBundle` schema (`schemaVersion` 5 exactly, per `hachure@0.9.0`; Flow writes `facet`, matching `@kontourai/surface@2.0.0`'s renamed `Claim.surface` field. Legacy schemaVersion 2-4 bundles are rejected at this Ajv conformance-schema layer -- `@kontourai/surface`'s read-tolerance shim only applies to its own `validateTrustBundle`/`buildTrustReport` functions, not Flow's gate-evaluation-time schema check).
 
 The old thin trust artifact shape (`schema_version: "0.1"`, `artifact_type: "trust-report"`) is no longer accepted.
 

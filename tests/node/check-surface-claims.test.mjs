@@ -183,14 +183,14 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
     requested_kind: "trust.bundle",
     status: "passed",
     bundle: {
-      schemaVersion: 3,
+      schemaVersion: 5,
       source: "ci/main",
       claims: [
         {
           id: "claim.quality.tests.verify",
           subjectType: "flow-step",
           subjectId: "builder.verify",
-          surface: "quality.developer-evidence",
+          facet: "quality.developer-evidence",
           claimType: "quality.tests",
           fieldOrBehavior: "testSuite",
           value: "all tests passed",

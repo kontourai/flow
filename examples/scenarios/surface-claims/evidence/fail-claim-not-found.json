@@ -8,14 +8,14 @@
       "requested_kind": "trust.bundle",
       "status": "passed",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "ci/main",
         "claims": [
           {
             "id": "claim.wrong.type",
             "subjectType": "flow-step",
             "subjectId": "builder.verify",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "wrong.claim-type",
             "fieldOrBehavior": "testSuite",
             "value": "all tests passed",

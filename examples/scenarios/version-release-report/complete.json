@@ -36,14 +36,14 @@
       "status": "passed",
       "attached_at": "2026-06-07T20:00:00.000Z",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "fixture/test-runner",
         "claims": [
           {
             "id": "claim.quality.tests.release",
             "subjectType": "release",
             "subjectId": "release:kai-2026.06",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "quality.tests",
             "fieldOrBehavior": "testSuite",
             "value": "all tests passed",
@@ -125,14 +125,14 @@
       "status": "passed",
       "attached_at": "2026-06-07T20:01:00.000Z",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "fixture/schema-check",
         "claims": [
           {
             "id": "claim.quality.schemas.release",
             "subjectType": "release",
             "subjectId": "release:kai-2026.06",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "quality.schemas",
             "fieldOrBehavior": "schemaValidation",
             "value": "all schemas valid",
@@ -249,7 +249,7 @@
         "status": "passed",
         "attached_at": "2026-06-07T20:02:00.000Z",
         "bundle": {
-          "schemaVersion": 3,
+          "schemaVersion": 5,
           "source": "release-fixture/change-management",
           "claims": [
             {

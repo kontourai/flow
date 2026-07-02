@@ -27,7 +27,7 @@ export function assertTrustBundleManifestShape(manifest, file, schemaVersion = F
     assert.ok(["passed", "failed", "unknown"].includes(entry.status), `${file} status`);
     assert.match(entry.attached_at, /^\d{4}-\d{2}-\d{2}T/, `${file} attached_at`);
     assert.ok(entry.bundle, `${file} bundle must be present`);
-    assert.ok([2, 3].includes(entry.bundle.schemaVersion), `${file} bundle.schemaVersion must be 2 or 3`);
+    assert.equal(entry.bundle.schemaVersion, 5, `${file} bundle.schemaVersion must be 5`);
     assert.ok(typeof entry.bundle.source === "string", `${file} bundle.source`);
     assert.ok(Array.isArray(entry.bundle.claims), `${file} bundle.claims`);
     assert.ok(Array.isArray(entry.bundle.evidence), `${file} bundle.evidence`);

@@ -51,14 +51,14 @@ export async function scaffoldDemoRun(cwd = process.cwd()) {
   const bundleFile = path.join(demoDir, "acceptance-bundle.json");
   const now = new Date().toISOString();
   await writeJson(bundleFile, {
-    schemaVersion: 3,
+    schemaVersion: 5,
     source: "demo/reviewer",
     claims: [
       {
         id: "claim.builder.acceptance.demo",
         subjectType: "flow-step",
         subjectId: "builder.plan",
-        surface: "builder.acceptance",
+        facet: "builder.acceptance",
         claimType: "builder.acceptance",
         fieldOrBehavior: "acceptanceCriteria",
         value: "demo acceptance criteria reviewed",

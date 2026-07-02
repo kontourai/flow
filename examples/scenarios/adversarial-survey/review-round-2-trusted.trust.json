@@ -1,12 +1,12 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "source": "survey/adversarial-reviewer",
   "claims": [
     {
       "id": "claim.adversarial.review.round2",
       "subjectType": "flow-step",
       "subjectId": "adversarial-pass.review",
-      "surface": "adversarial.survey",
+      "facet": "adversarial.survey",
       "claimType": "adversarial.review",
       "fieldOrBehavior": "reviewResult",
       "value": "adversarial review completed; no defects found in round 2",

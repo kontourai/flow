@@ -8,14 +8,14 @@
       "requested_kind": "trust.bundle",
       "status": "passed",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "ci/snapshot",
         "claims": [
           {
             "id": "claim.quality.tests.snapshot",
             "subjectType": "flow-step",
             "subjectId": "builder.verify",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "quality.tests",
             "fieldOrBehavior": "testSuite",
             "value": "all tests passed (snapshot)",

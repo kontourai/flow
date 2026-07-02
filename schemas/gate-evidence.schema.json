@@ -32,11 +32,11 @@
         "status": { "type": "string", "enum": ["passed", "failed", "unknown"] },
         "bundle": {
           "type": "object",
-          "description": "A Hachure-format TrustBundle (schemaVersion 2 or 3). Present on trust.bundle evidence entries.",
+          "description": "A Hachure-format TrustBundle (schemaVersion 5, per hachure@0.9.0 / @kontourai/surface@2.0.0 -- the facet rename hard-breaks schemaVersion 2-4 read support at the Ajv conformance-schema layer used for gate evaluation). Present on trust.bundle evidence entries.",
           "additionalProperties": true,
           "required": ["schemaVersion", "source", "claims", "evidence", "policies", "events"],
           "properties": {
-            "schemaVersion": { "enum": [2, 3] },
+            "schemaVersion": { "enum": [5] },
             "source": { "type": "string" },
             "claims": { "type": "array", "items": { "type": "object" } },
             "evidence": { "type": "array", "items": { "type": "object" } },

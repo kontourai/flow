@@ -26,14 +26,14 @@ function freshnessBearingManifest() {
         requested_kind: "trust.bundle",
         status: "passed",
         bundle: {
-          schemaVersion: 4,
+          schemaVersion: 5,
           source: "test/freshness",
           claims: [
             {
               id: "claim.window",
               subjectType: "flow-step",
               subjectId: "verify",
-              surface: "quality.tests",
+              facet: "quality.tests",
               claimType: "quality.tests",
               fieldOrBehavior: "testsPass",
               value: true,

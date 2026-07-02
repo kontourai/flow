@@ -51,14 +51,14 @@ function passedRun() {
 
   // A leaf gate-evidence bundle attached to verify-gate, with a derived report.
   const leafBundle = {
-    schemaVersion: 3,
+    schemaVersion: 5,
     source: "ci/verify",
     claims: [
       {
         id: "claim.quality.tests",
         subjectType: "flow-step",
         subjectId: "child-flow:verify",
-        surface: "quality",
+        facet: "quality",
         claimType: "quality.tests",
         fieldOrBehavior: "testsPass",
         value: true,
