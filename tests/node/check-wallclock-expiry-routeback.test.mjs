@@ -69,14 +69,14 @@ function definition() {
 // NO time math; it only reads the derived status.
 function approvalBundle() {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     source: "approval/window",
     claims: [
       {
         id: "claim.approval",
         subjectType: "release",
         subjectId: "wallclock-flow:release",
-        surface: "process.approval",
+        facet: "process.approval",
         claimType: "approval",
         fieldOrBehavior: "approvalValid",
         value: true,

@@ -241,7 +241,7 @@
             "status": "verified",
             "subjectId": "console-projection-fixture",
             "subjectType": "flow-step",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "updatedAt": "2026-06-07T14:12:00.000Z",
             "value": "fixture tests passed",
             "verificationPolicyId": "policy.software-evidence.commit"
@@ -312,7 +312,7 @@
             }
           }
         ],
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "ci/fixture",
         "statusFunctionVersion": "2",
         "subjectGroups": [
@@ -408,7 +408,7 @@
               "impactLevel": "high",
               "subjectId": "console-projection-fixture",
               "subjectType": "flow-step",
-              "surface": "quality.developer-evidence",
+              "facet": "quality.developer-evidence",
               "updatedAt": "2026-06-07T14:12:00.000Z",
               "value": "fixture tests passed",
               "verificationPolicyId": "policy.software-evidence.commit"
@@ -463,7 +463,7 @@
               }
             }
           ],
-          "schemaVersion": 3,
+          "schemaVersion": 5,
           "source": "ci/fixture"
         },
         "bundle_report": {
@@ -485,7 +485,7 @@
               "status": "verified",
               "subjectId": "console-projection-fixture",
               "subjectType": "flow-step",
-              "surface": "quality.developer-evidence",
+              "facet": "quality.developer-evidence",
               "updatedAt": "2026-06-07T14:12:00.000Z",
               "value": "fixture tests passed",
               "verificationPolicyId": "policy.software-evidence.commit"
@@ -556,7 +556,7 @@
               }
             }
           ],
-          "schemaVersion": 3,
+          "schemaVersion": 5,
           "source": "ci/fixture",
           "statusFunctionVersion": "2",
           "subjectGroups": [
@@ -1028,7 +1028,7 @@
                 "status": "verified",
                 "subjectId": "console-projection-fixture",
                 "subjectType": "flow-step",
-                "surface": "quality.developer-evidence",
+                "facet": "quality.developer-evidence",
                 "updatedAt": "2026-06-07T14:12:00.000Z",
                 "value": "fixture tests passed",
                 "verificationPolicyId": "policy.software-evidence.commit"
@@ -1099,7 +1099,7 @@
                 }
               }
             ],
-            "schemaVersion": 3,
+            "schemaVersion": 5,
             "source": "ci/fixture",
             "statusFunctionVersion": "2",
             "subjectGroups": [
@@ -1195,7 +1195,7 @@
                   "impactLevel": "high",
                   "subjectId": "console-projection-fixture",
                   "subjectType": "flow-step",
-                  "surface": "quality.developer-evidence",
+                  "facet": "quality.developer-evidence",
                   "updatedAt": "2026-06-07T14:12:00.000Z",
                   "value": "fixture tests passed",
                   "verificationPolicyId": "policy.software-evidence.commit"
@@ -1250,7 +1250,7 @@
                   }
                 }
               ],
-              "schemaVersion": 3,
+              "schemaVersion": 5,
               "source": "ci/fixture"
             },
             "bundle_report": {
@@ -1272,7 +1272,7 @@
                   "status": "verified",
                   "subjectId": "console-projection-fixture",
                   "subjectType": "flow-step",
-                  "surface": "quality.developer-evidence",
+                  "facet": "quality.developer-evidence",
                   "updatedAt": "2026-06-07T14:12:00.000Z",
                   "value": "fixture tests passed",
                   "verificationPolicyId": "policy.software-evidence.commit"
@@ -1343,7 +1343,7 @@
                   }
                 }
               ],
-              "schemaVersion": 3,
+              "schemaVersion": 5,
               "source": "ci/fixture",
               "statusFunctionVersion": "2",
               "subjectGroups": [

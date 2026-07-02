@@ -100,7 +100,7 @@ const evidenceEntryWithOpenBundle: FlowEvidenceEntry = {
   id: "evidence-1",
   kind: "trust.bundle",
   bundle: {
-    schemaVersion: 3,
+    schemaVersion: 5,
     source: "ci/main",
     claims: [],
     evidence: [],

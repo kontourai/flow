@@ -94,14 +94,14 @@ function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
     authority_traces: authorityTraces,
     ...(authorityTraces[0] ? { authority_trace: authorityTraces[0] } : {}),
     bundle: {
-      schemaVersion: 3,
+      schemaVersion: 5,
       source: producer,
       claims: [
         {
           id: claimId,
           subjectType: "release",
           subjectId: subject,
-          surface: "release-readiness",
+          facet: "release-readiness",
           claimType: claim.type,
           fieldOrBehavior: "releaseLane",
           value: claim.status,

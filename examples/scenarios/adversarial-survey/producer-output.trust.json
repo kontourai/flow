@@ -1,12 +1,12 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "source": "survey/adversarial-workbench",
   "claims": [
     {
       "id": "claim.adversarial.producer-output",
       "subjectType": "flow-step",
       "subjectId": "adversarial-pass.produce",
-      "surface": "adversarial.survey",
+      "facet": "adversarial.survey",
       "claimType": "adversarial.producer-output",
       "fieldOrBehavior": "outputArtifact",
       "value": "producer output submitted for adversarial review",

@@ -1,12 +1,12 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "source": "survey/adversarial-workbench",
   "claims": [
     {
       "id": "claim.adversarial.resolution",
       "subjectType": "flow-step",
       "subjectId": "adversarial-pass.resolve",
-      "surface": "adversarial.survey",
+      "facet": "adversarial.survey",
       "claimType": "adversarial.resolution",
       "fieldOrBehavior": "resolutionArtifact",
       "value": "resolved output addresses adversarial review findings",

@@ -21,7 +21,7 @@
       "status": "passed",
       "attached_at": "2026-06-07T20:00:00.000Z",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "fixture/test-runner",
         "claims": [
           {

@@ -28,7 +28,7 @@ test("release readiness fixture adapters emit trust-bundle evidence and preserve
   assert.equal(evidence[0].producer, "release-fixture/change-management");
   assert.deepEqual(evidence[0].authority_traces, ["fixture:change-management"]);
   assert.doesNotThrow(() => validateTrustBundle(evidence[0].bundle));
-  assert.equal(evidence[0].bundle.schemaVersion, 3);
+  assert.equal(evidence[0].bundle.schemaVersion, 5);
   assert.equal(evidence[0].bundle.source, "release-fixture/change-management");
   assert.equal(evidence[0].bundle.claims[0].claimType, "release.change.approved");
   assert.equal(evidence[0].bundle.claims[0].subjectType, "release");

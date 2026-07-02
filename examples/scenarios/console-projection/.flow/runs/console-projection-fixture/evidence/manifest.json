@@ -38,14 +38,14 @@
       "producer": "ci/fixture",
       "stored_path": "evidence/surface-tests.json",
       "bundle": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "source": "ci/fixture",
         "claims": [
           {
             "id": "claim.quality.tests.fixture",
             "subjectType": "flow-step",
             "subjectId": "console-projection-fixture",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "quality.tests",
             "fieldOrBehavior": "testSuite",
             "value": "fixture tests passed",
@@ -115,7 +115,7 @@
       ],
       "attached_at": "2026-06-07T14:12:00.000Z",
       "bundle_report": {
-        "schemaVersion": 3,
+        "schemaVersion": 5,
         "id": "surface-1781049600000",
         "generatedAt": "2026-06-10T00:00:00.000Z",
         "source": "ci/fixture",
@@ -124,7 +124,7 @@
             "id": "claim.quality.tests.fixture",
             "subjectType": "flow-step",
             "subjectId": "console-projection-fixture",
-            "surface": "quality.developer-evidence",
+            "facet": "quality.developer-evidence",
             "claimType": "quality.tests",
             "fieldOrBehavior": "testSuite",
             "value": "fixture tests passed",
