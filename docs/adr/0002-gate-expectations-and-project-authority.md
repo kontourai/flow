@@ -1,3 +1,5 @@
+> **FROZEN — immutable history.** Superseding/current decisions live in [`docs/decisions/`](../decisions/index.md). Do not edit.
+
 # ADR 0002: Gate Expectations And Project Authority
 
 Date: 2026-05-26
