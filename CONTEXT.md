@@ -96,6 +96,10 @@ _Avoid_: Flow owning agent harness support directly
 Flow core provides route-back mechanics, validation, persistence, reports, and CLI metadata capture. It does not encode Builder Kit-specific reason policy, recovery strategy, provider behavior, or agent orchestration semantics.
 _Avoid_: Hardcoded kit policy, provider-specific route classifiers in Flow core, closed reason vocabulary
 
+**Kit**:
+The SEAM where Flow and Flow Agents meet: Flow owns the container (manifest + flows), Flow Agents owns the extension (skills, adapters, docs, activation). The dividing test is whether an operation must INTERPRET the agent extension or only the container: container-only kit operations (`validate`, `install`, `inspect`'s structural view) are agent-blind and live in Flow; extension-interpreting operations (`activate`, and the extension-aware parts of install/inspect) live in Flow Agents, which composes on Flow's primitives rather than reimplementing them.
+_Avoid_: Flow interpreting skill or adapter semantics, Flow Agents reimplementing the container contract
+
 ## Flagged Ambiguities
 
 **Requirement**:
