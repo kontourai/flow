@@ -233,6 +233,53 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
   assert.equal(outcome.diagnostics, undefined);
 });
 
+test("trust.bundle gate ignores producer-superseded history when selecting the live claim", async () => {
+  const definition = routeBackDefinition();
+  const bundleDef = JSON.parse(JSON.stringify(definition));
+  bundleDef.gates["verify-gate"].expects = [{
+    id: "merge-readiness",
+    kind: "trust.bundle",
+    required: true,
+    description: "Merge readiness is verified.",
+    bundle_claim: {
+      claimType: "builder.merge-ready.readiness",
+      subjectType: "change",
+      accepted_statuses: ["verified"]
+    }
+  }];
+  const state = initialState(bundleDef, "superseded-history-test");
+  state.current_step = "verify";
+  const fixture = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const manifest = routeBackManifest([{
+    id: "ev.superseded-history",
+    gate_id: "verify-gate",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    bundle: fixture.evidence[0].bundle,
+    bundle_report: {
+      claims: [
+        {
+          claimType: "builder.merge-ready.readiness",
+          subjectType: "change",
+          status: "proposed",
+          producerStatus: "superseded",
+          metadata: { superseded_by: "review@later" }
+        },
+        {
+          claimType: "builder.merge-ready.readiness",
+          subjectType: "change",
+          status: "verified"
+        }
+      ]
+    },
+    attached_at: "2026-06-15T00:00:00.000Z"
+  }]);
+
+  const outcome = evaluateGate(bundleDef, state, manifest, "verify-gate", defaultFlowConfig());
+  assert.equal(outcome.status, "pass");
+});
+
 test("trust.bundle Hachure conformance: test vectors produce expected claim statuses via Surface", async () => {
   // Import hachure conformance vectors and Surface buildTrustReport
   const { testVectors } = await import("hachure");
