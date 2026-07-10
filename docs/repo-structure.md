@@ -14,7 +14,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `schemas/` | Public JSON schemas for Flow Definitions, Flow Runs, Gate Evidence, Flow Reports, project config, config merge reports, transition validation, release readiness, and version release reports. | Tracked public contract assets and included in the npm package. New Flow-owned schema contracts belong here. |
 | `examples/` | Published examples for authoring and using Flow contracts. | Tracked package assets. New user-facing examples belong here and must be documented in `examples/README.md`. |
 | `examples/scenarios/` | Published scenario data used by examples and checks, including Surface claim evidence, release readiness records, version release reports, and console projection runs. | Tracked package assets. Keep test-only data out of this tree unless it is also useful as a package-visible example and covered by the package contents check. |
-| `examples/scenarios/console-projection/.flow/` | Intentionally tracked local-run scenario for console projection checks. | Tracked exception to the root `.flow/` ignore rule. This scenario proves console projection behavior and must stay inspectable. |
+| `examples/scenarios/console-projection/runtime-fixture/` | Durable source fixture for console projection checks. | Tests and smoke scripts copy it into ignored `.kontourai/flow/runs/` state before exercising runtime APIs. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
 | `scripts/` | Operational Node tooling for Kontour UI asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
 | `scripts/docs-site/` | TypeScript generator, stylesheet, and favicon for the GitHub Pages docs site. | Tracked tooling. Built by `npm run docs:build` into the ignored `site/` directory and deployed by the `Docs` workflow. |
@@ -24,9 +24,10 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `docs/adr/` | Accepted architecture decisions for Flow product boundaries and authority semantics. | Tracked decisions. Update through new ADRs when product authority changes. |
 | `.github/` | GitHub Actions workflows for CI and package publishing. | Tracked repo operations. This is not Flow runtime behavior. |
 | `.githooks/` | Optional contributor Git hooks. | Tracked contributor tooling. Installed locally by `npm run setup:repo-hooks`. |
-| `.flow/` | Local Flow project config and run store used by the CLI. | Ignored local runtime state at the repo root. The only tracked `.flow` tree is the console projection scenario under `examples/scenarios/console-projection/`. |
-| `.surface/` | Local Surface state or artifacts. | Ignored local product state. Flow may consume Surface-shaped evidence files, but Surface owns trust semantics. |
-| `.veritas/` | Local Veritas state or artifacts. | Ignored local product state. Veritas owns repo standards and merge readiness policy. |
+| `.flow/` | Durable authored Flow project state: config and definitions. | Project-native authored location. Older generated `.flow/runs/` state is migration input only and is not read by current runtime commands. |
+| `.kontourai/` | Generated Flow runtime state. | Ignored repository boundary. New Flow Runs live under `.kontourai/flow/runs/`. |
+| `.kontourai/surface/` | Local Surface-generated state or artifacts. | Ignored through the common `.kontourai/` boundary. Flow may consume Surface-shaped evidence files, but Surface owns trust semantics. |
+| `.kontourai/veritas/` | Local Veritas-generated state or artifacts. | Ignored through the common `.kontourai/` boundary. Veritas owns repo standards and merge readiness policy. |
 | `dist/` | Build output for the npm package runtime, declarations, and compiled console assets. | Ignored generated output, but included by `package.json.files` after `npm run build` and `prepack`. Do not edit by hand. |
 | `node_modules/` | Installed dependencies. | Ignored generated dependency install output. |
 | `test-results/` | Playwright and local test output. | Ignored generated validation output. |
@@ -42,7 +43,7 @@ Flow core source is organized by runtime domain:
 
 - `src/index.ts` is the package-root public export surface. Keep it thin.
 - `src/contracts/flow-types.ts` owns public Flow contract types and schema/evidence constants.
-- `src/runtime/flow-files.ts` owns `.flow` path helpers and JSON persistence helpers.
+- `src/runtime/flow-files.ts` owns authored `.flow` and generated `.kontourai/flow` path helpers plus JSON persistence helpers.
 - `src/runtime/flow-run-store.ts` owns local run lifecycle operations, evidence attachment, trust artifact normalization, run evaluation, exceptions, and run listing.
 - `src/shared/flow-utils.ts` owns shared labels, evidence-kind helpers, JSON cloning, and small type guards.
 - `src/config/flow-config.ts` owns project config loading, preview/apply merge semantics, and config merge rendering.
@@ -74,11 +75,11 @@ Generated local output stays ignored:
 - `dist/` is generated by `npm run build`. It is ignored in git but exported in the npm package through `package.json.files`.
 - `node_modules/` is dependency install output.
 - `test-results/` and `playwright-report/` are browser validation output.
-- Root `.flow/`, `.surface/`, and `.veritas/` are local product state.
+- Root `.kontourai/` is the common ignore boundary for generated product state, with product-owned namespaces such as `flow/`, `surface/`, and `veritas/`. `.flow/config.json` and `.flow/definitions/` remain durable authored Flow state.
 
 Tracked exceptions are intentional:
 
-- `examples/scenarios/console-projection/.flow/**` is tracked even though root `.flow/` is ignored. It is a deterministic Flow Run scenario for console projection checks.
+- `examples/scenarios/console-projection/runtime-fixture/**` is durable source data, not live runtime state. Checks materialize it under the ignored canonical root before calling file-backed runtime APIs.
 - `src/console-ui/vendor/ui/**` is tracked even though it is copied from `@kontourai/ui`. The local console build depends on these assets being present in source form before `dist/console-ui/` is generated.
 
 Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendored console assets without checking package contents, script references, browser tests, and `npm pack --dry-run`.
@@ -111,7 +112,7 @@ Contributor setup lives in [contributing.md](contributing.md).
 
 Flow owns Flow Definitions, Flow Runs, Steps, Gates, Transitions, Gate Evidence, Exceptions, Flow Reports, continuation state, project config merge semantics, and local console projection.
 
-Local Flow Run directories under `.flow/runs/<run-id>/` are generated runtime state. `definition.json` is the normalized definition snapshot, `state.json` is the authoritative continuation state, `evidence/manifest.json` is the evidence index, `evidence/<id>.*` are copied artifacts, and `report.md`/`report.json` are derived reports. Keep authored Resource Contract inputs separate from these generated run files unless a future migration deliberately changes the run contract.
+Local Flow Run directories under `.kontourai/flow/runs/<run-id>/` are generated runtime state. `definition.json` is the normalized definition snapshot, `state.json` is the authoritative continuation state, `evidence/manifest.json` is the evidence index, `evidence/<id>.*` are copied artifacts, and `report.md`/`report.json` are derived reports. `.flow/config.json` and `.flow/definitions/` remain durable authored state. Existing `.flow/runs/<run-id>/` directories must be migrated explicitly and are never runtime fallback locations.
 
 Surface owns trust semantics. Flow consumes TrustBundle-compatible artifacts where a gate expects `kind: "trust.bundle"`, but Flow does not define global Surface trust meaning.
 

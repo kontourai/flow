@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### ⚠ BREAKING CHANGES
+
+* New Flow Run writes now use `.kontourai/flow/runs/<run-id>/`, and `flow init --demo` writes disposable evidence under `.kontourai/flow/demo/`. The public `runDir()` helper now returns the canonical run path; this is a semver-major API change. `flowRoot()` and `flowConfigPath()` continue to identify durable authored `.flow/` state, and `flowRuntimeRoot()` identifies the generated runtime root.
+
+### Documentation
+
+* Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
+
 ## [2.0.0](https://github.com/kontourai/flow/compare/v1.4.1...v2.0.0) (2026-07-02)
 
 

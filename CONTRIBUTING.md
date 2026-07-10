@@ -9,7 +9,7 @@ This file is the footnote for people developing the product itself.
 
 - Flow is the process-transparency kernel: definitions, runs, gates, evidence, route-back, reports — keep it provider-neutral; no agent-runtime, hosted-service, or product-specific behavior in core
 - public contracts are JSON Schemas in `schemas/` and published examples in `examples/` — treat them as compatibility-sensitive
-- `dist/`, `site/`, `test-results/`, and root `.flow/` are generated or local state — never hand-edit
+- `dist/`, `site/`, and `test-results/` are generated validation/build output; Flow-owned generated product state lives under `.kontourai/flow/` and must not be hand-edited; root `.flow/config.json` and `.flow/definitions/` are durable authored state
 - `git add` new examples before running the package-contents test — it compares against tracked files
 - see `docs/contributing.md` for detailed contributor guidance including hook setup and demo-GIF regeneration
 

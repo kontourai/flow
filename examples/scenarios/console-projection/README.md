@@ -1,26 +1,30 @@
-# Console Projection Scenario
+# Console Projection Runtime Fixture
 
-This scenario is a deterministic local Flow Run used to demonstrate the console projection boundary. It is published with the package so consumers can inspect a complete `.flow/runs/<run-id>/` directory without first running a workflow.
-
-## Run
+This scenario is durable source data for a deterministic local Flow Run used to demonstrate the console projection boundary.
 
 - Run id: `console-projection-fixture`
-- Definition id: `console-projection-flow`
-- Current step: `verify`
+- Source fixture: `runtime-fixture/console-projection-fixture/`
+- Runtime location: `.kontourai/flow/runs/console-projection-fixture/`
 
-## Files
+Node tests, the console smoke script, and the browser server materialize the source fixture into the ignored canonical runtime location before invoking file-backed Flow APIs. The source directory is not a second supported runtime root.
 
-- `.flow/runs/console-projection-fixture/definition.json` is the normalized Flow Definition snapshot.
-- `.flow/runs/console-projection-fixture/state.json` is the authoritative flat Flow Run state.
-- `.flow/runs/console-projection-fixture/evidence/manifest.json` indexes copied evidence and carries run/definition identity.
-- `.flow/runs/console-projection-fixture/report.json` and `report.md` are derived reports.
-- `.flow/runs/console-projection-fixture/expected-projection.json` is the expected console projection read model.
+The fixture contains:
 
-## Commands
+- `definition.json`: normalized Flow Definition snapshot.
+- `state.json`: authoritative flat Flow Run state.
+- `evidence/manifest.json`: copied-evidence index with run and definition identity.
+- `report.json` and `report.md`: derived reports.
+- `expected-projection.json`: expected console projection read model.
 
-```sh
-npm run build
-node dist/cli.js console --run console-projection-fixture --cwd examples/scenarios/console-projection --port 0
+Materialize an isolated temporary project and inspect it with:
+
+```bash
+fixture_cwd="$(mktemp -d)"
+mkdir -p "$fixture_cwd/.kontourai/flow/runs"
+cp -R examples/scenarios/console-projection/runtime-fixture/console-projection-fixture \
+  "$fixture_cwd/.kontourai/flow/runs/console-projection-fixture"
+node dist/cli.js console --run console-projection-fixture --cwd "$fixture_cwd" --port 0
+rm -rf "$fixture_cwd"
 ```
 
-The scenario is intentionally local-file-first. It does not call hosted services or require provider credentials.
+Current runtime commands do not read `.flow/runs/`. See [Runtime Roots](../../../docs/runtime-roots.md) for migration from generated state created by older Flow versions.

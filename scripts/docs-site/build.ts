@@ -34,6 +34,7 @@ const pages: PageDef[] = [
   { src: "agent-hooks.md", out: "agent-hooks.html", navTitle: "Agent Hooks", section: "Reference" },
   { src: "flow-kit-container.md", out: "flow-kit-container.html", navTitle: "Flow Kit Container", section: "Reference" },
   { src: "project-config.md", out: "project-config.html", navTitle: "Project Config", section: "Reference" },
+  { src: "runtime-roots.md", out: "runtime-roots.html", navTitle: "Runtime Roots", section: "Reference" },
   { src: "release-readiness.md", out: "release-readiness.html", navTitle: "Release Readiness", section: "Reference" },
   { src: "product-vision.md", out: "product-vision.html", navTitle: "Product Vision", section: "Product" },
   { src: "developer-architecture.md", out: "developer-architecture.html", navTitle: "Developer Architecture", section: "Product" },
@@ -279,7 +280,7 @@ continuation: resume from implement, not chat memory</code></pre>
     </div>
     <div class="feature">
       <h3>Survives context loss</h3>
-      <p>Every run lives in plain files under <code>.flow/runs/</code>. A new agent session, a teammate, or a CI job can <code>flow resume</code> and continue from recorded state, not chat memory.</p>
+      <p>Every new run lives in plain files under <code>.kontourai/flow/runs/</code>. A new agent session, a teammate, or a CI job can <code>flow resume</code> and continue from recorded state, not chat memory.</p>
     </div>
     <div class="feature">
       <h3>Deterministic route-back</h3>

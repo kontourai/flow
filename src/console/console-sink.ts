@@ -1,6 +1,5 @@
-import { writeJson, runDir } from "../runtime/flow-files.js";
-import path from "node:path";
-
+import { assertSafeRunArtifactWritePath, writeJson } from "../runtime/flow-files.js";
+import { loadRun, loadRunAtResolvedLocation } from "../runtime/flow-run-store.js";
 import type { FlowConsoleProjection } from "./console-projection.js";
 
 /**
@@ -31,7 +30,12 @@ export interface ConsoleSink {
    * (no return value the caller depends on); a failure should reject so callers
    * can log it without it being mistaken for authoritative state.
    */
-  emit(projection: FlowConsoleProjection): Promise<void>;
+  emit(projection: FlowConsoleProjection, context?: ConsoleSinkEmitContext): Promise<void>;
+}
+
+/** Local-only delivery context; hosted sinks must not include it in their payload. */
+export interface ConsoleSinkEmitContext {
+  resolvedRunDir?: string;
 }
 
 /**
@@ -94,10 +98,41 @@ export class FileConsoleSink implements ConsoleSink {
   constructor(options: FileConsoleSinkOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
     this.fileName = options.fileName ?? "console-projection.json";
+    const reserved = new Set(["definition.json", "state.json", "report.json", "report.md"]);
+    if (
+      !/^[A-Za-z0-9._-]+\.json$/.test(this.fileName) ||
+      reserved.has(this.fileName.toLowerCase())
+    ) {
+      throw new Error("FileConsoleSink fileName must be a non-authoritative run-local .json filename");
+    }
   }
 
-  async emit(projection: FlowConsoleProjection): Promise<void> {
-    const target = path.join(runDir(projection.run.run_id, this.cwd), this.fileName);
+  async emit(projection: FlowConsoleProjection, context: ConsoleSinkEmitContext = {}): Promise<void> {
+    let run: any;
+    if (context.resolvedRunDir) {
+      try {
+        run = await loadRunAtResolvedLocation(
+          projection.run.run_id,
+          context.resolvedRunDir,
+          this.cwd
+        );
+      } catch (error) {
+        throw new Error(
+          `flow.console_sink.resolved_run_dir_mismatch: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    } else {
+      run = await loadRun(projection.run.run_id, this.cwd);
+    }
+    if (
+      projection.run.definition_id !== run.definition.id ||
+      projection.run.definition_version !== run.definition.version ||
+      projection.definition.id !== run.definition.id ||
+      projection.definition.version !== run.definition.version
+    ) {
+      throw new Error("flow.console_sink.projection_identity_mismatch: projection definition does not match resolved run");
+    }
+    const target = await assertSafeRunArtifactWritePath(run.dir, this.fileName);
     await writeJson(target, projection);
   }
 }
@@ -186,7 +221,7 @@ export class HostedConsoleSink implements ConsoleSink {
     };
   }
 
-  async emit(projection: FlowConsoleProjection): Promise<void> {
+  async emit(projection: FlowConsoleProjection, _context?: ConsoleSinkEmitContext): Promise<void> {
     const request = this.buildRequest(projection);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);

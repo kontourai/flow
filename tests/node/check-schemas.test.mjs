@@ -39,12 +39,12 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.description, /state\.json/);
   assert.match(runSchema.description, /not a Resource Contract envelope/);
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
-  assert.match(runSchema.properties.run_id.description, /\.flow\/runs\/<run-id>/);
+  assert.match(runSchema.properties.run_id.description, /\.kontourai\/flow\/runs\/<run-id>/);
   assert.match(runSchema.properties.current_step.description, /step id/);
   assert.match(runSchema.properties.gate_outcomes.description, /gate decisions/);
   assert.match(runSchema.properties.transitions.description, /route-back attempt counting/);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
-  assert.match(evidenceSchema.description, /evidence\/manifest\.json/);
+  assert.match(evidenceSchema.description, /\.kontourai\/flow\/runs\/<run-id>\/evidence\/manifest\.json/);
   assert.match(evidenceSchema.description, /standalone scenario manifests may omit/);
   assert.match(evidenceSchema.description, /not an authored Resource Contract/);
   assert.equal(evidenceSchema.properties.run_id.minLength, 1);

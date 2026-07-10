@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-
 import { FLOW_RUN_REPORT_JSON_FILE } from "../runtime/flow-files.js";
 import {
   attachedEvidenceFor,
@@ -10,10 +7,9 @@ import {
   findGate,
   loadRun,
   openGates,
-  readJson,
-  runDir,
   slugLabel
 } from "../index.js";
+import { reportJson } from "../reports/flow-reports.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -627,7 +623,13 @@ export async function projectFlowRunFromFiles(
 ): Promise<FlowConsoleProjection> {
   const cwd = options.cwd ?? process.cwd();
   const run = await loadRun(runId, cwd);
-  const reportPath = path.join(runDir(runId, cwd), "report.json");
-  const report = existsSync(reportPath) ? await readJson(reportPath) : null;
+  return projectFlowRunFromResolvedRun(run, options);
+}
+
+export async function projectFlowRunFromResolvedRun(
+  run: FlowConsoleRunParts,
+  options: FlowConsoleProjectionOptions = {}
+): Promise<FlowConsoleProjection> {
+  const report = reportJson(run.definition, run.state, run.manifest ?? { evidence: [] });
   return projectFlowRun({ ...run, report }, options);
 }

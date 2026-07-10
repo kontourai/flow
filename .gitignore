@@ -1,12 +1,7 @@
 node_modules/
 dist/
-.flow/
-!examples/scenarios/console-projection/.flow/
-!examples/scenarios/console-projection/.flow/**
+.kontourai/
 *.tgz
-.surface/
-.veritas/
-.flow-agents/
 test-results/
 playwright-report/
 .DS_Store

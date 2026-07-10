@@ -36,7 +36,9 @@ console.log(result.state.current_step, result.state.next_action);
 const run = await loadRun("dev-1847"); // { dir, definition, state, manifest, config }
 ```
 
-These functions read and write the same `.flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`.
+These functions read and write the same `.kontourai/flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`. They do not fall back to `.flow/runs/`; migrate generated state from older versions before loading it.
+
+Use `listRunsWithDiagnostics(cwd)` when corrupt or incomplete canonical entries must be surfaced alongside valid run summaries. `listRuns(cwd)` preserves the original summaries-only return shape.
 
 ## Validation
 
@@ -62,7 +64,7 @@ if (!transition.valid) console.error(transition.diagnostics);
 
 ## Console projection
 
-`projectFlowRunFromFiles` is the Flow boundary for console consumers: read-only, local-file-first, and deterministic. It reads `definition.json`, `state.json`, `evidence/manifest.json`, and optional `report.json`, and preserves explicit external refs (Surface, Veritas, artifacts, pull requests, CI, release reports) when they already exist in the run files — it never synthesizes refs from git, network calls, or Markdown parsing.
+`projectFlowRunFromFiles` is the Flow boundary for console consumers: read-only, local-file-first, and deterministic. It reads authoritative `definition.json`, `state.json`, and `evidence/manifest.json`, then re-derives the report view instead of trusting disposable `report.json`. It preserves explicit external refs (Surface, Veritas, artifacts, pull requests, CI, release reports) when they already exist in authoritative run files — it never synthesizes refs from git, network calls, or Markdown parsing.
 
 ```ts
 import { projectFlowRunFromFiles, startFlowConsoleServer } from "@kontourai/flow";
@@ -111,4 +113,4 @@ See [Project Config](project-config.md) for merge semantics and conflict handlin
 
 ## Types
 
-The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, and the `FlowConsole*Projection` family. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them.
+The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.

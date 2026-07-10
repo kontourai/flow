@@ -43,6 +43,35 @@ test("CLI init scaffolds .flow with the packaged sample definition", async () =>
   const sample = JSON.parse(await readFile(path.join(cwd, ".flow", "definitions", "agent-dev-flow.json"), "utf8"));
   assert.equal(sample.id, "agent-dev-flow");
   await access(path.join(cwd, ".flow", "README.md"), constants.R_OK);
+  await access(path.join(cwd, ".flow", "config.json"), constants.R_OK);
+});
+
+test("AC-111-01 and AC-111-05 CLI start prints and writes the canonical runtime root without moving authored .flow state", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-runtime-root-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  await execFile(process.execPath, [cliPath, "init", "--cwd", cwd]);
+  const result = await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "canonical-cli", "--cwd", cwd]);
+
+  assert.match(result.stdout, /report: \.kontourai\/flow\/runs\/canonical-cli\/report\.md/);
+  await access(path.join(cwd, ".kontourai", "flow", "runs", "canonical-cli", "state.json"), constants.R_OK);
+  await assert.rejects(access(path.join(cwd, ".flow", "runs", "canonical-cli", "state.json"), constants.F_OK), /ENOENT/);
+  await access(path.join(cwd, ".flow", "definitions", "agent-dev-flow.json"), constants.R_OK);
+  await access(path.join(cwd, ".flow", "config.json"), constants.R_OK);
+});
+
+test("AC-111-02 and AC-111-05 CLI init --demo ignores generated state from older versions", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-old-demo-"));
+  const legacyState = path.join(cwd, ".flow", "runs", "demo", "state.json");
+  await mkdir(path.dirname(legacyState), { recursive: true });
+  await writeFile(legacyState, "older generated state\n");
+  const init = await execFile(process.execPath, [cliPath, "init", "--demo", "--cwd", cwd]);
+  assert.match(init.stdout, /demo run ready: demo/);
+  await access(path.join(cwd, ".kontourai", "flow", "runs", "demo", "state.json"), constants.R_OK);
+  assert.equal(await readFile(legacyState, "utf8"), "older generated state\n");
+
+  const listed = await execFile(process.execPath, [cliPath, "list", "--cwd", cwd]);
+  assert.match(listed.stdout, /demo/);
+  assert.doesNotMatch(`${listed.stdout}${listed.stderr}`, /legacy|compatibility/i);
 });
 
 test("CLI init --demo scaffolds a resumable demo run past the plan gate", async () => {
@@ -50,6 +79,8 @@ test("CLI init --demo scaffolds a resumable demo run past the plan gate", async 
   const result = await execFile(process.execPath, [cliPath, "init", "--demo", "--cwd", cwd]);
   assert.match(result.stdout, /demo run ready: demo/);
   assert.match(result.stdout, /flow resume demo/);
+  await access(path.join(cwd, ".kontourai", "flow", "demo", "acceptance-bundle.json"), constants.R_OK);
+  await assert.rejects(access(path.join(cwd, ".flow", "demo", "acceptance-bundle.json"), constants.F_OK), /ENOENT/);
 
   const status = await execFile(process.execPath, [cliPath, "status", "demo", "--cwd", cwd]);
   assert.match(status.stdout, /current step: implement/);
@@ -95,7 +126,7 @@ test("completed runs report completion instead of a stale next action", async ()
   const final = await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--cwd", cwd]);
   assert.match(final.stdout, /next action: run complete; no further action required/);
 
-  const state = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "done-1", "state.json"), "utf8"));
+  const state = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "done-1", "state.json"), "utf8"));
   assert.equal(state.status, "completed");
   assert.equal(state.next_action, "run complete; no further action required");
 });
@@ -124,7 +155,7 @@ test("CLI supersede replaces failed evidence so a route-back can recover", async
   assert.match(pass.stdout, /current step: resolve/);
 
   // superseded entry stays in the manifest for audit
-  const manifest = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "adv-1", "evidence", "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "adv-1", "evidence", "manifest.json"), "utf8"));
   const superseded = manifest.evidence.find((entry) => entry.id === failedId);
   assert.ok(superseded.superseded_by, "failed evidence records superseded_by");
 
@@ -329,7 +360,7 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     flowCwd
   ], { cwd: repoCwd });
 
-  const runPath = path.join(flowCwd, ".flow", "runs", "cwd-smoke");
+  const runPath = path.join(flowCwd, ".kontourai", "flow", "runs", "cwd-smoke");
   const statusPayload = JSON.parse(status.stdout);
   const reportPayload = JSON.parse(report.stdout);
   const storedDefinition = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_DEFINITION_FILE), "utf8"));
@@ -407,7 +438,7 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
     "--cwd",
     flowCwd
   ], { cwd: repoCwd });
-  const exceptionState = JSON.parse(await readFile(path.join(flowCwd, ".flow", "runs", "cwd-exception", "state.json"), "utf8"));
+  const exceptionState = JSON.parse(await readFile(path.join(flowCwd, ".kontourai", "flow", "runs", "cwd-exception", "state.json"), "utf8"));
   assert.equal(exceptionState.exceptions[0].authority, "cli-test");
 });
 
@@ -564,7 +595,7 @@ test("CLI records route-back metadata and only route_reason selects the route", 
   ], { cwd });
   await execFile(process.execPath, [cli, "evaluate", "cli-route", "--gate", "verify-gate"], { cwd });
 
-  const manifest = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "cli-route", "evidence", "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "cli-route", "evidence", "manifest.json"), "utf8"));
   const entry = manifest.evidence[0];
   assert.equal(entry.route_reason, "implementation_defect");
   assert.deepEqual(entry.classifier, { kind: "manual", source: "cli", confidence: 0.75 });
@@ -572,7 +603,7 @@ test("CLI records route-back metadata and only route_reason selects the route", 
   assert.deepEqual(entry.analytics, { loop_key: "cli:flag-loop" });
   assert.deepEqual(entry.expectation_ids, ["tests-passed"]);
 
-  const report = JSON.parse(await readFile(path.join(cwd, ".flow", "runs", "cli-route", "report.json"), "utf8"));
+  const report = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "cli-route", "report.json"), "utf8"));
   const gate = report.gate_summaries.find((item) => item.gate_id === "verify-gate");
   assert.equal(gate.route_back_to, "implement");
   assert.equal(gate.route_reason, "implementation_defect");

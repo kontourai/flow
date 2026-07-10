@@ -1,6 +1,6 @@
 # CLI Reference
 
-Every command operates on local files. `--cwd <path>` scopes local Flow state and relative inputs for any command that reads or writes project state — for example, `flow start flow-definition.json --cwd /tmp/workspace` writes the run under `/tmp/workspace/.flow/` and resolves `flow-definition.json` from `/tmp/workspace`.
+Every command operates on local files. `--cwd <path>` scopes local Flow state and relative inputs for any command that reads or writes project state — for example, `flow start flow-definition.json --cwd /tmp/workspace` writes a new run under `/tmp/workspace/.kontourai/flow/` and resolves `flow-definition.json` from `/tmp/workspace`.
 
 Commands exit `0` on success. Exit codes of `1` are noted per command below; unexpected errors always exit `1` with the message on stderr.
 
@@ -10,9 +10,9 @@ Commands exit `0` on success. Exit codes of `1` are noted per command below; une
 flow init [--demo] [--cwd <path>]
 ```
 
-Scaffolds `.flow/` with `config.json` (default authority model), `definitions/agent-dev-flow.json` (the bundled sample), `runs/`, and a README describing the layout. Idempotent, except that an existing `config.json` is preserved.
+Scaffolds `.flow/` with `config.json` (default authority model), `definitions/agent-dev-flow.json` (the bundled sample), and a README describing the authored layout. It also ensures `.kontourai/flow/runs/` is available for generated runs. Idempotent, except that an existing `config.json` is preserved.
 
-`--demo` additionally creates a ready-made run named `demo`: it writes a demo trust artifact under `.flow/demo/`, starts a run from the sample definition, attaches the plan-gate evidence, and evaluates it — leaving the run at `implement` so `flow status demo`, `flow resume demo`, and `flow console --run demo` immediately have something real to show. Re-running with an existing demo run is a no-op.
+`--demo` additionally creates a ready-made run named `demo`: it writes a disposable demo trust artifact under `.kontourai/flow/demo/`, starts a run from the sample definition, attaches the plan-gate evidence, and evaluates it — leaving the run at `implement` so `flow status demo`, `flow resume demo`, and `flow console --run demo` immediately have something real to show. Re-running with an existing demo run is a no-op.
 
 ## flow validate-definition
 
@@ -128,7 +128,7 @@ Reports the structural (K0) view of a kit container: validity, declared flow ids
 flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
 ```
 
-Starts a run: validates the definition, snapshots it to `.flow/runs/<run-id>/definition.json`, creates `state.json` at the first step, and writes initial reports. `--params subject=<value>` names the concrete work the run is about. Without `--run-id`, Flow generates one.
+Starts a run: validates the definition, snapshots it to `.kontourai/flow/runs/<run-id>/definition.json`, creates `state.json` at the first step, and writes initial reports. `--params subject=<value>` names the concrete work the run is about. Without `--run-id`, Flow generates one. The CLI does not discover or mutate `.flow/runs/<run-id>/`; migrate older generated state first.
 
 ## flow status
 

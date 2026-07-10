@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,10 +8,15 @@ import { chromium } from "playwright";
 import { startFlowConsoleServer } from "../dist/index.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const screenshotPath = path.join(root, ".flow-agents", "flow-console-shell", "console-smoke.png");
+const screenshotPath = path.join(root, ".kontourai", "flow", "console-smoke", "console-smoke.png");
+const fixtureCwd = await mkdtemp(path.join(tmpdir(), "kontourai-flow-console-smoke-"));
+const fixtureSource = path.join(root, "examples", "scenarios", "console-projection", "runtime-fixture", "console-projection-fixture");
+const fixtureRunDir = path.join(fixtureCwd, ".kontourai", "flow", "runs", "console-projection-fixture");
+await mkdir(path.dirname(fixtureRunDir), { recursive: true });
+await cp(fixtureSource, fixtureRunDir, { recursive: true });
 const server = await startFlowConsoleServer({
   runId: "console-projection-fixture",
-  cwd: path.join(root, "examples", "scenarios", "console-projection"),
+  cwd: fixtureCwd,
   host: "127.0.0.1",
   port: 0
 });
@@ -83,4 +89,5 @@ try {
 } finally {
   if (browser) await browser.close();
   await server.close();
+  await rm(fixtureCwd, { recursive: true, force: true });
 }
