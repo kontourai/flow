@@ -48,6 +48,11 @@ _Avoid_: Flow Agents authority, adapter-owned policy, duplicated producer trust 
 The movement from one step to another, including the reason it was allowed, blocked, skipped, or accepted by exception.
 _Avoid_: Implicit next step, uncontrolled agent continuation
 
+**Run Lifecycle Transition**:
+A recorded change to whether a Flow Run is active, paused, or terminal without moving its current step. Pause, resume, and cancellation are lifecycle transitions; they never satisfy a Gate, count as Step passage, or create an alternate path through the Flow Definition.
+Lifecycle cancellation requires a structured external `user_request` or `operator_request`; Flow persists and validates that provider-neutral authority but does not authenticate it. Consumer products own authentication and any assignment release, provider update, archive, or cleanup that follows.
+_Avoid_: Step Transition, skipped step, implicit abandonment, consumer-only status override
+
 **Route Back**:
 A gate outcome that sends a Flow Run from the gate's step back to a selected step after failed or missing evidence. Route back is a Flow core transition primitive, not a Builder Kit policy.
 _Avoid_: Hidden retry, agent-specific recovery prompt, Builder Kit-only behavior

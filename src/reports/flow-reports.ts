@@ -8,12 +8,27 @@ import {
   attachedEvidenceFor,
   continuationLine,
   findGate,
-  openGates
+  openGates,
+  projectedNextAction
 } from "../definition/flow-definition.js";
 import { expectationsForGate } from "../gates/flow-gates.js";
 import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "../shared/flow-utils.js";
 
 export function reportJson(definition: any, state: any, manifest: any) {
+  const lifecycle = (state.lifecycle ?? []).map((event) => ({
+    action: event.action,
+    from_status: event.from_status,
+    to_status: event.to_status,
+    prior_status: event.prior_status,
+    reason: event.reason,
+    authority: {
+      kind: event.authority.kind,
+      actor: event.authority.actor,
+      request_ref: event.authority.request_ref,
+      requested_at: event.authority.requested_at
+    },
+    at: event.at
+  }));
   return {
     schema_version: FLOW_SCHEMA_VERSION,
     run_id: state.run_id,
@@ -23,8 +38,9 @@ export function reportJson(definition: any, state: any, manifest: any) {
     status: state.status,
     summary: `${definition.id} / ${state.subject}`,
     current_step: state.current_step,
-    next_action: state.next_action,
+    next_action: projectedNextAction(state),
     continuation: continuationLine(state),
+    lifecycle,
     open_gates: openGates(definition, state).map((gate) => gate.id),
     accepted_exceptions: state.exceptions,
     gate_summaries: Object.keys(definition.gates).map((gateId) => {
@@ -70,12 +86,28 @@ export function renderMarkdownReport(definition, state, manifest) {
     `- Subject: ${markdownText(state.subject)}`,
     `- Status: ${markdownText(state.status)}`,
     `- Current step: ${markdownText(state.current_step)}`,
-    `- Next action: ${markdownText(state.next_action)}`,
+    `- Next action: ${markdownText(report.next_action)}`,
     `- Continuation: ${markdownText(report.continuation)}`,
+    "",
+    "## Lifecycle",
+    ""
+  ];
+  if (report.lifecycle.length) {
+    for (const event of report.lifecycle) {
+      lines.push(`- ${markdownText(event.action)}: ${markdownText(event.from_status)} -> ${markdownText(event.to_status)} at ${markdownText(event.at)}`);
+      lines.push(`  - Reason: ${markdownText(event.reason)}`);
+      lines.push(`  - Authority: ${markdownText(event.authority.kind)} by ${markdownText(event.authority.actor)}`);
+      lines.push(`  - Request: ${markdownText(event.authority.request_ref)} at ${markdownText(event.authority.requested_at)}`);
+      lines.push(`  - Prior resumable status: ${markdownText(event.prior_status)}`);
+    }
+  } else {
+    lines.push("No lifecycle events.");
+  }
+  lines.push(
     "",
     "## Gates",
     ""
-  ];
+  );
   for (const gate of report.gate_summaries) {
     lines.push(`- ${markdownText(String(gate.status).toUpperCase())} ${markdownText(slugLabel(gate.gate_id))}: ${markdownText(gate.summary)}`);
     if (gate.missing?.length) lines.push(`  - Missing: ${gate.missing.map(evidenceLabel).map(markdownText).join(", ")}`);
@@ -157,7 +189,8 @@ export function renderSummary(definition, state, reportPath = `.kontourai/flow/r
       lines.push(`      transition diagnostics: ${outcome.transition_validation.diagnostics.map((entry) => entry.code).join(", ")}`);
     }
   }
-  lines.push("", `next action: ${state.next_action}`);
+  lines.push("", `status: ${state.status}`);
+  lines.push(`next action: ${projectedNextAction(state)}`);
   lines.push(`continuation: ${continuationLine(state)}`);
   lines.push(`report: ${reportPath}`);
   return `${lines.join("\n")}\n`;
@@ -169,7 +202,8 @@ export function renderResume(definition, state) {
   const lines = [
     `flow run: ${definition.id} / ${state.subject}`,
     `current step: ${state.current_step}`,
-    `next action: ${state.next_action}`,
+    `status: ${state.status}`,
+    `next action: ${projectedNextAction(state)}`,
     `open gates: ${gates.length ? gates.map((gate) => gate.id).join(", ") : "none"}`,
     `accepted exceptions: ${state.exceptions.length ? state.exceptions.map((entry) => `${entry.gate_id} by ${entry.authority}`).join(", ") : "none"}`,
     `route backs: ${routeBacks.length ? routeBacks.map((outcome) => {
@@ -177,7 +211,7 @@ export function renderResume(definition, state) {
       const recovery = outcome.recovery_step ? `, recovery ${outcome.recovery_step}` : "";
       return `${outcome.gate_id} ${outcome.route_reason ?? outcome.reason ?? "default"} -> ${outcome.route_back_to} attempt ${attempt}, limit exceeded ${outcome.limit_exceeded ? "yes" : "no"}${recovery}`;
     }).join("; ") : "none"}`,
-    `guidance: continue from recorded Flow state; ${state.next_action}`
+    `guidance: ${continuationLine(state)}`
   ];
   for (const gate of gates) {
     const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gate.id);

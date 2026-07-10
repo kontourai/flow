@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import type { FlowRunState } from "../contracts/flow-types.js";
+import { validateRunLifecycle } from "./flow-run-lifecycle.js";
 
 import { moduleRoot } from "./flow-files.js";
 
@@ -41,7 +43,7 @@ function schemaError(validate: any, contract: string) {
 
 export function validateRunStateSchema(state: unknown) {
   const validate = stateValidator();
-  if (validate(state)) return state;
+  if (validate(state)) return validateRunLifecycle(state as FlowRunState);
   throw schemaError(validate, "run state does not satisfy flow-run.schema.json");
 }
 

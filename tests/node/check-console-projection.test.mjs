@@ -227,3 +227,39 @@ test("AC6 projection is deterministic for repeat local-file reads and direct par
   const fromParts = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest, report });
   assert.deepEqual(fromParts, first);
 });
+
+test("lifecycle projection is first-class, deterministic, and never a Step transition or route-back", async () => {
+  const definition = await readFixtureJson("definition.json");
+  const state = await readFixtureJson("state.json");
+  const manifest = await readFixtureJson("evidence/manifest.json");
+  state.status = "canceled";
+  state.lifecycle = [{
+    action: "cancel",
+    from_status: "paused",
+    to_status: "canceled",
+    prior_status: "blocked",
+    reason: "User canceled the run",
+    authority: {
+      kind: "user_request",
+      actor: "user:brian",
+      request_ref: "request:flow-115-cancel",
+      requested_at: "2026-07-10T12:00:00.000Z"
+    },
+    at: "2026-07-10T12:00:01.000Z"
+  }];
+
+  const first = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest });
+  const second = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest });
+  assert.deepEqual(second, first);
+  assert.equal(first.run.status, "canceled");
+  assert.equal(first.current_step, "verify");
+  assert.deepEqual(first.open_gates, []);
+  assert.equal(first.next_action, "none; this run is terminally canceled");
+  assert.match(first.continuation, /no continuation is available/);
+  assert.equal(first.lifecycle.length, 1);
+  assert.equal(first.lifecycle[0].authority.request_ref, "request:flow-115-cancel");
+  assert.deepEqual(first.lifecycle[0].external_links, [], "plain request_ref is audit text, not an auto-opened link");
+  assert.equal(first.transitions.length, state.transitions.length);
+  assert.equal(first.route_backs.length, 2);
+  assert.equal(first.external_links.some((link) => link.source === "lifecycle"), false);
+});

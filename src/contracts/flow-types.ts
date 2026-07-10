@@ -92,17 +92,72 @@ export interface FlowEvidenceManifest extends MutableRecord {
   evidence: FlowEvidenceEntry[];
 }
 
+export type FlowRunStatus =
+  | "active"
+  | "blocked"
+  | "needs_decision"
+  | "paused"
+  | "canceled"
+  | "completed"
+  | "failed"
+  | "accepted_by_exception";
+
+export type FlowResumableStatus = "active" | "blocked" | "needs_decision";
+export type FlowLifecycleAction = "pause" | "resume" | "cancel";
+export type FlowLifecycleAuthorityKind = "user_request" | "operator_request";
+
+export interface FlowLifecycleAuthority {
+  kind: FlowLifecycleAuthorityKind;
+  actor: string;
+  /** Immutable provider-neutral reference to the authenticated external request. */
+  request_ref: string;
+  requested_at: string;
+}
+
+export interface FlowLifecycleEvent {
+  action: FlowLifecycleAction;
+  from_status: FlowRunStatus;
+  to_status: FlowRunStatus;
+  /** Exact status captured by pause and restored by resume. */
+  prior_status: FlowResumableStatus;
+  reason: string;
+  authority: FlowLifecycleAuthority;
+  at: string;
+}
+
+export type FlowLifecycleDiagnosticCode =
+  | "flow.lifecycle.request.invalid"
+  | "flow.lifecycle.authority.invalid"
+  | "flow.lifecycle.transition.invalid"
+  | "flow.lifecycle.replay.conflict"
+  | "flow.lifecycle.run_terminal"
+  | "flow.lifecycle.run_paused"
+  | "flow.lifecycle.run_canceled";
+
+export interface FlowLifecycleDiagnostic extends FlowDiagnostic {
+  code: FlowLifecycleDiagnosticCode;
+  operation: FlowLifecycleAction | "evaluate" | "advance" | "attach_evidence" | "accept_exception" | "persist";
+  current_status?: FlowRunStatus;
+}
+
+export interface FlowLifecycleRequest {
+  reason: string;
+  authority: FlowLifecycleAuthority;
+}
+
 export interface FlowRunState extends MutableRecord {
   schema_version?: string;
   run_id: string;
   definition_id: string;
   definition_version: string;
   subject: string;
-  status: string;
+  status: FlowRunStatus;
   current_step: string;
   params?: MutableRecord;
   gate_outcomes: GateOutcome[];
   transitions: MutableRecord[];
+  /** Absent only on legacy persisted runs before canonical load normalization. */
+  lifecycle?: FlowLifecycleEvent[];
   exceptions: MutableRecord[];
   next_action: string;
   updated_at: string;

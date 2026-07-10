@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { readFile, readdir, lstat, stat, writeFile, copyFile, mkdir } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { readFile, readdir, lstat, open, stat, writeFile, copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -22,21 +22,29 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowEvidenceEntry, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
   initialState,
+  normalizeRunStateLifecycle,
   openGates,
   validateDefinition
 } from "../definition/flow-definition.js";
 import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
-import { renderAndWriteReport } from "../reports/flow-reports.js";
+import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
+import {
+  FlowLifecycleError,
+  assertLifecycleEligible,
+  lifecycleRequestMatches,
+  priorResumableStatus,
+  validateLifecycleRequest
+} from "./flow-run-lifecycle.js";
 
 type RunLocationDiagnostic = {
   code: string;
@@ -404,8 +412,9 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
   const { dir } = location;
   const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
   const definition = validateDefinition(rawDefinition);
-  const state = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
-  validateRunStateSchema(state);
+  const parsedState = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
+  validateRunStateSchema(parsedState);
+  const state = normalizeRunStateLifecycle(parsedState);
   validateRunStateIdentity(definition, state, runId);
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
@@ -456,7 +465,7 @@ export async function loadRun(runId, cwd = process.cwd()) {
   return readRunAtLocation(runId, location, cwd);
 }
 
-export async function saveRun(run) {
+async function saveRun(run) {
   const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
   await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
   validateRunStateSchema(run.state);
@@ -471,6 +480,102 @@ export async function saveRun(run) {
   await writeJson(path.join(run.dir, FLOW_RUN_STATE_FILE), run.state);
   await writeJson(path.join(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), run.manifest);
   await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
+}
+
+async function writeExistingFileNoFollow(file: string, contents: string) {
+  const handle = await open(file, constants.O_WRONLY | constants.O_NOFOLLOW);
+  try {
+    const target = await handle.stat();
+    if (!target.isFile()) throw new Error(`flow.run_location.invalid_artifact_path: ${file} is not a regular file`);
+    await handle.truncate(0);
+    await handle.writeFile(contents, "utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function saveLifecycleState(run) {
+  validateRunStateSchema(run.state);
+  validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateEvidenceManifestIdentity(run.manifest, run.definition, run.state);
+  const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
+  const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
+  const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
+  const projectedJson = reportJson(run.definition, run.state, run.manifest);
+  const projectedMarkdown = renderMarkdownReport(run.definition, run.state, run.manifest);
+  const serializedState = `${JSON.stringify(run.state, null, 2)}\n`;
+  const serializedReport = `${JSON.stringify(projectedJson, null, 2)}\n`;
+  await writeExistingFileNoFollow(statePath, serializedState);
+  await writeExistingFileNoFollow(reportJsonPath, serializedReport);
+  await writeExistingFileNoFollow(reportMarkdownPath, projectedMarkdown);
+}
+
+function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleAction) {
+  const timestamp = options.at ?? new Date().toISOString();
+  if (!isNonEmptyString(timestamp) || !Number.isFinite(Date.parse(timestamp))) {
+    throw new FlowLifecycleError({
+      code: "flow.lifecycle.request.invalid",
+      severity: "error",
+      path: "$.at",
+      message: "at must be a date-time when provided",
+      operation
+    });
+  }
+  return timestamp;
+}
+
+async function changeRunLifecycle(runId: string, operation: FlowLifecycleAction, options: MutableRecord = {}) {
+  const request = validateLifecycleRequest(operation, { reason: options.reason, authority: options.authority });
+  const at = lifecycleTimestamp(options, operation);
+  const run = await loadRun(runId, options.cwd);
+  const existingCancellation = [...(run.state.lifecycle ?? [])].reverse().find((event) => event.action === "cancel");
+  if (operation === "cancel" && run.state.status === "canceled" && existingCancellation) {
+    if (lifecycleRequestMatches(existingCancellation, request)) {
+      return { ...run, event: existingCancellation, idempotent: true };
+    }
+    throw new FlowLifecycleError({
+      code: "flow.lifecycle.replay.conflict",
+      severity: "error",
+      path: "$.authority.request_ref",
+      message: "cancellation conflicts with the terminal cancellation already recorded",
+      operation,
+      current_status: run.state.status
+    });
+  }
+  assertLifecycleEligible(operation, run.state.status);
+
+  const fromStatus = run.state.status;
+  const priorStatus = priorResumableStatus(run.state as FlowRunState);
+  const toStatus = operation === "pause" ? "paused" : operation === "resume" ? priorStatus : "canceled";
+  const event: FlowLifecycleEvent = {
+    action: operation,
+    from_status: fromStatus,
+    to_status: toStatus,
+    prior_status: priorStatus,
+    reason: request.reason,
+    authority: request.authority,
+    at
+  };
+  run.state = {
+    ...run.state,
+    status: toStatus,
+    lifecycle: [...(run.state.lifecycle ?? []), event],
+    updated_at: at
+  };
+  await saveLifecycleState(run);
+  return { ...run, event, idempotent: false };
+}
+
+export function pauseRun(runId: string, options: MutableRecord = {}) {
+  return changeRunLifecycle(runId, "pause", options);
+}
+
+export function resumeRun(runId: string, options: MutableRecord = {}) {
+  return changeRunLifecycle(runId, "resume", options);
+}
+
+export function cancelRun(runId: string, options: MutableRecord = {}) {
+  return changeRunLifecycle(runId, "cancel", options);
 }
 
 export async function sha256File(file) {
@@ -511,6 +616,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
 
 export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
+  assertLifecycleEligible("attach_evidence", run.state.status);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
   await stat(source);
   const gate = findGate(run.definition, options.gate);
@@ -621,6 +727,7 @@ export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[]
 
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
+  assertLifecycleEligible("evaluate", run.state.status);
   // §1: re-derive freshness-bearing reports with the current `now` BEFORE
   // gates read them, so a claim that has gone stale flips the gate outcome.
   // The existing route-back cascade (invalidateDescendants) then clears any
@@ -651,6 +758,7 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
 
 export async function acceptException(runId, options) {
   const run = await loadRun(runId, options.cwd);
+  assertLifecycleEligible("accept_exception", run.state.status);
   if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
   const exception = {
     id: `ex.${Date.now()}.${run.state.exceptions.length + 1}`,

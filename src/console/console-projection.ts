@@ -9,6 +9,7 @@ import {
   openGates,
   slugLabel
 } from "../index.js";
+import { projectedNextAction } from "../definition/flow-definition.js";
 import { reportJson } from "../reports/flow-reports.js";
 
 export type FlowConsoleExternalLinkKind =
@@ -151,6 +152,24 @@ export interface FlowConsoleTransitionProjection {
   raw: Record<string, unknown>;
 }
 
+export interface FlowConsoleLifecycleProjection {
+  id: string;
+  action: string;
+  from_status: string;
+  to_status: string;
+  prior_status: string;
+  reason: string;
+  authority: {
+    kind: string;
+    actor: string;
+    request_ref: string;
+    requested_at: string;
+  };
+  at: string;
+  external_links: FlowConsoleExternalLinkRef[];
+  raw: Record<string, unknown>;
+}
+
 export interface FlowConsoleRouteBackProjection {
   id: string;
   source: "gate_outcome" | "transition";
@@ -192,6 +211,7 @@ export interface FlowConsoleProjection {
   evidence: FlowConsoleEvidenceProjection[];
   exceptions: FlowConsoleExceptionProjection[];
   transitions: FlowConsoleTransitionProjection[];
+  lifecycle: FlowConsoleLifecycleProjection[];
   route_backs: FlowConsoleRouteBackProjection[];
   external_links: FlowConsoleExternalLinkRef[];
   next_action: string | null;
@@ -461,6 +481,25 @@ function projectTransition(transition, index) {
   };
 }
 
+function projectLifecycle(event, index): FlowConsoleLifecycleProjection {
+  const links = [];
+  // Lifecycle refs use the same explicit link-container allowlist as every
+  // other projection. A plain request_ref remains audit text, not a link.
+  collectNamedLinkRefs(event, links, "lifecycle", `lifecycle.${index + 1}`);
+  return {
+    id: `lifecycle.${index + 1}`,
+    action: event.action,
+    from_status: event.from_status,
+    to_status: event.to_status,
+    prior_status: event.prior_status,
+    reason: event.reason,
+    authority: stableClone(event.authority),
+    at: event.at,
+    external_links: uniqueLinks(links),
+    raw: stableClone(event)
+  };
+}
+
 function projectException(exception, index) {
   const links = [];
   collectNamedLinkRefs(exception, links, "exception", exception.id ?? `exception.${index + 1}`);
@@ -519,6 +558,9 @@ function collectExternalLinks({ manifest, state, report }) {
   });
   (state.gate_outcomes ?? []).forEach((outcome) => {
     collectNamedLinkRefs(outcome, links, "gate_outcome", outcome.gate_id);
+  });
+  (state.lifecycle ?? []).forEach((event, index) => {
+    collectNamedLinkRefs(event, links, "lifecycle", `lifecycle.${index + 1}`);
   });
   if (report) collectNamedLinkRefs(report, links, "report", report.run_id);
   return uniqueLinks(links);
@@ -594,6 +636,7 @@ export function projectFlowRun(
   const gateIds = Object.keys(definition.gates ?? {}).sort((left, right) => left.localeCompare(right));
   const gates = gateIds.map((gateId) => projectGate(definition, state, manifest, effectiveConfig, gateId));
   const transitions = (state.transitions ?? []).map(projectTransition);
+  const lifecycle = (state.lifecycle ?? []).map(projectLifecycle);
   const exceptions = (state.exceptions ?? []).map(projectException);
   const persistedReport = report ?? null;
 
@@ -609,9 +652,10 @@ export function projectFlowRun(
     evidence: projectAllEvidence(manifest),
     exceptions,
     transitions,
+    lifecycle,
     route_backs: collectRouteBacks(state),
     external_links: collectExternalLinks({ manifest, state, report: persistedReport }),
-    next_action: state.next_action ?? null,
+    next_action: projectedNextAction(state) ?? null,
     continuation: continuationLine(state),
     report: projectReport(dir, persistedReport)
   });

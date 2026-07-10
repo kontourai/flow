@@ -5,11 +5,13 @@ import {
   acceptException,
   applyFlowConfigMerge,
   attachEvidence,
+  cancelRun,
   ensureFlowLayout,
   evaluateRun,
   loadRun,
   previewFlowConfigMergeFile,
   projectVersionReleaseReport,
+  pauseRun,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary,
   renderAndWriteReport,
@@ -17,6 +19,7 @@ import {
   renderResume,
   renderSummary,
   renderVersionReleaseReportMarkdown,
+  resumeRun,
   reportJson,
   scaffoldDemoRun,
   startRun,
@@ -42,6 +45,9 @@ function usage() {
   flow validate-transition <request-json> [--cwd <path>]
   flow start <definition> [--run-id <id>] [--params key=value ...] [--cwd <path>]
   flow status <run-id> [--format summary|json|markdown] [--cwd <path>]
+  flow pause <run-id> --request <request-json> [--cwd <path>]
+  flow resume-run <run-id> --request <request-json> [--cwd <path>]
+  flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
@@ -201,6 +207,23 @@ async function readDefinitionForValidation(definitionPath, cwd = process.cwd()) 
     };
     return { __flowReadError: diagnostic };
   }
+}
+
+async function readLifecycleRequest(flags: CliFlags, cwd: string, command: string) {
+  const requestPath = requireArg(flags.request, `flow ${command} requires --request <request-json>`);
+  const resolved = path.resolve(cwd, requestPath);
+  try {
+    return JSON.parse(await readFile(resolved, "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.lifecycle.request.invalid: unable to read lifecycle request ${requestPath}: ${detail}`);
+  }
+}
+
+function printLifecycleResult(runId: string, result: Awaited<ReturnType<typeof pauseRun>>) {
+  console.log(`${result.event.action}${result.idempotent ? " (idempotent)" : ""}: ${runId}`);
+  console.log(`status: ${result.state.status}`);
+  console.log(`request: ${result.event.authority.request_ref}`);
 }
 
 function validationPayload(definitionPath, result) {
@@ -383,6 +406,15 @@ async function main() {
     return;
   }
 
+  if (command === "pause" || command === "resume-run" || command === "cancel") {
+    const runId = requireArg(args[0], `flow ${command} requires a run id`);
+    const request = await readLifecycleRequest(flags, cwd, command);
+    const operation = command === "pause" ? pauseRun : command === "resume-run" ? resumeRun : cancelRun;
+    const result = await operation(runId, { cwd, ...request });
+    printLifecycleResult(runId, result);
+    return;
+  }
+
   if (command === "attach-evidence") {
     const runId = requireArg(args[0], "flow attach-evidence requires a run id");
     const routeMetadata = await parseRouteMetadata(flags, cwd);
@@ -518,7 +550,14 @@ async function main() {
     const runId = requireArg(args[0], "flow resume requires a run id");
     const run = await loadRun(runId, cwd);
     const ready = readySteps(run.definition, run.state, run.manifest);
-    const lines = [renderResume(run.definition, run.state)];
+    const rendered = renderResume(run.definition, run.state);
+    const lines = [rendered];
+    if (run.state.status === "paused" && !rendered.includes("resume-run")) {
+      lines.push(`run paused; resume it with: flow resume-run ${runId} --request <request-json>\n`);
+    }
+    if (run.state.status === "canceled" && !/terminal|canceled/i.test(rendered)) {
+      lines.push("run canceled; this lifecycle state is terminal\n");
+    }
     if (ready.length) lines.push(`ready steps: ${ready.join(", ")}\n`);
     process.stdout.write(lines.join(""));
     return;
@@ -541,6 +580,12 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error.message);
+  if (Array.isArray(error?.diagnostics)) {
+    for (const diagnostic of error.diagnostics) {
+      console.error(`ERROR ${diagnostic.code} ${diagnostic.path}: ${diagnostic.message}`);
+    }
+  } else {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
   process.exitCode = 1;
 });

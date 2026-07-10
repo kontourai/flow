@@ -22,6 +22,9 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   const help = await execFile(process.execPath, [cli, "--help"]);
   assert.match(help.stdout, /flow validate-definition <path> \[--json\]/);
   assert.match(help.stdout, /flow version-release-report <fixture-json> \[--format json\|markdown\]/);
+  assert.match(help.stdout, /flow pause <run-id> --request <request-json>/);
+  assert.match(help.stdout, /flow resume-run <run-id> --request <request-json>/);
+  assert.match(help.stdout, /flow cancel <run-id> --request <request-json>/);
 
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/agent-dev-flow.json", "--json"], {
     cwd: repoRootUrl
@@ -33,6 +36,132 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.validateRunTransition, "function");
   assert.equal(typeof runtime.projectVersionReleaseReport, "function");
   assert.equal(typeof runtime.renderVersionReleaseReportMarkdown, "function");
+  assert.equal(typeof runtime.pauseRun, "function");
+  assert.equal(typeof runtime.resumeRun, "function");
+  assert.equal(typeof runtime.cancelRun, "function");
+});
+
+test("CLI lifecycle commands require structured authority and preserve read-only resume", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-lifecycle-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const request = (ref, reason = "User requested lifecycle change") => ({
+    reason,
+    authority: {
+      kind: "user_request",
+      actor: "user:test",
+      request_ref: ref,
+      requested_at: "2026-07-10T12:00:00.000Z"
+    }
+  });
+  const writeRequest = async (name, value) => {
+    const file = path.join(cwd, `${name}.json`);
+    await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+    return file;
+  };
+
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "lifecycle-cli", "--cwd", cwd]);
+  const pauseRequest = await writeRequest("pause", request("request:pause"));
+  const paused = await execFile(process.execPath, [cliPath, "pause", "lifecycle-cli", "--request", pauseRequest, "--cwd", cwd]);
+  assert.match(paused.stdout, /^pause: lifecycle-cli/m);
+  assert.match(paused.stdout, /status: paused/);
+
+  const inspection = await execFile(process.execPath, [cliPath, "resume", "lifecycle-cli", "--cwd", cwd]);
+  assert.match(inspection.stdout, /resume-run lifecycle-cli --request <request-json>/);
+  const stillPaused = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "lifecycle-cli", "state.json"), "utf8"));
+  assert.equal(stillPaused.status, "paused", "flow resume remains read-only");
+
+  const resumeRequest = await writeRequest("resume", request("request:resume"));
+  const resumed = await execFile(process.execPath, [cliPath, "resume-run", "lifecycle-cli", "--request", resumeRequest, "--cwd", cwd]);
+  assert.match(resumed.stdout, /^resume: lifecycle-cli/m);
+  assert.match(resumed.stdout, /status: active/);
+
+  const cancelRequest = await writeRequest("cancel", request("request:$()[];|&", "User approved [cancel] && $(not-a-command)"));
+  const canceled = await execFile(process.execPath, [cliPath, "cancel", "lifecycle-cli", "--request", cancelRequest, "--cwd", cwd]);
+  assert.match(canceled.stdout, /^cancel: lifecycle-cli/m);
+  assert.match(canceled.stdout, /status: canceled/);
+  assert.match(canceled.stdout, /request: request:\$\(\)\[\];\|&/);
+  const replay = await execFile(process.execPath, [cliPath, "cancel", "lifecycle-cli", "--request", cancelRequest, "--cwd", cwd]);
+  assert.match(replay.stdout, /cancel \(idempotent\): lifecycle-cli/);
+
+  const status = await execFile(process.execPath, [cliPath, "status", "lifecycle-cli", "--format", "json", "--cwd", cwd]);
+  assert.equal(JSON.parse(status.stdout).status, "canceled");
+  const list = await execFile(process.execPath, [cliPath, "list", "--cwd", cwd]);
+  assert.match(list.stdout, /lifecycle-cli\tcanceled\t/);
+  const report = await execFile(process.execPath, [cliPath, "report", "lifecycle-cli", "--format", "json", "--cwd", cwd]);
+  assert.equal(JSON.parse(report.stdout).status, "canceled");
+
+  const conflictRequest = await writeRequest("conflict", request("request:conflict", "Different cancellation"));
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "lifecycle-cli", "--request", conflictRequest, "--cwd", cwd]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /ERROR flow\.lifecycle\.replay\.conflict/);
+      return true;
+    }
+  );
+});
+
+test("CLI cancellation rejects missing, malformed, and agent-self-asserted authority", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-lifecycle-invalid-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "invalid-cancel", "--cwd", cwd]);
+
+  await writeFile(path.join(cwd, "control.json"), `${JSON.stringify({
+    reason: "cancel\r\nspoofed",
+    authority: {
+      kind: "user_request",
+      actor: "user:test\u001b]8;;https://evil.test\u0007",
+      request_ref: "request:control",
+      requested_at: "2026-07-10T12:00:00.000Z"
+    }
+  })}\n`);
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "invalid-cancel", "--request", "control.json", "--cwd", cwd]),
+    (error) => error.code === 1 && /must not contain control characters/.test(error.stderr)
+  );
+  await writeFile(path.join(cwd, "oversized.json"), `${JSON.stringify({
+    reason: "x".repeat(4097),
+    authority: {
+      kind: "user_request",
+      actor: "user:test",
+      request_ref: "request:oversized",
+      requested_at: "2026-07-10T12:00:00.000Z"
+    }
+  })}\n`);
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "invalid-cancel", "--request", "oversized.json", "--cwd", cwd]),
+    (error) => error.code === 1 && /must be at most 4096 characters/.test(error.stderr)
+  );
+
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "invalid-cancel", "--cwd", cwd]),
+    (error) => error.code === 1 && /requires --request/.test(error.stderr)
+  );
+  await writeFile(path.join(cwd, "malformed.json"), "{not json\n");
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "invalid-cancel", "--request", "malformed.json", "--cwd", cwd]),
+    (error) => error.code === 1 && /flow\.lifecycle\.request\.invalid/.test(error.stderr)
+  );
+  await writeFile(path.join(cwd, "agent.json"), `${JSON.stringify({
+    reason: "Agent chose to cancel",
+    authority: {
+      kind: "agent_request",
+      actor: "agent:test",
+      request_ref: "request:agent",
+      requested_at: "2026-07-10T12:00:00.000Z"
+    }
+  })}\n`);
+  await assert.rejects(
+    execFile(process.execPath, [cliPath, "cancel", "invalid-cancel", "--request", "agent.json", "--cwd", cwd]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /ERROR flow\.lifecycle\.authority\.invalid/);
+      return true;
+    }
+  );
+  const state = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", "invalid-cancel", "state.json"), "utf8"));
+  assert.equal(state.status, "active");
+  assert.deepEqual(state.lifecycle, []);
 });
 
 test("CLI init scaffolds .flow with the packaged sample definition", async () => {

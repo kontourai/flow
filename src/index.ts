@@ -11,7 +11,16 @@ export type {
   FlowEvidenceManifest,
   FlowExpectation,
   FlowGate,
+  FlowLifecycleAction,
+  FlowLifecycleAuthority,
+  FlowLifecycleAuthorityKind,
+  FlowLifecycleDiagnostic,
+  FlowLifecycleDiagnosticCode,
+  FlowLifecycleEvent,
+  FlowLifecycleRequest,
+  FlowResumableStatus,
   FlowRunState,
+  FlowRunStatus,
   FlowStep,
   GateOutcome,
   JsonObject,
@@ -81,6 +90,7 @@ export {
   gatesForStep,
   getStep,
   initialState,
+  normalizeRunStateLifecycle,
   descendantsOf,
   invalidateDescendants,
   nextActionForStep,
@@ -121,8 +131,19 @@ export {
   renderVersionReleaseReportMarkdown
 } from "./release/flow-release.js";
 export {
+  FlowLifecycleError,
+  assertLifecycleEligible,
+  lifecycleEligibilityDiagnostic,
+  lifecycleRequestMatches,
+  FLOW_LIFECYCLE_TEXT_LIMITS,
+  priorResumableStatus,
+  validateRunLifecycle,
+  validateLifecycleRequest
+} from "./runtime/flow-run-lifecycle.js";
+export {
   acceptException,
   attachEvidence,
+  cancelRun,
   ensureFlowLayout,
   evaluateRun,
   flowReadme,
@@ -130,11 +151,12 @@ export {
   listRunsWithDiagnostics,
   loadRun,
   normalizeTrustBundle,
+  pauseRun,
   reDeriveBundleReports,
-  saveRun,
   scaffoldDemoRun,
   sha256File,
-  startRun
+  startRun,
+  resumeRun
 } from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,

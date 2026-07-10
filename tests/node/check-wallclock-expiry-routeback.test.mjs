@@ -21,7 +21,7 @@ import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { startRun, loadRun, saveRun, evaluateRun } from "../../dist/index.js";
+import { startRun, loadRun, evaluateRun } from "../../dist/index.js";
 
 const T0 = "2026-06-10T00:00:00.000Z";
 const EXPIRES = "2026-06-15T00:00:00.000Z";
@@ -156,7 +156,8 @@ async function makeRun(cwd) {
       bundle: approvalBundle()
     }
   ];
-  await saveRun(run);
+  await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
+  await writeFile(path.join(run.dir, "evidence", "manifest.json"), `${JSON.stringify(run.manifest, null, 2)}\n`);
   return runId;
 }
 
