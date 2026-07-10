@@ -10,6 +10,17 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.0.0](https://github.com/kontourai/flow/compare/v2.0.0...v3.0.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* runDir and all runtime commands now use .kontourai/flow. Existing .flow/runs state requires explicit operator migration and is not read by the current runtime.
+
+### Features
+
+* move generated Flow state to .kontourai/flow ([#112](https://github.com/kontourai/flow/issues/112)) ([82d5331](https://github.com/kontourai/flow/commit/82d5331e889842eb30f9be33e7405ee3dbd8f5d0))
+
 ## [2.0.0](https://github.com/kontourai/flow/compare/v1.4.1...v2.0.0) (2026-07-02)
 
 
