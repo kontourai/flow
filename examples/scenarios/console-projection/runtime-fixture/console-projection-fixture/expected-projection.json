@@ -1650,6 +1650,7 @@
       "summary": "Tests failed; route back to build."
     }
   ],
+  "lifecycle": [],
   "next_action": "Fix the test failure and rerun verification.",
   "open_gates": [
     "verify-gate"
@@ -1724,6 +1725,7 @@
           "summary": "Tests failed; route back to build."
         }
       ],
+      "lifecycle": [],
       "next_action": "Fix the test failure and rerun verification.",
       "open_gates": [
         "verify-gate"

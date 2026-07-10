@@ -1,6 +1,7 @@
 import { defaultFlowConfig } from "../config/flow-config.js";
 import { findGate, getStep } from "../definition/flow-definition.js";
 import { validateRunTransition } from "../transition/flow-transition.js";
+import { assertLifecycleEligible } from "../runtime/flow-run-lifecycle.js";
 
 function proposedTransitionForOutcome(definition, gate, outcome, now = new Date().toISOString()) {
   const step = getStep(definition, gate.step);
@@ -53,6 +54,7 @@ function proposedTransitionForOutcome(definition, gate, outcome, now = new Date(
 }
 
 export function validateEvaluationTransition(definition, state, manifest, outcome, config = defaultFlowConfig(), now = new Date().toISOString()) {
+  assertLifecycleEligible("evaluate", state.status);
   const gate = findGate(definition, outcome.gate_id);
   if (!gate) throw new Error(`unknown gate: ${outcome.gate_id}`);
   const transition = proposedTransitionForOutcome(definition, gate, outcome, now);

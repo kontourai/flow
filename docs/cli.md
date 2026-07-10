@@ -150,6 +150,57 @@ next action: attach evidence for implementation gate
 continuation: resume from implement, not chat memory
 ```
 
+The reported status is canonical. A paused or canceled run has no ready steps;
+its current step remains visible for audit, but it is not permission to continue.
+
+## flow pause, flow resume-run, and flow cancel
+
+```sh
+flow pause <run-id> --request <request-json> [--cwd <path>]
+flow resume-run <run-id> --request <request-json> [--cwd <path>]
+flow cancel <run-id> --request <request-json> [--cwd <path>]
+```
+
+These commands mutate the canonical Run lifecycle without moving its current
+Step. `--request` names a JSON file, resolved relative to `--cwd`, containing a
+provider-neutral, externally authorized request:
+
+```json
+{
+  "reason": "The user asked to stop this run.",
+  "authority": {
+    "kind": "user_request",
+    "actor": "user:brian",
+    "request_ref": "conversation:01J2/request:42",
+    "requested_at": "2026-07-10T12:00:00.000Z"
+  }
+}
+```
+
+`authority.kind` must be `user_request` or `operator_request`. Flow validates
+and persists that constrained record; it does not infer authority from the
+invoking agent or authenticate the actor. The consumer must authenticate the
+request and provide an immutable `request_ref` before calling Flow. Unsupported
+fields, missing fields, malformed JSON, agent-self-asserted authority, and
+ineligible source states exit `1` with a stable `flow.lifecycle.*` diagnostic.
+Audit text must be printable and is bounded: 256 characters for `actor`, 2048
+for `request_ref`, and 4096 for `reason`. CR/LF, ESC/OSC, DEL, and other terminal
+controls are rejected; Markdown and shell punctuation remain inert data.
+
+Pause accepts `active`, `blocked`, and `needs_decision`, recording the exact
+prior status. `resume-run` accepts only `paused` and restores that prior status.
+Cancel accepts any of those nonterminal states, including `paused`, and is
+terminal. Replaying the exact same cancellation request succeeds without
+rewriting the event timestamp or any run file and prints `cancel (idempotent)`;
+a different cancellation after cancellation fails with
+`flow.lifecycle.replay.conflict` and performs no write.
+
+Lifecycle history is separate from Step `transitions`: none of these commands
+satisfies a Gate, advances a Step, or rewrites evidence, exceptions, or the
+required path. Flow does not release assignments, update providers, archive
+artifacts, or clean branches/worktrees as a side effect; those remain consumer
+responsibilities.
+
 ## flow attach-evidence
 
 ```sh
@@ -195,7 +246,7 @@ Records an explicit exception on a gate. All three flags are required — an exc
 flow resume <run-id> [--cwd <path>]
 ```
 
-Reads only the run directory and prints the continuation contract: current step, next action, open gates, accepted exceptions, route-back history, and a one-line instruction for the next agent or person.
+Reads only the run directory and prints the continuation contract: current step, next action, open gates, accepted exceptions, route-back history, and a one-line instruction for the next agent or person. This command is always read-only. It does not resume a paused lifecycle; use `flow resume-run <run-id> --request <request-json>` for that explicit, authority-bearing mutation. For canceled runs it reports terminal guidance rather than a continuation action.
 
 ## flow report
 

@@ -44,7 +44,7 @@ Flow core source is organized by runtime domain:
 - `src/index.ts` is the package-root public export surface. Keep it thin.
 - `src/contracts/flow-types.ts` owns public Flow contract types and schema/evidence constants.
 - `src/runtime/flow-files.ts` owns authored `.flow` and generated `.kontourai/flow` path helpers plus JSON persistence helpers.
-- `src/runtime/flow-run-store.ts` owns local run lifecycle operations, evidence attachment, trust artifact normalization, run evaluation, exceptions, and run listing.
+- `src/runtime/flow-run-store.ts` owns local run persistence, authority-bearing lifecycle operations, evidence attachment, trust artifact normalization, run evaluation, exceptions, and run listing; `src/runtime/flow-run-lifecycle.ts` owns provider-neutral lifecycle validation and diagnostics. Lifecycle history remains separate from Step transition history.
 - `src/shared/flow-utils.ts` owns shared labels, evidence-kind helpers, JSON cloning, and small type guards.
 - `src/config/flow-config.ts` owns project config loading, preview/apply merge semantics, and config merge rendering.
 - `src/definition/flow-definition.ts` owns Flow Definition diagnostics, step/gate lookup, initial state, continuation, and route-back selection helpers.

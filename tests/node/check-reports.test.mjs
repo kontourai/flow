@@ -153,3 +153,51 @@ test("Flow Markdown report escapes inline run data and normalizes line breaks", 
   assert.doesNotMatch(markdown, /^## injected/m);
   assert.doesNotMatch(markdown, /<script>|<b>evidence<\/b>|<owner>|<sha>/);
 });
+
+test("reports project lifecycle history separately with paused and canceled guidance", () => {
+  const definition = routeBackDefinition();
+  const state = initialState(definition, "lifecycle-report", { subject: "flow#115" });
+  const manifest = { schema_version: FLOW_SCHEMA_VERSION, evidence: [] };
+  const authority = {
+    kind: "user_request",
+    actor: "user:brian",
+    request_ref: "request:flow-115",
+    requested_at: "2026-07-10T12:00:00.000Z"
+  };
+  state.status = "paused";
+  state.lifecycle = [{
+    action: "pause",
+    from_status: "active",
+    to_status: "paused",
+    prior_status: "active",
+    reason: "User requested a pause",
+    authority,
+    at: "2026-07-10T12:00:01.000Z"
+  }];
+
+  const paused = reportJson(definition, state, manifest);
+  assert.equal(paused.current_step, state.current_step);
+  assert.deepEqual(paused.open_gates, []);
+  assert.equal(paused.next_action, "await an authorized lifecycle resume request");
+  assert.match(paused.continuation, /run paused/);
+  assert.deepEqual(paused.lifecycle, state.lifecycle);
+  assert.deepEqual(state.transitions, []);
+  assert.match(renderMarkdownReport(definition, state, manifest), /## Lifecycle[\s\S]*Authority: user_request by user:brian/);
+  assert.match(renderSummary(definition, state), /status: paused[\s\S]*await an authorized lifecycle resume request/);
+  assert.match(renderResume(definition, state), /open gates: none[\s\S]*guidance: run paused/);
+
+  state.status = "canceled";
+  state.lifecycle.push({
+    action: "cancel",
+    from_status: "paused",
+    to_status: "canceled",
+    prior_status: "active",
+    reason: "User canceled the run",
+    authority: { ...authority, request_ref: "request:flow-115-cancel" },
+    at: "2026-07-10T12:01:00.000Z"
+  });
+  const canceled = reportJson(definition, state, manifest);
+  assert.equal(canceled.next_action, "none; this run is terminally canceled");
+  assert.match(canceled.continuation, /no continuation is available/);
+  assert.equal(canceled.lifecycle.length, 2);
+});

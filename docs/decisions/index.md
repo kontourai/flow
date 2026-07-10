@@ -14,3 +14,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [kit](./kit.md) | needs-decision | Kit |
 | [process-transparency](./process-transparency.md) | needs-decision | Process Transparency |
 | [project-config](./project-config.md) | needs-decision | Project Config |
+| [run-lifecycle-transition](./run-lifecycle-transition.md) | current | Run Lifecycle Transition |

@@ -1,4 +1,4 @@
-import type { FlowDiagnostic, MutableRecord, TransitionValidationResult } from "../contracts/flow-types.js";
+import type { FlowDiagnostic, FlowRunStatus, MutableRecord, TransitionValidationResult } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject } from "../shared/flow-utils.js";
 import { defaultFlowConfig } from "../config/flow-config.js";
 import {
@@ -11,6 +11,7 @@ import {
   validateDefinitionWithDiagnostics
 } from "../definition/flow-definition.js";
 import { evaluateGate } from "../gates/flow-gates.js";
+import { lifecycleEligibilityDiagnostic } from "../runtime/flow-run-lifecycle.js";
 
 function transitionDiagnostic(code: string, path: string, message: string, related: MutableRecord = {}, severity = "error") {
   return {
@@ -131,6 +132,9 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
 
   if (!isObject(currentState)) {
     diagnostics.push(transitionDiagnostic("current_state.invalid", "$.current_state", "current_state must be an object"));
+  } else {
+    const lifecycleDiagnostic = lifecycleEligibilityDiagnostic("advance", currentState.status as FlowRunStatus);
+    if (lifecycleDiagnostic) diagnostics.push(lifecycleDiagnostic);
   }
   if (!isObject(transition)) {
     diagnostics.push(transitionDiagnostic("proposed_transition.required", "$.proposed_transition", "proposed_transition or proposed_state is required"));

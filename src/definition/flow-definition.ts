@@ -362,10 +362,20 @@ export function initialState(definition: any, runId: string, params: MutableReco
     params,
     gate_outcomes: [],
     transitions: [],
+    lifecycle: [],
     exceptions: [],
     next_action: nextActionForStep(definition, firstStep.id),
     updated_at: new Date().toISOString()
   };
+}
+
+/**
+ * Normalize the sole additive compatibility case for run lifecycle history.
+ * Callers must schema-validate first so a present malformed ledger fails closed.
+ */
+export function normalizeRunStateLifecycle(state: any) {
+  if (state.lifecycle !== undefined) return state;
+  return { ...state, lifecycle: [] };
 }
 
 export function nextActionForStep(definition: any, stepId: string, outcome: any = null) {
@@ -384,10 +394,23 @@ export function nextActionForStep(definition: any, stepId: string, outcome: any 
 }
 
 export function continuationLine(state) {
+  if (state.status === "paused") {
+    return `run paused at ${state.current_step}; resume requires a new authorized lifecycle request`;
+  }
+  if (state.status === "canceled") {
+    return `run canceled at ${state.current_step}; no continuation is available`;
+  }
   return `resume from ${state.current_step}, not chat memory`;
 }
 
+export function projectedNextAction(state) {
+  if (state.status === "paused") return "await an authorized lifecycle resume request";
+  if (state.status === "canceled") return "none; this run is terminally canceled";
+  return state.next_action;
+}
+
 export function openGates(definition, state) {
+  if (state.status === "paused" || state.status === "canceled") return [];
   return gatesForStep(definition, state.current_step);
 }
 
@@ -605,6 +628,7 @@ function predecessorsPassed(definition: any, stepId: string, state: any): boolea
  * passed gate (or no gate).  A step with no predecessors is ready at start.
  */
 export function readySteps(definition: any, state: any, _manifest: any): string[] {
+  if (state.status === "paused" || state.status === "canceled") return [];
   const def = normalizeFlowDefinition(definition);
   const steps: any[] = normalizedSteps(def);
 

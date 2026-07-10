@@ -43,6 +43,17 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.properties.current_step.description, /step id/);
   assert.match(runSchema.properties.gate_outcomes.description, /gate decisions/);
   assert.match(runSchema.properties.transitions.description, /route-back attempt counting/);
+  assert.deepEqual(runSchema.properties.status.enum, ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]);
+  assert.equal(runSchema.properties.lifecycle.items.$ref, "#/$defs/lifecycle_event");
+  assert.match(runSchema.properties.lifecycle.description, /never count as Step transitions/);
+  assert.deepEqual(runSchema.$defs.lifecycle_authority.properties.kind.enum, ["user_request", "operator_request"]);
+  assert.equal(runSchema.$defs.lifecycle_authority.properties.request_ref.minLength, 1);
+  assert.equal(runSchema.$defs.lifecycle_authority.properties.actor.maxLength, 256);
+  assert.equal(runSchema.$defs.lifecycle_authority.properties.request_ref.maxLength, 2048);
+  assert.equal(runSchema.$defs.lifecycle_event.properties.reason.maxLength, 4096);
+  assert.match(runSchema.$defs.lifecycle_authority.properties.actor.pattern, /u001F/);
+  assert.equal(runSchema.allOf[0].then.properties.lifecycle.minItems, 1);
+  assert.deepEqual(runSchema.$defs.lifecycle_event.properties.prior_status.enum, ["active", "blocked", "needs_decision"]);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.match(evidenceSchema.description, /\.kontourai\/flow\/runs\/<run-id>\/evidence\/manifest\.json/);
   assert.match(evidenceSchema.description, /standalone scenario manifests may omit/);
@@ -93,6 +104,7 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(evidenceSchema.$defs.evidence.properties.classifier);
   assert.ok(runSchema.$defs.gate_outcome.properties.route_reason);
   assert.ok(runSchema.$defs.transition.properties.route_reason);
+  assert.ok(runSchema.$defs.lifecycle_event.properties.authority);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.route_reason);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.selected_route);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.recovery_step);
@@ -156,6 +168,7 @@ test("runtime-generated run and report satisfy required schema fields", async ()
   const report = reportJson(definition, state, { schema_version: FLOW_SCHEMA_VERSION, evidence: [] });
   assert.equal(state.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(state.definition_id, definition.id);
+  assert.deepEqual(state.lifecycle, []);
   assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(report.definition_id, definition.id);
 });

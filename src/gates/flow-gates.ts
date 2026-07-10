@@ -30,6 +30,11 @@ export function expectationsForGate(gate: any, config: MutableRecord = defaultFl
 function findClaimInReport(report: any, selector: any): any | null {
   if (!report?.claims || !Array.isArray(report.claims)) return null;
   return report.claims.find((claim: any) => {
+    // Surface preserves producer-level supersession separately from its derived
+    // status. Historical critique claims can therefore re-derive as `proposed`
+    // while still carrying producerStatus=superseded. They remain audit history,
+    // but must never compete with the live replacement claim at a gate.
+    if (claim.producerStatus === "superseded" || claim.metadata?.superseded_by) return false;
     if (claim.claimType !== selector.claimType) return false;
     if (selector.subjectType && claim.subjectType !== selector.subjectType) return false;
     if (selector.subjectId && claim.subjectId !== selector.subjectId) return false;

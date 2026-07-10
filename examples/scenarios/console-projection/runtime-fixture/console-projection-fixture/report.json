@@ -7,6 +7,7 @@
   "status": "active",
   "summary": "console-projection-flow / console-projection-fixture",
   "current_step": "verify",
+  "lifecycle": [],
   "next_action": "Fix the test failure and rerun verification.",
   "continuation": "resume from verify, not chat memory",
   "open_gates": [

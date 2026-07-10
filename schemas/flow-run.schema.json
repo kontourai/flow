@@ -6,6 +6,15 @@
   "type": "object",
   "required": ["schema_version", "run_id", "definition_id", "status", "current_step", "gate_outcomes", "transitions", "exceptions"],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["paused", "canceled"] } }, "required": ["status"] },
+      "then": {
+        "required": ["lifecycle"],
+        "properties": { "lifecycle": { "minItems": 1 } }
+      }
+    }
+  ],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -33,7 +42,7 @@
     "status": {
       "type": "string",
       "description": "Current lifecycle status for continuation and reporting.",
-      "enum": ["active", "blocked", "needs_decision", "completed", "failed", "accepted_by_exception"]
+      "enum": ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]
     },
     "current_step": {
       "type": "string",
@@ -63,6 +72,11 @@
       "description": "Persisted transition history used for continuation, reporting, and route-back attempt counting.",
       "items": { "$ref": "#/$defs/transition" }
     },
+    "lifecycle": {
+      "type": "array",
+      "description": "Separate pause, resume, and cancellation history. Absence on a legacy run is normalized to an empty array when loaded; lifecycle records never count as Step transitions.",
+      "items": { "$ref": "#/$defs/lifecycle_event" }
+    },
     "exceptions": {
       "type": "array",
       "description": "Accepted exceptions with explicit reason and authority.",
@@ -70,6 +84,74 @@
     }
   },
   "$defs": {
+    "lifecycle_authority": {
+      "type": "object",
+      "required": ["kind", "actor", "request_ref", "requested_at"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["user_request", "operator_request"] },
+        "actor": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
+        "request_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+          "description": "Immutable provider-neutral reference to the externally authenticated request."
+        },
+        "requested_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "lifecycle_event": {
+      "type": "object",
+      "required": ["action", "from_status", "to_status", "prior_status", "reason", "authority", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string", "enum": ["pause", "resume", "cancel"] },
+        "from_status": { "$ref": "#/$defs/run_status" },
+        "to_status": { "$ref": "#/$defs/run_status" },
+        "prior_status": {
+          "type": "string",
+          "enum": ["active", "blocked", "needs_decision"],
+          "description": "The exact resumable status captured by pause and restored by resume; cancellation records the resumable status when one exists."
+        },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
+        "authority": { "$ref": "#/$defs/lifecycle_authority" },
+        "at": { "type": "string", "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "const": "pause" } }, "required": ["action"] },
+          "then": {
+            "properties": {
+              "from_status": { "enum": ["active", "blocked", "needs_decision"] },
+              "to_status": { "const": "paused" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "action": { "const": "resume" } }, "required": ["action"] },
+          "then": {
+            "properties": {
+              "from_status": { "const": "paused" },
+              "to_status": { "enum": ["active", "blocked", "needs_decision"] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "action": { "const": "cancel" } }, "required": ["action"] },
+          "then": {
+            "properties": {
+              "from_status": { "enum": ["active", "blocked", "needs_decision", "paused"] },
+              "to_status": { "const": "canceled" }
+            }
+          }
+        }
+      ]
+    },
+    "run_status": {
+      "type": "string",
+      "enum": ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]
+    },
     "gate_outcome": {
       "type": "object",
       "required": ["gate_id", "status", "summary", "evidence_refs"],
