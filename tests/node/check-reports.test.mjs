@@ -75,6 +75,7 @@ test("reports, summary, and resume expose route-back metadata", () => {
   assert.match(summary, /route: implementation_defect -> recover; attempt 2\/1; limit exceeded: yes/);
   assert.match(summary, /recovery: recover/);
   assert.match(summary, /analytics loop: verify:implementation_defect/);
+  assert.match(summary, /report: \.kontourai\/flow\/runs\/report-route-back\/report\.md/);
 
   const resume = renderResume(definition, state);
   assert.match(resume, /route backs: verify-gate implementation_defect -> recover attempt 2\/1, limit exceeded yes, recovery recover/);

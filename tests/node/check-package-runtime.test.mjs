@@ -69,12 +69,14 @@ test("package root exports stay stable across source-domain splits", () => {
     "flowConfigPath",
     "flowReadme",
     "flowRoot",
+    "flowRuntimeRoot",
     "freezeStateFixtureAdapter",
     "gatesForStep",
     "getStep",
     "initialState",
     "invalidateDescendants",
     "listRuns",
+    "listRunsWithDiagnostics",
     "loadFlowConfig",
     "loadReleaseReadinessInputs",
     "loadRun",
@@ -130,4 +132,28 @@ test("package root exports stay stable across source-domain splits", () => {
   ];
   assert.deepEqual(Object.keys(flowRuntime).sort(), expectedRuntimeExports);
   assert.equal(Object.hasOwn(flowRuntime, "evaluateGate"), true);
+  assert.equal(Object.hasOwn(flowRuntime, "flowRuntimeRoot"), true, "canonical runtime root is intentionally public");
+  assert.equal(Object.hasOwn(flowRuntime, "legacyRunDir"), false, "no legacy runtime path API exists");
+  assert.equal(Object.hasOwn(flowRuntime, "resolveExistingRunLocation"), false, "no dual-root resolver API exists");
+});
+
+test("AC-111-05 and AC-111-06 package documentation declares one runtime root and explicit older-version migration", async () => {
+  const readme = await readFile(new URL("../../README.md", import.meta.url), "utf8");
+  const structure = await readFile(new URL("../../docs/repo-structure.md", import.meta.url), "utf8");
+  const fixture = await readFile(new URL("../../examples/scenarios/console-projection/README.md", import.meta.url), "utf8");
+  const changelog = await readFile(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
+  const publishedDocs = [readme, structure, fixture, changelog].join("\n");
+
+  assert.match(publishedDocs, /\.kontourai\/flow\/runs\/<run-id>/, "published run layout names the canonical generated root");
+  assert.match(structure, /\.flow\/config\.json/, "authored project configuration remains under .flow");
+  assert.match(structure, /\.flow\/definitions/, "authored definitions remain under .flow");
+  assert.match(fixture, /materializ/i, "published fixture explains canonical runtime materialization");
+  assert.match(publishedDocs, /do(?:es)? not read .*\.flow\/runs|no runtime legacy support/is, "runtime legacy support is explicitly absent");
+  assert.match(publishedDocs, /no auto(?:matic)? migration/i, "ordinary runtime commands do not migrate older state");
+  assert.match(publishedDocs, /backup/i);
+  assert.match(publishedDocs, /collision/i);
+  assert.match(publishedDocs, /identity/i);
+  assert.match(readme, /\[Runtime Roots\]\(docs\/runtime-roots\.md\)/, "README links the operator migration guide");
+  assert.match(publishedDocs, /migrat(?:e|ion).*explicit/i, "migration is an explicit operator action");
+  assert.match(publishedDocs, /rollback/i, "rollback risk is documented for the semver-major path change");
 });

@@ -111,7 +111,7 @@ The first publishable version is a local npm package:
 - the `flow` CLI: init, validate, start, status, attach-evidence, evaluate, accept-exception, config, report, resume, list, console
 - typed gate expectations (`expects`, including `trust.bundle` with `bundle_claim`) and documented evidence kinds
 - project config for trusted producer mappings and gate overrides
-- Markdown and JSON Flow Reports; continuation from `.flow/runs/<run-id>/` without chat memory
+- Markdown and JSON Flow Reports; continuation from `.kontourai/flow/runs/<run-id>/` without chat memory and without runtime fallback to older generated roots
 - a loopback-only local Flow Console
 
 Runtime hooks, hosted services, multi-agent dispatch, hosted web UI, and Surface projection are intentionally outside v0.1.

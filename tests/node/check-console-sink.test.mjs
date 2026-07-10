@@ -12,7 +12,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, constants, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -21,21 +21,24 @@ import {
   HostedConsoleSink,
   createConsoleSink
 } from "../../dist/console/console-sink.js";
+import { startRun } from "../../dist/index.js";
 
-function fakeProjection(runId = "sink-run") {
+const definitionPath = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+
+function fakeProjection(runId = "sink-run", definitionId = "demo", definitionVersion = "1") {
   return {
     schema_version: "1",
     run: {
       run_id: runId,
-      definition_id: "demo",
-      definition_version: "1",
+      definition_id: definitionId,
+      definition_version: definitionVersion,
       subject: null,
       status: "active",
       current_step: "verify",
       updated_at: "2026-06-16T00:00:00.000Z",
       params: {}
     },
-    definition: { id: "demo", version: "1", title: null },
+    definition: { id: definitionId, version: definitionVersion, title: null },
     steps: [],
     current_step: "verify",
     open_gates: [],
@@ -52,18 +55,62 @@ function fakeProjection(runId = "sink-run") {
   };
 }
 
-test("FileConsoleSink writes the projection under the run dir (default sink)", async () => {
+test("FileConsoleSink writes a projection to an explicitly resolved canonical run directory", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-sink-"));
   const sink = new FileConsoleSink({ cwd });
   assert.equal(sink.kind, "file");
 
-  const projection = fakeProjection();
-  await sink.emit(projection);
+  const run = await startRun(definitionPath, { cwd, runId: "sink-run" });
+  await writeFile(path.join(cwd, ".flow"), "malformed opposing root\n");
+  const projection = fakeProjection(run.state.run_id, run.state.definition_id, run.state.definition_version);
+  await sink.emit(projection, { resolvedRunDir: run.dir });
 
   const written = JSON.parse(
-    await readFile(path.join(cwd, ".flow", "runs", "sink-run", "console-projection.json"), "utf8")
+    await readFile(path.join(cwd, ".kontourai", "flow", "runs", "sink-run", "console-projection.json"), "utf8")
   );
   assert.deepEqual(written, projection, "the exact Flow-owned payload is written, unwrapped");
+});
+
+test("FileConsoleSink rejects a nonexistent run without context and does not create runtime storage", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-sink-missing-"));
+  const sink = new FileConsoleSink({ cwd });
+
+  await assert.rejects(() => sink.emit(fakeProjection("missing-sink-run")), /flow\.run_location\.not_found/);
+  await assert.rejects(access(path.join(cwd, ".kontourai"), constants.F_OK), /ENOENT/);
+  await assert.rejects(access(path.join(cwd, ".flow", "runs", "missing-sink-run"), constants.F_OK), /ENOENT/);
+});
+
+test("FileConsoleSink rejects caller context outside the canonical runtime root", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-sink-context-mismatch-"));
+  const runId = "canonical-context-run";
+  await startRun(definitionPath, { cwd, runId });
+  const wrongDir = path.join(cwd, ".flow", "runs", runId);
+
+  await assert.rejects(
+    () => new FileConsoleSink({ cwd }).emit(fakeProjection(runId), { resolvedRunDir: wrongDir }),
+    /flow\.console_sink\.resolved_run_dir_mismatch/
+  );
+  await assert.rejects(access(path.join(wrongDir, "console-projection.json"), constants.F_OK), /ENOENT/);
+});
+
+test("FileConsoleSink rejects authoritative filenames and mismatched projection identity", async () => {
+  assert.throws(() => new FileConsoleSink({ fileName: "state.json" }), /non-authoritative/);
+  assert.throws(() => new FileConsoleSink({ fileName: "STATE.json" }), /non-authoritative/);
+  assert.throws(() => new FileConsoleSink({ fileName: "evidence/projection.json" }), /non-authoritative/);
+
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-sink-identity-"));
+  const run = await startRun(definitionPath, { cwd, runId: "sink-identity" });
+  await assert.rejects(
+    () => new FileConsoleSink({ cwd }).emit(fakeProjection(run.state.run_id, "wrong-definition", "1"), { resolvedRunDir: run.dir }),
+    /flow\.console_sink\.projection_identity_mismatch/
+  );
+  const forgedDefinition = fakeProjection(run.state.run_id, run.state.definition_id, run.state.definition_version);
+  forgedDefinition.definition.id = "wrong-definition";
+  await assert.rejects(
+    () => new FileConsoleSink({ cwd }).emit(forgedDefinition, { resolvedRunDir: run.dir }),
+    /flow\.console_sink\.projection_identity_mismatch/
+  );
+  assert.equal(JSON.parse(await readFile(path.join(run.dir, "state.json"), "utf8")).run_id, "sink-identity");
 });
 
 test("createConsoleSink defaults to the file sink (hosted is never default)", () => {

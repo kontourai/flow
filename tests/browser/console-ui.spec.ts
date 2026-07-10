@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const FIXTURE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../examples/scenarios/console-projection/.flow/runs/console-projection-fixture"
+  "../../.kontourai/flow/test-projects/console-projection/.kontourai/flow/runs/console-projection-fixture"
 );
 const STATE_FILE = path.join(FIXTURE_ROOT, "state.json");
 

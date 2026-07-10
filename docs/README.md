@@ -15,6 +15,7 @@ Flow shows why a process was allowed to move forward — gate by gate, with the 
 - [Gates & Route-Back](gates-and-route-back.md) — evaluation rules, exceptions, route-back policy, transition validation.
 - [Agent Hooks](agent-hooks.md) — enforcing Flow gates from Claude Code hooks, GitHub Actions, and Git hooks.
 - [Project Config](project-config.md) — trusted producers, gate overrides, config merge preview/apply.
+- [Runtime Roots](runtime-roots.md) — canonical generated Flow root, public path API, older-version migration, and rollback guidance.
 - [Release Readiness](release-readiness.md) — release lanes, pass/hold decisions, version release reports.
 - [Flow Kit Container](flow-kit-container.md) — the core kit manifest contract, validation rules, and extension model.
 

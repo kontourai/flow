@@ -18,7 +18,7 @@ Evidence is what makes a Flow gate mean something. A gate that passes on an agen
 
 Unknown kinds are accepted as `custom` and stored with the originally requested kind, so adapters can introduce their own vocabulary without breaking the manifest.
 
-Every attached file is **copied** into `.flow/runs/<run-id>/evidence/` and indexed in `evidence/manifest.json` (shape: `schemas/gate-evidence.schema.json`). The run directory stays self-contained: links don't rot, and later edits to the original file don't silently change the record.
+Every attached file is **copied** into `.kontourai/flow/runs/<run-id>/evidence/` and indexed in `evidence/manifest.json` (shape: `schemas/gate-evidence.schema.json`). The run directory stays self-contained: links don't rot, and later edits to the original file don't silently change the record. Runtime commands do not attach to `.flow/runs/`.
 
 ## Gate expectations
 

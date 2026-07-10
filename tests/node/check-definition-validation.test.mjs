@@ -65,7 +65,7 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
     runId: "resource-contract-smoke",
     params: { subject: "resource-contract-smoke" }
   });
-  const runPath = path.join(cwd, ".flow", "runs", "resource-contract-smoke");
+  const runPath = path.join(cwd, ".kontourai", "flow", "runs", "resource-contract-smoke");
   const storedDefinition = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_DEFINITION_FILE), "utf8"));
   const storedState = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_STATE_FILE), "utf8"));
   const storedManifest = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), "utf8"));
@@ -109,17 +109,18 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   }, null, 2)}\n`);
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /evidence manifest run_id mismatch: expected resource-contract-smoke, got different-run/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*evidence\/manifest\.json is invalid \(evidence manifest run_id mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify({
     schema_version: FLOW_SCHEMA_VERSION,
+    run_id: "resource-contract-smoke",
     definition_id: "resource-contract-flow",
     definition_version: "1",
     evidence: []
   }, null, 2)}\n`);
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /evidence manifest run_id is required for run resource-contract-smoke/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*evidence\/manifest\.json is invalid \(evidence manifest definition_version mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
   await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify({
@@ -129,12 +130,12 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   await unlink(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH));
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /run state run_id mismatch: expected resource-contract-smoke, got different-run/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*state\.json is invalid \(run state run_id mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /run state run_id mismatch: expected resource-contract-smoke, got different-run/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*state\.json is invalid \(run state run_id mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify({
     ...storedState,
@@ -143,12 +144,12 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   await unlink(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH));
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /run state definition_id mismatch: expected resource-contract-flow, got different-definition/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*state\.json is invalid \(run state definition_id mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify(storedManifest, null, 2)}\n`);
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /run state definition_id mismatch: expected resource-contract-flow, got different-definition/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*state\.json is invalid \(run state definition_id mismatch:/
   );
   await writeFile(path.join(runPath, FLOW_RUN_STATE_FILE), `${JSON.stringify(storedState, null, 2)}\n`);
   await writeFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), `${JSON.stringify({
@@ -157,7 +158,7 @@ test("startRun stores and loadRun returns flat-compatible snapshots for Resource
   }, null, 2)}\n`);
   await assert.rejects(
     loadRun("resource-contract-smoke", cwd),
-    /evidence manifest definition_id mismatch: expected resource-contract-flow, got different-definition/
+    /flow\.run_location\.no_complete_candidate: canonical run directory .*evidence\/manifest\.json is invalid \(evidence manifest definition_id mismatch:/
   );
 });
 

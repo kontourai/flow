@@ -29,13 +29,13 @@ WAIT  verify gate: verify gate waiting
 
 next action: attach evidence for implementation gate
 continuation: resume from implement, not chat memory
-report: .flow/runs/dev-1847/report.md
+report: .kontourai/flow/runs/dev-1847/report.md
 ```
 
 ## Why teams adopt Flow
 
 - **Evidence-gated transitions.** A step is not complete because an agent says so. Gates declare typed expectations, and runs advance only when evidence satisfies them — or when a human accepts an explicit, attributable exception.
-- **Survives context loss.** Every run lives in plain files under `.flow/runs/<run-id>/`. A new agent session, a teammate, or a CI job can `flow resume` and continue from recorded state, not chat memory.
+- **Survives context loss.** Every run lives in plain files under `.kontourai/flow/runs/<run-id>/`. A new agent session, a teammate, or a CI job can `flow resume` and continue from recorded state, not chat memory.
 - **Deterministic route-back.** Failed evidence routes work back to the right step (`implementation_defect` → implement, `plan_gap` → plan) with attempt budgets, so agents cannot loop silently forever.
 - **Audit-ready reports.** Every run regenerates a human-readable `report.md` and machine-readable `report.json` that explain what passed, what blocked, what was excepted, and what happens next.
 - **Local-first, zero lock-in.** v0.1 is a file-backed CLI and TypeScript library. No hosted service, no account, no telemetry. Your evidence stays in your repo.
@@ -95,13 +95,13 @@ Real teams use Flow for agentic development gates, regulated release decisions, 
 ## How it works
 
 1. **Author a Flow Definition** — JSON describing steps, gates, typed evidence expectations, and route-back policy. Validate it with `flow validate-definition`.
-2. **Start a Flow Run** — `flow start` snapshots the definition and creates authoritative run state under `.flow/runs/<run-id>/`.
+2. **Start a Flow Run** — `flow start` snapshots the definition and creates authoritative run state under `.kontourai/flow/runs/<run-id>/`.
 3. **Attach evidence** — test output, CI results, trust reports, human attestations. Files are copied into the run; nothing is synthesized.
 4. **Evaluate gates** — `flow evaluate` passes, blocks, routes back, or waits. Accepted exceptions are first-class, recorded with reason and authority.
 5. **Report and resume** — `report.md` / `report.json` explain the run; `flow resume` gives the next agent everything it needs without chat memory.
 
 ```text
-.flow/runs/dev-1847/
+.kontourai/flow/runs/dev-1847/
 ├── definition.json        # normalized definition snapshot from run start
 ├── state.json             # authoritative run state (continuation authority)
 ├── evidence/
@@ -156,6 +156,10 @@ console.log(projection.current_step, projection.gates);
 
 Public usage is limited to the package root and the `flow` CLI; `dist/` subpaths are not part of the npm API. The [Library guide](docs/library.md) covers run lifecycle, projections, release readiness evaluation, and config merge helpers.
 
+## Runtime Roots
+
+`.flow/config.json` and `.flow/definitions/` are durable authored project state. All generated Flow Run files and disposable demo evidence are written under `.kontourai/flow/`; `.kontourai/` is the repository ignore boundary for generated Flow state. Current runtime commands do not read `.flow/runs/` and perform no automatic migration. Installations with generated state from older Flow versions must follow the backup, collision, copy, identity-verification, and rollback procedure in [Runtime Roots](docs/runtime-roots.md).
+
 ## Documentation
 
 | Guide | What it covers |
@@ -169,6 +173,7 @@ Public usage is limited to the package root and the `flow` CLI; `dist/` subpaths
 | [Release Readiness](docs/release-readiness.md) | release lanes, hold/proceed decisions, version release reports |
 | [CLI Reference](docs/cli.md) | every command, flag, format, and exit code |
 | [Library](docs/library.md) | typed API for embedding Flow |
+| [Runtime Roots](docs/runtime-roots.md) | generated-state placement, migration, and rollback guidance |
 | [Developer Architecture](docs/developer-architecture.md) | lifecycle and enforcement internals, ownership boundaries |
 
 The docs map lives at [docs/README.md](docs/README.md). Contributor setup lives in [docs/contributing.md](docs/contributing.md). Release history lives in [CHANGELOG.md](CHANGELOG.md).

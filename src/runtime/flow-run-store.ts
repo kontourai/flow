@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
+import { readFile, readdir, lstat, stat, writeFile, copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -9,8 +9,13 @@ import {
   FLOW_RUN_EVIDENCE_MANIFEST_PATH,
   FLOW_RUN_LAYOUT,
   FLOW_RUN_STATE_FILE,
+  assertSafeRunArtifactWritePath,
+  assertSafeRunId,
+  assertSafeWorkingDirectory,
+  ensureDirectoryPathWithoutSymlinks,
   examplePath,
   flowConfigPath,
+  flowRuntimeRoot,
   flowRoot,
   readJson,
   runDir,
@@ -28,27 +33,231 @@ import {
 import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport } from "../reports/flow-reports.js";
+import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 
+type RunLocationDiagnostic = {
+  code: string;
+  severity: "warning" | "error";
+  run_id: string;
+  message: string;
+};
+
+type RunCandidate = {
+  dir: string;
+  status: "absent" | "complete" | "incomplete";
+  reason?: string;
+};
+
+type RunLocation = {
+  runId: string;
+  dir: string;
+  diagnostics: RunLocationDiagnostic[];
+};
+
+const resolvedRunContexts = new WeakMap<object, { cwd: string }>();
+
+function flowRunsRoot(cwd = process.cwd()) {
+  return path.join(flowRuntimeRoot(cwd), "runs");
+}
+
+function runLocationDiagnostic(
+  code: string,
+  severity: "warning" | "error",
+  runId: string,
+  message: string
+): RunLocationDiagnostic {
+  return { code, severity, run_id: runId, message };
+}
+
+function runLocationError(code: string, message: string): Error {
+  const error = new Error(`${code}: ${message}`);
+  (error as Error & { code?: string }).code = code;
+  return error;
+}
+
+function isMissingPathError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === "ENOENT";
+}
+
+function inspectionError(runId: string, file: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  return runLocationError("flow.run_location.inspection_failed", `cannot inspect run "${runId}" at ${file}: ${detail}`);
+}
+
+async function inspectRuntimeRoot(runId: string, cwd: string) {
+  const base = await assertSafeWorkingDirectory(cwd);
+  const root = flowRunsRoot(cwd);
+  const relative = path.relative(base, root);
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) {
+    throw runLocationError("flow.run_location.inspection_failed", `runtime root ${root} escapes working directory ${base}`);
+  }
+
+  let cursor = base;
+  for (const part of relative.split(path.sep)) {
+    cursor = path.join(cursor, part);
+    try {
+      const entry = await lstat(cursor);
+      if (entry.isSymbolicLink() || !entry.isDirectory()) {
+        throw runLocationError("flow.run_location.inspection_failed", `runtime root component ${cursor} must be a real directory`);
+      }
+    } catch (error) {
+      if (isMissingPathError(error)) return false;
+      if ((error as Error & { code?: string })?.code === "flow.run_location.inspection_failed") throw error;
+      throw inspectionError(runId, cursor, error);
+    }
+  }
+  return true;
+}
+
+async function candidateFileJson(runId: string, dir: string, relativePath: string): Promise<{ value?: any; reason?: string }> {
+  const parts = relativePath.split(/[\\/]/);
+  let file = dir;
+  for (const [index, part] of parts.entries()) {
+    file = path.join(file, part);
+    try {
+      const fileStat = await lstat(file);
+      if (fileStat.isSymbolicLink()) return { reason: `${relativePath} contains a symbolic link` };
+      if (index < parts.length - 1 && !fileStat.isDirectory()) return { reason: `${relativePath} has a non-directory parent` };
+      if (index === parts.length - 1 && !fileStat.isFile()) return { reason: `${relativePath} is not a file` };
+    } catch (error) {
+      if (isMissingPathError(error)) return { reason: `missing ${relativePath}` };
+      throw inspectionError(runId, file, error);
+    }
+  }
+
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch (error) {
+    throw inspectionError(runId, file, error);
+  }
+
+  try {
+    return { value: JSON.parse(raw) };
+  } catch {
+    return { reason: `${relativePath} is not valid JSON` };
+  }
+}
+
+async function inspectRunCandidate(runId: string, cwd: string): Promise<RunCandidate> {
+  const dir = runDir(runId, cwd);
+  if (!(await inspectRuntimeRoot(runId, cwd))) {
+    return { dir, status: "absent", reason: "runtime root not present" };
+  }
+  let dirStat;
+  try {
+    dirStat = await lstat(dir);
+  } catch (error) {
+    if (isMissingPathError(error)) return { dir, status: "absent", reason: "not present" };
+    throw inspectionError(runId, dir, error);
+  }
+  if (dirStat.isSymbolicLink()) return { dir, status: "incomplete", reason: "run directory is a symbolic link" };
+  if (!dirStat.isDirectory()) return { dir, status: "incomplete", reason: "not a directory" };
+
+  const definitionResult = await candidateFileJson(runId, dir, FLOW_RUN_DEFINITION_FILE);
+  if (definitionResult.reason) return { dir, status: "incomplete", reason: definitionResult.reason };
+
+  let definition;
+  try {
+    definition = validateDefinition(definitionResult.value);
+  } catch {
+    return { dir, status: "incomplete", reason: `${FLOW_RUN_DEFINITION_FILE} is not a valid Flow definition` };
+  }
+
+  const stateResult = await candidateFileJson(runId, dir, FLOW_RUN_STATE_FILE);
+  if (stateResult.reason) return { dir, status: "incomplete", reason: stateResult.reason };
+  try {
+    validateRunStateSchema(stateResult.value);
+    validateRunStateIdentity(definition, stateResult.value, runId);
+  } catch (error) {
+    return {
+      dir,
+      status: "incomplete",
+      reason: `${FLOW_RUN_STATE_FILE} is invalid (${error instanceof Error ? error.message : String(error)})`
+    };
+  }
+
+  const manifestResult = await candidateFileJson(runId, dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
+  if (manifestResult.reason) return { dir, status: "incomplete", reason: manifestResult.reason };
+  const manifest = manifestResult.value;
+  try {
+    validateEvidenceManifestIdentity(manifest, definition, stateResult.value);
+  } catch (error) {
+    return {
+      dir,
+      status: "incomplete",
+      reason: `${FLOW_RUN_EVIDENCE_MANIFEST_PATH} is invalid (${error instanceof Error ? error.message : String(error)})`
+    };
+  }
+  return { dir, status: "complete" };
+}
+
+async function resolveRunLocation(runId: string, cwd = process.cwd()): Promise<RunLocation> {
+  assertSafeRunId(runId);
+  const candidate = await inspectRunCandidate(runId, cwd);
+  if (candidate.status === "absent") {
+    throw runLocationError("flow.run_location.not_found", `run \"${runId}\" was not found in ${candidate.dir}`);
+  }
+  if (candidate.status === "complete") return { runId, dir: candidate.dir, diagnostics: [] };
+  throw runLocationError(
+    "flow.run_location.no_complete_candidate",
+    `canonical run directory ${candidate.dir} is incomplete (${candidate.reason})`
+  );
+}
+
+async function allocateNewRunLocation(runId: string, cwd = process.cwd()): Promise<string> {
+  assertSafeRunId(runId);
+  const candidate = await inspectRunCandidate(runId, cwd);
+  if (candidate.status !== "absent") {
+    throw runLocationError("flow.run_location.allocation_collision", `run \"${runId}\" already has a candidate at ${candidate.dir}`);
+  }
+  await ensureDirectoryPathWithoutSymlinks(cwd, path.join(".kontourai", "flow", "runs"));
+  const dir = runDir(runId, cwd);
+  try {
+    await mkdir(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+      throw runLocationError("flow.run_location.allocation_collision", `run \"${runId}\" already has a candidate at ${dir}`);
+    }
+    throw error;
+  }
+  const claimed = await lstat(dir);
+  if (claimed.isSymbolicLink() || !claimed.isDirectory()) {
+    throw runLocationError("flow.run_location.allocation_collision", `run \"${runId}\" could not claim a real directory at ${dir}`);
+  }
+  return dir;
+}
+
 export async function ensureFlowLayout(cwd = process.cwd()) {
   const root = flowRoot(cwd);
-  await mkdir(path.join(root, "definitions"), { recursive: true });
-  await mkdir(path.join(root, "runs"), { recursive: true });
-  await writeFile(path.join(root, "README.md"), flowReadme());
-  if (!existsSync(flowConfigPath(cwd))) await writeJson(flowConfigPath(cwd), defaultFlowConfig());
+  await ensureDirectoryPathWithoutSymlinks(cwd, path.join(".flow", "definitions"));
+  await ensureDirectoryPathWithoutSymlinks(cwd, path.join(".kontourai", "flow", "runs"));
+  const readmePath = await assertSafeRunArtifactWritePath(root, "README.md");
+  const configPath = await assertSafeRunArtifactWritePath(root, "config.json");
+  const samplePath = await assertSafeRunArtifactWritePath(root, path.join("definitions", "agent-dev-flow.json"));
+  await writeFile(readmePath, flowReadme());
+  if (!existsSync(configPath)) await writeJson(configPath, defaultFlowConfig());
   const sample = await readJson(examplePath("agent-dev-flow.json"));
-  await writeJson(path.join(root, "definitions", "agent-dev-flow.json"), sample);
+  await writeJson(samplePath, sample);
   return root;
 }
 
 export async function scaffoldDemoRun(cwd = process.cwd()) {
   const root = await ensureFlowLayout(cwd);
   const runId = "demo";
-  if (existsSync(runDir(runId, cwd))) return { runId, created: false };
-  const demoDir = path.join(root, "demo");
-  const bundleFile = path.join(demoDir, "acceptance-bundle.json");
+  try {
+    const location = await resolveRunLocation(runId, cwd);
+    return { runId, created: false, diagnostics: location.diagnostics };
+  } catch (error) {
+    if ((error as Error & { code?: string })?.code !== "flow.run_location.not_found") throw error;
+  }
+  const demoDir = path.join(flowRuntimeRoot(cwd), "demo");
+  await ensureDirectoryPathWithoutSymlinks(cwd, path.join(".kontourai", "flow", "demo"));
+  const bundleFile = await assertSafeRunArtifactWritePath(demoDir, "acceptance-bundle.json");
   const now = new Date().toISOString();
   await writeJson(bundleFile, {
     schemaVersion: 5,
@@ -104,11 +313,11 @@ export async function scaffoldDemoRun(cwd = process.cwd()) {
     bundle: true
   });
   const result = await evaluateRun(runId, { cwd });
-  return { runId, created: true, state: result.state };
+  return { runId, created: true, state: result.state, diagnostics: [] };
 }
 
 export function flowReadme() {
-  return `# .flow\n\nLocal Flow state lives here.\n\n- definitions/ contains authored Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n- demo/ contains evidence fixtures written by \`flow init --demo\`.\n- runs/<run-id>/ is generated run state, not an authored Resource Contract.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.definition} is the Flow Definition snapshot from run start.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.state} is the authoritative mutable run state.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceManifest} records attached evidence metadata for this run.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.evidenceDirectory}/<id>.* contains copied evidence files.\n- runs/<run-id>/${FLOW_RUN_LAYOUT.reportMarkdown} and runs/<run-id>/${FLOW_RUN_LAYOUT.reportJson} are generated reports.\n\nThis directory is intentionally file-backed so a run can be resumed without chat history.\n`;
+  return `# .flow\n\nDurable Flow project state lives here.\n\n- definitions/ contains authored Flow Definition JSON files.\n- config.json is the project authority model for trusted producers and gate overrides.\n\nGenerated run state and demo evidence are written only under .kontourai/flow/. Generated state from older Flow versions must be migrated explicitly; current runtime commands do not read .flow/runs/.\n`;
 }
 
 export function initialEvidenceManifest(definition, state) {
@@ -135,6 +344,27 @@ export function validateRunStateIdentity(definition, state, runId) {
 }
 
 export function validateEvidenceManifestIdentity(manifest, definition, state) {
+  validateEvidenceManifestSchema(manifest);
+  if (!isObject(manifest)) throw new Error("evidence manifest must be an object");
+  if (manifest.schema_version !== FLOW_SCHEMA_VERSION) {
+    throw new Error(`evidence manifest schema_version must be ${FLOW_SCHEMA_VERSION}`);
+  }
+  if (!Array.isArray(manifest.evidence)) throw new Error("evidence manifest evidence must be an array");
+  const allowedKinds = new Set([
+    "command", "file", "ci", "trust.bundle", "veritas-readiness",
+    "human-attestation", "trace-link", "custom"
+  ]);
+  const allowedStatuses = new Set(["passed", "failed", "unknown"]);
+  for (const [index, entry] of manifest.evidence.entries()) {
+    if (!isObject(entry)) throw new Error(`evidence manifest evidence[${index}] must be an object`);
+    for (const field of ["id", "gate_id", "kind", "requested_kind", "status", "attached_at"]) {
+      if (!isNonEmptyString(entry[field])) {
+        throw new Error(`evidence manifest evidence[${index}].${field} must be a non-empty string`);
+      }
+    }
+    if (!allowedKinds.has(entry.kind)) throw new Error(`evidence manifest evidence[${index}].kind is invalid`);
+    if (!allowedStatuses.has(entry.status)) throw new Error(`evidence manifest evidence[${index}].status is invalid`);
+  }
   const checks = [
     ["run_id", state.run_id],
     ["definition_id", definition.id],
@@ -156,11 +386,13 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
   const rawDefinition = await readJson(path.resolve(cwd, definitionPath));
   const definition = validateDefinition(rawDefinition);
   const runId = options.runId ?? `run.${Date.now()}`;
-  const dir = runDir(runId, cwd);
-  if (existsSync(dir)) throw new Error(`run already exists: ${runId}`);
+  const dir = await allocateNewRunLocation(runId, cwd);
   const state = initialState(definition, runId, options.params ?? {});
   const manifest = initialEvidenceManifest(definition, state);
-  await mkdir(path.join(dir, FLOW_RUN_EVIDENCE_DIR), { recursive: true });
+  await ensureDirectoryPathWithoutSymlinks(
+    cwd,
+    path.relative(path.resolve(cwd), path.join(dir, FLOW_RUN_EVIDENCE_DIR))
+  );
   await writeJson(path.join(dir, FLOW_RUN_DEFINITION_FILE), definition);
   await writeJson(path.join(dir, FLOW_RUN_STATE_FILE), state);
   await writeJson(path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), manifest);
@@ -168,21 +400,74 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
   return { runId, dir, state };
 }
 
-export async function loadRun(runId, cwd = process.cwd()) {
-  const dir = runDir(runId, cwd);
+async function readRunAtLocation(runId: string, location: RunLocation, cwd: string) {
+  const { dir } = location;
   const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
   const definition = validateDefinition(rawDefinition);
   const state = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
+  validateRunStateSchema(state);
   validateRunStateIdentity(definition, state, runId);
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
     ? validateEvidenceManifestIdentity(await readJson(manifestPath), definition, state)
     : initialEvidenceManifest(definition, state);
-  return { dir, definition, state, manifest, config };
+  const run = { dir, definition, state, manifest, config, diagnostics: location.diagnostics };
+  resolvedRunContexts.set(run, { cwd: path.resolve(cwd) });
+  return run;
+}
+
+function inferResolvedRunContext(runId: string, dir: string) {
+  const absolute = path.resolve(dir);
+  if (path.basename(absolute) !== runId || path.basename(path.dirname(absolute)) !== "runs") {
+    throw runLocationError("flow.run_location.resolved_dir_invalid", `directory ${dir} does not identify run "${runId}"`);
+  }
+  const owner = path.dirname(path.dirname(absolute));
+  if (path.basename(owner) === "flow" && path.basename(path.dirname(owner)) === ".kontourai") {
+    return { cwd: path.dirname(path.dirname(owner)) };
+  }
+  throw runLocationError("flow.run_location.resolved_dir_invalid", `directory ${dir} is not a canonical Flow run location`);
+}
+
+export async function validateResolvedRunDirectory(runId: string, dir: string, cwd?: string) {
+  const inferred = inferResolvedRunContext(runId, dir);
+  const context = cwd ? { cwd: path.resolve(cwd) } : inferred;
+  const expected = runDir(runId, context.cwd);
+  if (path.resolve(dir) !== path.resolve(expected)) {
+    throw runLocationError("flow.run_location.resolved_dir_invalid", `directory ${dir} is outside working directory ${context.cwd}`);
+  }
+  const candidate = await inspectRunCandidate(runId, context.cwd);
+  if (candidate.status !== "complete") {
+    throw runLocationError(
+      "flow.run_location.resolved_dir_invalid",
+      `resolved canonical directory ${dir} is ${candidate.status} (${candidate.reason})`
+    );
+  }
+  return { runId, dir: path.resolve(dir), diagnostics: [] } satisfies RunLocation;
+}
+
+export async function loadRunAtResolvedLocation(runId: string, dir: string, cwd = process.cwd()) {
+  const location = await validateResolvedRunDirectory(runId, dir, cwd);
+  return readRunAtLocation(runId, location, cwd);
+}
+
+export async function loadRun(runId, cwd = process.cwd()) {
+  const location = await resolveRunLocation(runId, cwd);
+  return readRunAtLocation(runId, location, cwd);
 }
 
 export async function saveRun(run) {
+  const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
+  await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
+  validateRunStateSchema(run.state);
+  validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateEvidenceManifestIdentity(run.manifest, run.definition, run.state);
+  await Promise.all([
+    assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
+    assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH),
+    assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson),
+    assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown)
+  ]);
   await writeJson(path.join(run.dir, FLOW_RUN_STATE_FILE), run.state);
   await writeJson(path.join(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), run.manifest);
   await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
@@ -235,7 +520,7 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   const id = `ev.${Date.now()}.${run.manifest.evidence.length + 1}`;
   const ext = path.extname(source);
   const storedName = `${id}${ext}`;
-  const storedPath = path.join(run.dir, FLOW_RUN_EVIDENCE_DIR, storedName);
+  const storedPath = await assertSafeRunArtifactWritePath(run.dir, path.join(FLOW_RUN_EVIDENCE_DIR, storedName));
   await copyFile(source, storedPath);
   const sourceSha256 = await sha256File(source);
   const entry: FlowEvidenceEntry = {
@@ -382,24 +667,55 @@ export async function acceptException(runId, options) {
 }
 
 export async function listRuns(cwd = process.cwd()) {
-  const dir = path.join(flowRoot(cwd), "runs");
-  if (!existsSync(dir)) return [];
-  const ids = await readdir(dir);
-  const runs: MutableRecord[] = [];
-  for (const id of ids) {
+  return (await listRunsWithDiagnostics(cwd)).runs;
+}
+
+export async function listRunsWithDiagnostics(cwd = process.cwd()) {
+  const ids = new Set<string>();
+  if (await inspectRuntimeRoot("*", cwd)) {
+    const root = flowRunsRoot(cwd);
     try {
-      const run = await loadRun(id, cwd);
-      runs.push({
-        run_id: id,
-        definition_id: run.state.definition_id,
-        subject: run.state.subject,
-        status: run.state.status,
-        current_step: run.state.current_step,
-        updated_at: run.state.updated_at
-      });
-    } catch {
-      // Ignore incomplete run directories.
+      for (const id of await readdir(root)) ids.add(id);
+    } catch (error) {
+      if (!isMissingPathError(error)) throw inspectionError("*", root, error);
     }
   }
-  return runs.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+
+  const runs: MutableRecord[] = [];
+  const diagnostics: RunLocationDiagnostic[] = [];
+  for (const id of [...ids].sort((left, right) => left.localeCompare(right))) {
+    try {
+      const location = await resolveRunLocation(id, cwd);
+      const rawDefinition = await readJson(path.join(location.dir, FLOW_RUN_DEFINITION_FILE));
+      const definition = validateDefinition(rawDefinition);
+      const state = await readJson(path.join(location.dir, FLOW_RUN_STATE_FILE));
+      validateRunStateIdentity(definition, state, id);
+      runs.push({
+        run_id: id,
+        definition_id: state.definition_id,
+        subject: state.subject,
+        status: state.status,
+        current_step: state.current_step,
+        updated_at: state.updated_at
+      });
+      diagnostics.push(...location.diagnostics);
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      diagnostics.push(runLocationDiagnostic(
+        code ?? "flow.run_location.no_complete_candidate",
+        "error",
+        id,
+        error instanceof Error ? error.message : String(error)
+      ));
+    }
+  }
+  runs.sort((left, right) => {
+    const updated = String(right.updated_at).localeCompare(String(left.updated_at));
+    return updated || String(left.run_id).localeCompare(String(right.run_id));
+  });
+  diagnostics.sort((left, right) =>
+    String(left.run_id).localeCompare(String(right.run_id)) ||
+    left.code.localeCompare(right.code)
+  );
+  return { runs, diagnostics };
 }

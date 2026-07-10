@@ -3,16 +3,19 @@ import { access, constants, readFile, stat } from "node:fs/promises";
 import { test } from "node:test";
 
 const hookPath = new URL("../../.githooks/pre-push", import.meta.url);
+const gitignorePath = new URL("../../.gitignore", import.meta.url);
 const contributingPath = new URL("../../docs/contributing.md", import.meta.url);
 const packagePath = new URL("../../package.json", import.meta.url);
 const readmePath = new URL("../../README.md", import.meta.url);
+const consoleSmokePath = new URL("../../scripts/check-console-smoke.mjs", import.meta.url);
+const browserServerPath = new URL("../../tests/browser/serve-flow-console.mjs", import.meta.url);
 const setupPath = new URL("../../scripts/setup-repo-hooks.mjs", import.meta.url);
 const validatePath = new URL("../../scripts/validate-repo-hooks.mjs", import.meta.url);
 
 const downstreamNamePatterns = [
   ["Camp", "fit"],
   ["T", "axes"],
-  [".", "kontour"],
+  [".kontour/"],
   ["downstream", " app"],
   ["private", " product"]
 ];
@@ -31,6 +34,23 @@ function meaningfulShellLines(content) {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"));
 }
+
+test("gitignore preserves durable Flow state and ignores generated product state", async () => {
+  const gitignore = await text(gitignorePath);
+  assert.match(gitignore, /^\.kontourai\/$/m);
+  assert.doesNotMatch(gitignore, /^(?:\/)?\.flow(?:\/|$)/m, "all .flow content must remain visible for authored state or explicit migration");
+  assert.doesNotMatch(gitignore, /^(?:\/)?\.(?:flow-agents|surface|veritas)(?:\/|$)/m, "product state uses the common .kontourai boundary");
+});
+
+test("console smoke output uses the Flow product namespace", async () => {
+  const consoleSmoke = await text(consoleSmokePath);
+  const browserServer = await text(browserServerPath);
+  assert.match(consoleSmoke, /"\.kontourai", "flow", "console-smoke"/);
+  assert.match(consoleSmoke, /mkdtemp\(path\.join\(tmpdir\(\), "kontourai-flow-console-smoke-"\)\)/);
+  assert.match(browserServer, /"\.kontourai", "flow", "test-projects", "console-projection"/);
+  assert.doesNotMatch(consoleSmoke, /\.flow-agents/);
+  assert.doesNotMatch(`${consoleSmoke}\n${browserServer}`, /rm\(fixtureRunDir/);
+});
 
 test("repo hook package scripts stay wired", async () => {
   const packageJson = JSON.parse(await text(packagePath));

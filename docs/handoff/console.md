@@ -63,11 +63,13 @@ blocked on a Flow-owner decision + a new Flow web component. Recorded per the
 return protocol rather than guessed.
 
 **What already exists in console (so this task is mostly done):**
-- **Ingest Flow events — DONE.** `console-server/src/console-foundation/flow-bridge.ts`
-  (`deriveFlowRunEvents`) reads Flow's owned `.flow/runs/<run-id>/state.json`
-  read-only and derives `kontour.console.event` (v0.1) records, then
+- **Ingest Flow events — ROOT UPDATE PENDING.** `console-server/src/console-foundation/flow-bridge.ts`
+  (`deriveFlowRunEvents`) reads Flow-owned run state and derives
+  `kontour.console.event` (v0.1) records, then
   `buildPipeline()` from `@kontourai/console-core`. Authority is correct (Console
-  never owns Flow state). This supersedes `flow-followups.md` §3's assumption
+  never owns Flow state). Before Flow's breaking runtime-root release, the bridge
+  must default to `.kontourai/flow/runs/<run-id>/state.json` with no `.flow/runs`
+  fallback; tracked in `kontourai/console#141`. This supersedes `flow-followups.md` §3's assumption
   that Flow must emit a generic `.kontour/events/**/*.jsonl` — the real contract
   is **`kontour.console.event` v0.1** and the seam is a read-only bridge.
 - **Embed `<surface-trust-panel>` — DONE.** `console-ui/public/surface-trust-panel.js`

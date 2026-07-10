@@ -7,18 +7,17 @@ import {
   attachEvidence,
   ensureFlowLayout,
   evaluateRun,
-  listRuns,
   loadRun,
   previewFlowConfigMergeFile,
   projectVersionReleaseReport,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary,
+  renderAndWriteReport,
   renderMarkdownReport,
   renderResume,
   renderSummary,
   renderVersionReleaseReportMarkdown,
   reportJson,
-  runDir,
   scaffoldDemoRun,
   startRun,
   validateRunTransition,
@@ -26,6 +25,7 @@ import {
   stageStatuses,
   validateDefinitionWithDiagnostics
 } from "./index.js";
+import { listRunsWithDiagnostics } from "./runtime/flow-run-store.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 import { kitInstall, kitInspect } from "./kit/kit-operations.js";
@@ -148,19 +148,33 @@ async function parseRouteMetadata(flags: CliFlags, cwd = process.cwd()) {
 
 async function printStatus(runId, format, cwd = process.cwd()) {
   const run = await loadRun(runId, cwd);
+  const diagnostics = run.diagnostics;
   if (format === "json") {
     const base = reportJson(run.definition, run.state, run.manifest);
     const ready = readySteps(run.definition, run.state, run.manifest);
     const statuses = stageStatuses(run.definition, run.state, run.manifest);
-    console.log(JSON.stringify({ ...base, readySteps: ready, stageStatuses: statuses }, null, 2));
+    console.log(JSON.stringify({ ...base, readySteps: ready, stageStatuses: statuses, diagnostics }, null, 2));
   } else if (format === "markdown") {
     process.stdout.write(renderMarkdownReport(run.definition, run.state, run.manifest));
   } else {
     const ready = readySteps(run.definition, run.state, run.manifest);
-    process.stdout.write(renderSummary(run.definition, run.state));
+    process.stdout.write(renderSummary(run.definition, run.state, runReportPath(run.dir, cwd)));
     if (ready.length) {
       process.stdout.write(`ready steps: ${ready.join(", ")}\n`);
     }
+  }
+  printRunLocationDiagnostics(diagnostics);
+}
+
+function runReportPath(dir: string, cwd: string) {
+  const file = path.join(dir, "report.md");
+  const relative = path.relative(cwd, file);
+  return relative && !relative.startsWith(`..${path.sep}`) && relative !== ".." ? relative : file;
+}
+
+function printRunLocationDiagnostics(diagnostics: Array<{ code: string; severity: string; message: string }>) {
+  for (const diagnostic of diagnostics) {
+    console.error(`${diagnostic.severity.toUpperCase()} ${diagnostic.code}: ${diagnostic.message}`);
   }
 }
 
@@ -229,6 +243,7 @@ async function main() {
     if (flags.demo) {
       const demo = await scaffoldDemoRun(cwd);
       console.log(demo.created ? `demo run ready: ${demo.runId}` : `demo run already exists: ${demo.runId}`);
+      printRunLocationDiagnostics(demo.diagnostics);
       console.log("try:");
       console.log(`  flow status ${demo.runId}`);
       console.log(`  flow resume ${demo.runId}`);
@@ -358,7 +373,7 @@ async function main() {
     });
     console.log(`started flow run: ${result.runId}`);
     console.log(`current step: ${result.state.current_step}`);
-    console.log(`report: .flow/runs/${result.runId}/report.md`);
+    console.log(`report: ${runReportPath(result.dir, cwd)}`);
     return;
   }
 
@@ -426,16 +441,20 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
-    const dir = runDir(runId, cwd);
+    const run = await loadRun(runId, cwd);
+    const diagnostics = run.diagnostics;
+    const report = reportJson(run.definition, run.state, run.manifest);
+    const markdown = renderMarkdownReport(run.definition, run.state, run.manifest);
+    await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
     if (format === "summary") {
-      const report = JSON.parse(await readFile(path.join(dir, "report.json"), "utf8"));
       console.log(`${report.status} ${report.summary}`);
-      console.log(`report: .flow/runs/${runId}/report.md`);
+      console.log(`report: ${runReportPath(run.dir, cwd)}`);
     } else if (format === "json") {
-      process.stdout.write(await readFile(path.join(dir, "report.json"), "utf8"));
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     } else {
-      process.stdout.write(await readFile(path.join(dir, "report.md"), "utf8"));
+      process.stdout.write(markdown);
     }
+    printRunLocationDiagnostics(diagnostics);
     return;
   }
 
@@ -506,7 +525,8 @@ async function main() {
   }
 
   if (command === "list") {
-    const runs = await listRuns(cwd);
+    const { runs, diagnostics } = await listRunsWithDiagnostics(cwd);
+    printRunLocationDiagnostics(diagnostics);
     if (!runs.length) {
       console.log("no flow runs found; start one with: flow start <definition> --run-id <id>");
       return;

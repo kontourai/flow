@@ -143,7 +143,7 @@ async function makeRun(cwd) {
     { gate_id: "prepare-gate", status: "pass", summary: "passed", evidence_refs: [] }
   ];
   run.state.transitions = [
-    { from_step: "prepare", to_step: "verify", status: "allowed", gate_id: "prepare-gate", at: T0 }
+    { from_step: "prepare", to_step: "verify", status: "allowed", gate_id: "prepare-gate", reason: "prepare passed", at: T0 }
   ];
   run.manifest.evidence = [
     {
@@ -152,6 +152,7 @@ async function makeRun(cwd) {
       kind: "trust.bundle",
       requested_kind: "trust.bundle",
       status: "passed",
+      attached_at: T0,
       bundle: approvalBundle()
     }
   ];

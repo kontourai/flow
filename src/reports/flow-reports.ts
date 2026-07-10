@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { writeJson } from "../runtime/flow-files.js";
+import { assertSafeRunArtifactWritePath, writeJson } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { MutableRecord } from "../contracts/flow-types.js";
 import {
@@ -117,11 +117,13 @@ export function renderMarkdownReport(definition, state, manifest) {
 }
 
 export async function renderAndWriteReport(definition, state, manifest, dir) {
-  await writeJson(path.join(dir, "report.json"), reportJson(definition, state, manifest));
-  await writeFile(path.join(dir, "report.md"), renderMarkdownReport(definition, state, manifest));
+  const jsonPath = await assertSafeRunArtifactWritePath(dir, "report.json");
+  const markdownPath = await assertSafeRunArtifactWritePath(dir, "report.md");
+  await writeJson(jsonPath, reportJson(definition, state, manifest));
+  await writeFile(markdownPath, renderMarkdownReport(definition, state, manifest));
 }
 
-export function renderSummary(definition, state) {
+export function renderSummary(definition, state, reportPath = `.kontourai/flow/runs/${state.run_id}/report.md`) {
   const lines = [
     `flow run: ${definition.id} / ${state.subject}`,
     `current step: ${state.current_step}`,
@@ -157,7 +159,7 @@ export function renderSummary(definition, state) {
   }
   lines.push("", `next action: ${state.next_action}`);
   lines.push(`continuation: ${continuationLine(state)}`);
-  lines.push(`report: .flow/runs/${state.run_id}/report.md`);
+  lines.push(`report: ${reportPath}`);
   return `${lines.join("\n")}\n`;
 }
 

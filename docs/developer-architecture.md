@@ -13,7 +13,7 @@ Flow v0.1 is a local, file-backed CLI and library published as `@kontourai/flow`
 Flow owns these primitives:
 
 - Flow Definitions: authored process shape with steps, gates, expectations, route-back maps, and route-back policy.
-- Flow Runs: local run state under `.flow/runs/<run-id>/`.
+- Flow Runs: generated local run state only under `.kontourai/flow/runs/<run-id>/`; current runtime commands do not read `.flow/runs/`.
 - Steps and transitions: provider-neutral movement through the authored definition.
 - Gates and gate evidence: typed expectations, attached files, and copied evidence manifests.
 - Accepted exceptions: explicit authority-bearing overrides that allow a gate to pass.
@@ -30,7 +30,7 @@ flowchart TD
   Author["Author Flow Definition JSON"] --> Validate["flow validate-definition"]
   Validate -->|valid| Start["flow start"]
   Validate -->|diagnostics| FixDefinition["Fix definition shape or gate references"]
-  Start --> Snapshot["Snapshot definition.json in .flow/runs/<run-id>/"]
+  Start --> Snapshot["Snapshot definition.json in .kontourai/flow/runs/<run-id>/"]
   Snapshot --> State["Create state.json with current_step and next_action"]
   State --> Attach["flow attach-evidence copies files and updates manifest.json"]
   Attach --> Evaluate["flow evaluate"]
@@ -97,7 +97,7 @@ Current implementation: attempt counts are derived from `state.transitions`. Cal
 
 ```mermaid
 flowchart LR
-  CLI["Flow CLI or library caller"] --> RunStore[".flow/runs/<run-id>/"]
+  CLI["Flow CLI or library caller"] --> RunStore[".kontourai/flow/runs/<run-id>/"]
   RunStore --> Definition["definition.json"]
   RunStore --> State["state.json"]
   RunStore --> Manifest["evidence/manifest.json"]
@@ -120,7 +120,7 @@ Run file authority is intentionally split:
 - `evidence/manifest.json` is the evidence metadata index for that run and points at copied evidence files under `evidence/`.
 - `report.md`, `report.json`, and console projections are derived explanations regenerated from the definition snapshot, run state, and evidence manifest.
 
-Future Resource Contract alignment: Flow Run state, evidence manifests, reports, and console projection resources should likely be evaluated for Resource Contract shape when they become durable provider-facing or console-facing contracts. The current v0.1 runtime keeps `.flow/runs/<run-id>/state.json` flat and schema-versioned; Resource Contract support is limited to authored Flow Definition and authored Flow Project Config inputs.
+Future Resource Contract alignment: Flow Run state, evidence manifests, reports, and console projection resources should likely be evaluated for Resource Contract shape when they become durable provider-facing or console-facing contracts. The current v0.1 runtime keeps `.kontourai/flow/runs/<run-id>/state.json` flat and schema-versioned; Resource Contract support is limited to authored Flow Definition and authored Flow Project Config inputs.
 
 ## Reports And Console Projection
 

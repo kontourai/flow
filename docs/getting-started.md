@@ -30,7 +30,9 @@ initialized .flow
 ├── config.json                        # project authority: trusted producers, gate overrides
 ├── definitions/
 │   └── agent-dev-flow.json            # bundled sample definition
-└── runs/                              # one directory per Flow Run
+
+.kontourai/flow/
+└── runs/                              # one directory per generated Flow Run
 ```
 
 > **Shortcut:** `npx flow init --demo` additionally scaffolds a ready-made run named `demo` — plan gate already passed, sitting at `implement` — so `flow status demo`, `flow resume demo`, and `flow console --run demo` have something real to show immediately.
@@ -73,13 +75,13 @@ npx flow start .flow/definitions/agent-dev-flow.json \
 ```text
 started flow run: dev-1847
 current step: plan
-report: .flow/runs/dev-1847/report.md
+report: .kontourai/flow/runs/dev-1847/report.md
 ```
 
 Flow snapshots the definition and creates the authoritative run state:
 
 ```text
-.flow/runs/dev-1847/
+.kontourai/flow/runs/dev-1847/
 ├── definition.json        # normalized definition snapshot from run start
 ├── state.json             # authoritative mutable run state
 ├── evidence/manifest.json # evidence index
@@ -130,7 +132,7 @@ gate: plan-gate
 kind: trust.bundle
 ```
 
-The file is **copied** into `.flow/runs/dev-1847/evidence/` and indexed in the manifest — the run directory stays self-contained even if the original file changes or disappears. Now evaluate:
+The file is **copied** into `.kontourai/flow/runs/dev-1847/evidence/` and indexed in the manifest — the run directory stays self-contained even if the original file changes or disappears. Now evaluate:
 
 ```sh
 npx flow evaluate dev-1847
@@ -158,7 +160,7 @@ WAIT  verify gate: verify gate waiting
 
 next action: attach evidence for implementation gate
 continuation: resume from implement, not chat memory
-report: .flow/runs/dev-1847/report.md
+report: .kontourai/flow/runs/dev-1847/report.md
 ```
 
 ## 4. Fail a gate and watch route-back

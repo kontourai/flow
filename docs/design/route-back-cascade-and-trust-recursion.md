@@ -281,7 +281,7 @@ chose framework-less elements.
 
 ### Proposal for Flow's `src/console`
 
-Today `src/console` is a bespoke loopback projection over `.flow/runs/`. Re-shape
+Today `src/console` is a bespoke loopback projection over `.kontourai/flow/runs/`. Re-shape
 it to the house pattern:
 
 1. Ship a dependency-free **`<flow-run-panel>`** (or `<flow-process-panel>`):
@@ -295,7 +295,7 @@ it to the house pattern:
    `<surface-trust-panel>` and `<survey-review-workbench>`.
 4. **Lift from console**: adopt `console-core` record/projection shapes and the
    emitter/sink contract; emit into `.kontour/events`; reuse the SSE event
-   vocabulary. The bespoke `.flow/runs` projection thins to a dev-only view.
+   vocabulary. The bespoke `.kontourai/flow/runs` projection thins to a dev-only view.
 
 ---
 
@@ -337,7 +337,7 @@ it to the house pattern:
    **CORRECTED 2026-06-16 (see `docs/handoff/console.md` Findings):** the
    premise is partly stale. The `kontourai/console` repo **already ingests Flow**
    via a read-only bridge (`console-server/.../flow-bridge.ts`,
-   `deriveFlowRunEvents`) that reads Flow's owned `.flow/runs/<id>/state.json`
+   `deriveFlowRunEvents`) that reads Flow's owned `.kontourai/flow/runs/<id>/state.json`
    and derives **`kontour.console.event` v0.1** records, then `buildPipeline()`
    from `@kontourai/console-core`. So the real record contract is
    `kontour.console.event` v0.1 (not a generic `.kontour/events` projection Flow

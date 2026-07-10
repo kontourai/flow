@@ -37,7 +37,7 @@ Node test suites live under domain files in `tests/node/`, shared Node test help
 
 For placement rules and generated artifact policy, see [repo-structure.md](repo-structure.md).
 
-Root `.flow/`, `.surface/`, and `.veritas/` are local product state and remain ignored. The tracked console projection scenario under `examples/scenarios/console-projection/.flow/` is the intentional exception.
+Root `.kontourai/` is the common ignored boundary for generated Kontour product state; each product owns its namespace beneath it, including `.kontourai/flow/`, `.kontourai/surface/`, and `.kontourai/veritas/`. Authored `.flow/config.json` and `.flow/definitions/` are durable and Git-visible. Older `.flow/runs/` state is also visible so operators can migrate it explicitly; current runtime commands do not read it. The console projection source fixture lives under `examples/scenarios/console-projection/runtime-fixture/` and is materialized into the ignored canonical root for runtime checks.
 
 ## Docs Site
 

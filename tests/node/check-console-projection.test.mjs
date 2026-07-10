@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -16,9 +17,12 @@ import {
 } from "../../dist/index.js";
 import * as implementationProjection from "../../dist/console/console-projection.js";
 
-const fixtureCwd = fileURLToPath(new URL("../../examples/scenarios/console-projection", import.meta.url));
+const fixtureSourceDir = fileURLToPath(new URL("../../examples/scenarios/console-projection/runtime-fixture/console-projection-fixture", import.meta.url));
+const fixtureCwd = await mkdtemp(path.join(tmpdir(), "flow-console-projection-fixture-"));
 const fixtureRunId = "console-projection-fixture";
-const fixtureRunDir = path.join(fixtureCwd, ".flow", "runs", fixtureRunId);
+const fixtureRunDir = path.join(fixtureCwd, ".kontourai", "flow", "runs", fixtureRunId);
+await mkdir(path.dirname(fixtureRunDir), { recursive: true });
+await cp(fixtureSourceDir, fixtureRunDir, { recursive: true });
 
 async function readFixtureJson(name) {
   return JSON.parse(await readFile(path.join(fixtureRunDir, name), "utf8"));

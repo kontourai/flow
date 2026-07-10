@@ -1,11 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, watch as fsWatch } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { projectFlowRunFromFiles, type FlowConsoleProjection } from "./console-projection.js";
-import { runDir } from "../index.js";
+import { projectFlowRunFromResolvedRun, type FlowConsoleProjection } from "./console-projection.js";
+import { loadRun, loadRunAtResolvedLocation } from "../runtime/flow-run-store.js";
 
 export interface FlowConsoleServerOptions {
   runId: string;
@@ -63,16 +63,33 @@ function safeRelativePath(value: string) {
   return normalized;
 }
 
-function safeArtifactPath(runRoot: string, relativePath: string) {
+async function safeArtifactPath(runRoot: string, pinnedRunRoot: string, relativePath: string) {
   const safePath = safeRelativePath(relativePath);
   if (!safePath) return null;
   const resolved = path.resolve(runRoot, safePath);
   const root = path.resolve(runRoot);
-  return resolved === root || resolved.startsWith(`${root}${path.sep}`) ? resolved : null;
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return null;
+  try {
+    let cursor = root;
+    const parts = safePath.split(path.sep);
+    for (const [index, part] of parts.entries()) {
+      cursor = path.join(cursor, part);
+      const entry = await lstat(cursor);
+      if (entry.isSymbolicLink()) return null;
+      if (index < parts.length - 1 && !entry.isDirectory()) return null;
+      if (index === parts.length - 1 && !entry.isFile()) return null;
+    }
+    const [rootReal, artifactReal] = await Promise.all([realpath(root), realpath(resolved)]);
+    if (rootReal !== pinnedRunRoot) return null;
+    return artifactReal.startsWith(`${rootReal}${path.sep}`) ? artifactReal : null;
+  } catch {
+    return null;
+  }
 }
 
-async function readProjection(runId: string, cwd: string): Promise<FlowConsoleProjection> {
-  return projectFlowRunFromFiles(runId, { cwd });
+async function readProjection(runId: string, cwd: string, resolvedRunDir: string): Promise<FlowConsoleProjection> {
+  const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
+  return projectFlowRunFromResolvedRun(run, { cwd });
 }
 
 async function serveStatic(urlPath: string, response: ServerResponse) {
@@ -107,8 +124,8 @@ export interface RunWatcher {
   close: () => void;
 }
 
-export function createRunWatcher(runId: string, cwd: string): RunWatcher {
-  const watchDir = runDir(runId, cwd);
+export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: string): RunWatcher {
+  const watchDir = resolvedRunDir;
   const subscribers = new Set<SseSubscriber>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let watcher: ReturnType<typeof fsWatch> | null = null;
@@ -119,7 +136,8 @@ export function createRunWatcher(runId: string, cwd: string): RunWatcher {
   const notify = async () => {
     if (closed) return;
     try {
-      const projection = await projectFlowRunFromFiles(runId, { cwd });
+      const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
+      const projection = await projectFlowRunFromResolvedRun(run, { cwd });
       const json = JSON.stringify(projection);
       if (json === lastProjectionJson) return;
       lastProjectionJson = json;
@@ -204,9 +222,10 @@ function handleSseRequest(
 
 function routeRequest(
   options: Required<Pick<FlowConsoleServerOptions, "runId" | "cwd">>,
-  watcher: RunWatcher
+  watcher: RunWatcher,
+  runRoot: string,
+  pinnedRunRoot: string
 ) {
-  const runRoot = runDir(options.runId, options.cwd);
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -219,7 +238,7 @@ function routeRequest(
         return;
       }
       if (url.pathname === "/api/projection") {
-        sendJson(response, 200, await readProjection(options.runId, options.cwd));
+        sendJson(response, 200, await readProjection(options.runId, options.cwd, runRoot));
         return;
       }
       if (url.pathname === "/api/stream") {
@@ -228,8 +247,8 @@ function routeRequest(
       }
       if (url.pathname.startsWith("/artifacts/")) {
         const relative = decodeURIComponent(url.pathname.slice("/artifacts/".length));
-        const artifactPath = safeArtifactPath(runRoot, relative);
-        if (!artifactPath || !existsSync(artifactPath)) {
+        const artifactPath = await safeArtifactPath(runRoot, pinnedRunRoot, relative);
+        if (!artifactPath) {
           send(response, 404, "artifact not found");
           return;
         }
@@ -250,10 +269,12 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("flow console only serves loopback hosts");
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  await projectFlowRunFromFiles(options.runId, { cwd });
+  const run = await loadRun(options.runId, cwd);
+  const pinnedRunRoot = await realpath(run.dir);
+  await projectFlowRunFromResolvedRun(run, { cwd });
 
-  const watcher = createRunWatcher(options.runId, cwd);
-  const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher));
+  const watcher = createRunWatcher(options.runId, cwd, run.dir);
+  const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher, run.dir, pinnedRunRoot));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, host, () => {

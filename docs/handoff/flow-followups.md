@@ -73,7 +73,7 @@ propagation); block this sub-task on that answer.
 Adopt `@kontourai/console-core` record/projection shapes and emit run lifecycle
 to `.kontour/events/**/*.jsonl` (+ `.kontour/projections`) so
 `kontourai/console` aggregates Flow alongside Surface/Survey. The bespoke
-`.flow/runs` projection can thin to a dev-only view. See `console.md`.
+`.kontourai/flow/runs` projection can thin to a dev-only view. See `console.md`.
 
 ## 4. Nested Surface trust panel in the console drawer
 
@@ -144,7 +144,7 @@ merge). All 162 node tests + 9 chromium-desktop Playwright tests pass.
 This finding changes the §3 assumption (see design-doc update + `console.md`).
 The console repo **already ingests Flow** read-only via
 `console-server/.../flow-bridge.ts` (`deriveFlowRunEvents`), which reads Flow's
-owned `.flow/runs/<run-id>/state.json` and derives `kontour.console.event`
+owned `.kontourai/flow/runs/<run-id>/state.json` and derives `kontour.console.event`
 (schema `kontour.console.event`, version `0.1`) records, then `buildPipeline`
 from `@kontourai/console-core`. So:
 - The actual record contract is **`kontour.console.event` v0.1** (fields:

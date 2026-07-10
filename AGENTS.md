@@ -7,7 +7,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 - Product and vocabulary context: `CONTEXT.md`; docs map: [docs/README.md](docs/README.md).
 - Runtime source lives in `src/` by domain; placement rules: [docs/repo-structure.md](docs/repo-structure.md).
 - Public contracts are JSON Schemas in `schemas/`; published examples in `examples/` (registered by the package-contents test).
-- `dist/`, `site/`, `test-results/`, and root `.flow/` are generated or local state — never hand-edit.
+- `dist/`, `site/`, and `test-results/` are generated validation/build output. Flow-owned generated product state lives under `.kontourai/flow/`; never hand-edit it. Root `.flow/config.json` and `.flow/definitions/` are durable authored state.
 
 ## Pull More Context When Needed
 

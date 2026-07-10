@@ -2,7 +2,8 @@
  * Node test: SSE /api/stream endpoint emits a "projection" event on file change.
  */
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import http from "node:http";
 import path from "node:path";
 import { test } from "node:test";
@@ -11,9 +12,13 @@ import { fileURLToPath } from "node:url";
 import { startFlowConsoleServer } from "../../dist/console/console-server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const fixtureCwd = path.join(root, "examples", "scenarios", "console-projection");
+const fixtureSourceDir = path.join(root, "examples", "scenarios", "console-projection", "runtime-fixture", "console-projection-fixture");
+const fixtureCwd = await mkdtemp(path.join(tmpdir(), "flow-sse-fixture-"));
 const fixtureRunId = "console-projection-fixture";
-const stateFile = path.join(fixtureCwd, ".flow", "runs", fixtureRunId, "state.json");
+const fixtureRunDir = path.join(fixtureCwd, ".kontourai", "flow", "runs", fixtureRunId);
+const stateFile = path.join(fixtureRunDir, "state.json");
+await mkdir(path.dirname(fixtureRunDir), { recursive: true });
+await cp(fixtureSourceDir, fixtureRunDir, { recursive: true });
 
 // Helper: listen to SSE stream and collect named events until n events or timeout
 function collectSseEvents(baseUrl, eventName, maxCount, timeoutMs) {
