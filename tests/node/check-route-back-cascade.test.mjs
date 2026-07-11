@@ -215,6 +215,16 @@ test("evaluateGate scopes evidence to the latest visit while retaining prior evi
   const definition = diamondDefinition();
   const state = passedState("verify", ["plan-gate", "build-gate", "docs-gate"]);
   state.transitions.push({
+    type: "route_back",
+    from_step: "verify",
+    to_step: "build",
+    status: "blocked",
+    reason: "implementation defect",
+    at: "2026-01-01T20:00:00.000Z",
+    gate_id: "verify-gate",
+    invalidated_steps: ["verify"]
+  });
+  state.transitions.push({
     from_step: "build",
     to_step: "verify",
     status: "allowed",
@@ -235,4 +245,34 @@ test("evaluateGate scopes evidence to the latest visit while retaining prior evi
 
   manifest.evidence.push({ id: "current-failure", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "failed", attached_at: "2026-01-02T00:02:00.000Z" });
   assert.equal(evaluateGate(definition, state, manifest, "verify-gate").status, "route-back", "a failure from the current visit still governs the gate");
+});
+
+test("evaluateGate derives legacy route-back descendants when invalidated_steps is absent", () => {
+  const definition = {
+    id: "legacy-route-back-flow",
+    version: "1",
+    steps: [
+      { id: "build", next: "verify" },
+      { id: "verify", next: "resolve" },
+      { id: "resolve", next: null }
+    ],
+    gates: {
+      "verify-gate": { step: "verify", expects: [], on_route_back: { default: "build" } }
+    }
+  };
+  const state = passedState("verify", []);
+  state.transitions.push(
+    { type: "route_back", from_step: "resolve", to_step: "build", status: "blocked", reason: "legacy route-back", at: "2026-01-01T20:00:00.000Z", gate_id: "resolve-gate" },
+    { from_step: "build", to_step: "verify", status: "allowed", reason: "corrected build re-entered verification", at: "2026-01-02T00:00:00.000Z", gate_id: "build-gate" }
+  );
+  const manifest = {
+    evidence: [
+      { id: "old-failure", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "failed", attached_at: "2026-01-01T12:00:00.000Z" },
+      { id: "current-observation", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "passed", attached_at: "2026-01-02T00:01:00.000Z" }
+    ]
+  };
+
+  const outcome = evaluateGate(definition, state, manifest, "verify-gate");
+  assert.equal(outcome.status, "wait", "legacy route-back history still scopes downstream verification to its re-entry");
+  assert.equal(manifest.evidence.length, 2, "legacy historical evidence remains auditable");
 });

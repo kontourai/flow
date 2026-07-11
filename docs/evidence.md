@@ -105,6 +105,8 @@ A `trust.bundle` expectation is satisfied only when **all** of these checks pass
 5. **Producer trust** — the producer is trusted for this claim type per `.flow/config.json` `trusted_producers`, or an authority trace covers it.
 6. **Integrity** — local integrity metadata (file hashes recorded at attach time) still matches when present.
 
+When a run returns to a gate, Flow also scopes claim evidence to that current gate visit. A reattached bundle cannot reuse a claim from before the latest transition into the gate's step: the matching claim's `createdAt`, or evidence for that claim's `observedAt`, must be at or after the transition. Re-entry, attachment, claim, and observation timestamps must be valid RFC3339 date-times; missing, malformed, calendar-invalid, or leap-second values do not satisfy a revisited gate. Lower-case RFC3339 `t` and `z` separators and arbitrary fractional precision are accepted and retained verbatim in the producer payload. Flow rejects leap-second notation because its dependencies do not provide a chronology that can compare those instants without collapsing them onto an adjacent second. Prior attachments remain in the manifest for audit.
+
 Unsatisfied artifacts are never hidden as generic missing evidence. Reports carry precise diagnostic reason codes:
 
 | Code | Meaning |
@@ -115,6 +117,11 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | `authority_gap` | no trusted producer mapping or authority trace covers the claim |
 | `integrity_mismatch` | the copied artifact no longer matches its recorded integrity metadata |
 | `subject_mismatch` | the claim subject does not match the expectation |
+| `claim_not_current` | the matching claim predates the current gate visit, or has no valid current timestamp |
+| `gate_reentry_pending` | a route-back affected the gate, but the run has not re-entered its step |
+| `gate_reentry_timestamp_invalid` | the transition back into the gate has an invalid timestamp |
+| `attachment_timestamp_invalid` | the evidence attachment timestamp is invalid |
+| `attachment_not_current` | the evidence attachment predates the current gate visit |
 
 Trusted producer mappings and gate overrides live in `.flow/config.json` — see [Project Config](project-config.md).
 

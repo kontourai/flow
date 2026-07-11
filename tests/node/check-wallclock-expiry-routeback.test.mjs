@@ -224,3 +224,32 @@ test("T1 evaluateRun: wall-clock-expired claim → route-back + invalidateDescen
     "release is recorded among the invalidated descendants"
   );
 });
+
+test("explicit evaluation of a pending downstream revisit fails closed before the run re-enters it", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-"));
+  const runId = await makeRun(cwd);
+  const run = await loadRun(runId, cwd);
+  run.state.current_step = "prepare";
+  run.state.transitions.push({
+    type: "route_back",
+    from_step: "release",
+    to_step: "prepare",
+    status: "blocked",
+    reason: "release revision required",
+    at: T0,
+    gate_id: "release-gate"
+  });
+  await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
+
+  const result = await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
+  const outcome = result.outcomes[0];
+  assert.equal(outcome.status, "route-back", "the explicit off-current evaluation cannot reuse verify evidence");
+  assert.deepEqual(outcome.evidence_refs, ["ev.approval"], "the pending outcome retains the evidence named by its diagnostic");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].evidence_id, "ev.approval");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "gate_reentry_pending");
+
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.current_step, "prepare", "the stale explicit evaluation cannot advance the run past the route-back target");
+  const verifyRouteBack = after.state.transitions.findLast((transition) => transition.gate_id === "verify-gate" && transition.type === "route_back");
+  assert.deepEqual(verifyRouteBack?.evidence_refs, ["ev.approval"], "the persisted route-back keeps the diagnostic evidence id");
+});

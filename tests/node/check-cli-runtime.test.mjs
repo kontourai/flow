@@ -250,8 +250,17 @@ test("completed runs report completion instead of a stale next action", async ()
   await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "adversarial-review-gate",
     "--file", path.join(scenario, "review-round-2-trusted.trust.json"), "--bundle", "--cwd", cwd]);
   await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
+  const resolution = JSON.parse(await readFile(path.join(scenario, "resolution.trust.json"), "utf8"));
+  const correctedAt = new Date().toISOString();
+  resolution.claims[0].createdAt = correctedAt;
+  resolution.claims[0].updatedAt = correctedAt;
+  resolution.evidence[0].observedAt = correctedAt;
+  resolution.events[0].createdAt = correctedAt;
+  resolution.events[0].verifiedAt = correctedAt;
+  const correctedResolution = path.join(cwd, "resolution-current.trust.json");
+  await writeFile(correctedResolution, `${JSON.stringify(resolution, null, 2)}\n`);
   await execFile(process.execPath, [cliPath, "attach-evidence", "done-1", "--gate", "resolve-gate",
-    "--file", path.join(scenario, "resolution.trust.json"), "--bundle", "--cwd", cwd]);
+    "--file", correctedResolution, "--bundle", "--cwd", cwd]);
   const final = await execFile(process.execPath, [cliPath, "evaluate", "done-1", "--cwd", cwd]);
   assert.match(final.stdout, /next action: run complete; no further action required/);
 
@@ -276,8 +285,41 @@ test("CLI supersede replaces failed evidence so a route-back can recover", async
   const routeBack = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
   assert.match(routeBack.stdout, /route-back adversarial-review-gate/);
 
+  const statePath = path.join(cwd, ".kontourai", "flow", "runs", "adv-1", "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  const correctedAt = new Date().toISOString();
+  state.transitions.push({
+    from_step: "produce",
+    to_step: "adversarial-review",
+    status: "allowed",
+    reason: "corrected producer output is ready for review",
+    at: correctedAt
+  });
+  state.current_step = "adversarial-review";
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const currentBundle = async (name) => {
+    const bundle = JSON.parse(await readFile(path.join(scenario, name), "utf8"));
+    for (const claim of bundle.claims ?? []) {
+      claim.createdAt = correctedAt;
+      claim.updatedAt = correctedAt;
+    }
+    for (const evidence of bundle.evidence ?? []) evidence.observedAt = correctedAt;
+    for (const event of bundle.events ?? []) {
+      event.createdAt = correctedAt;
+      event.verifiedAt = correctedAt;
+    }
+    const target = path.join(cwd, `current-${name}`);
+    await writeFile(target, `${JSON.stringify(bundle, null, 2)}\n`);
+    return target;
+  };
+  const currentProducer = await currentBundle("producer-output.trust.json");
+  const currentReview = await currentBundle("review-round-2-trusted.trust.json");
+
   await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
-    "--file", path.join(scenario, "review-round-2-trusted.trust.json"),
+    "--file", currentProducer, "--bundle", "--cwd", cwd]);
+  await execFile(process.execPath, [cliPath, "attach-evidence", "adv-1", "--gate", "adversarial-review-gate",
+    "--file", currentReview,
     "--bundle", "--supersede", failedId, "--cwd", cwd]);
   const pass = await execFile(process.execPath, [cliPath, "evaluate", "adv-1", "--gate", "adversarial-review-gate", "--cwd", cwd]);
   assert.match(pass.stdout, /pass adversarial-review-gate/);
