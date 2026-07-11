@@ -145,6 +145,14 @@ export interface FlowLifecycleRequest {
   authority: FlowLifecycleAuthority;
 }
 
+export interface FlowFreshnessGateRecheck {
+  gate_id: string;
+  evidence_id: string;
+  claimId: string;
+  from: string;
+  to: string;
+}
+
 export interface FlowRunState extends MutableRecord {
   schema_version?: string;
   run_id: string;
@@ -156,6 +164,7 @@ export interface FlowRunState extends MutableRecord {
   params?: MutableRecord;
   gate_outcomes: GateOutcome[];
   transitions: MutableRecord[];
+  pending_gate_rechecks?: FlowFreshnessGateRecheck[];
   /** Absent only on legacy persisted runs before canonical load normalization. */
   lifecycle?: FlowLifecycleEvent[];
   exceptions: MutableRecord[];

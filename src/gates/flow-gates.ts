@@ -325,7 +325,7 @@ export function mergeGateOutcome(state, outcome) {
   state.gate_outcomes = [...without, outcome];
 }
 
-export function applyEvaluation(definition, state, outcome) {
+export function applyEvaluation(definition, state, outcome, at = new Date().toISOString()) {
   const gate = findGate(definition, outcome.gate_id);
   mergeGateOutcome(state, outcome);
 
@@ -337,7 +337,7 @@ export function applyEvaluation(definition, state, outcome) {
       to_step: nextStep,
       status: "allowed",
       reason: outcome.accepted_exception_id ? "accepted exception" : "required evidence present",
-      at: new Date().toISOString(),
+      at,
       gate_id: outcome.gate_id
     });
     state.current_step = nextStep ?? gate.step;
@@ -357,13 +357,15 @@ export function applyEvaluation(definition, state, outcome) {
         attempt: outcome.attempt,
         max_attempts: outcome.max_attempts,
         limit_exceeded: outcome.limit_exceeded,
+        invalidated_steps: outcome.invalidated_steps,
         evidence_refs: outcome.evidence_refs,
         expectation_ids: outcome.expectation_ids,
         classifier: outcome.classifier,
         diagnostics: outcome.diagnostics,
         analytics: outcome.analytics,
         analytics_loop_key: outcome.analytics_loop_key,
-        at: new Date().toISOString(),
+        freshness_transitions: outcome.freshness_transitions,
+        at,
         gate_id: outcome.gate_id
       });
     } else {
@@ -372,7 +374,11 @@ export function applyEvaluation(definition, state, outcome) {
         to_step: getStep(definition, gate.step)?.next ?? null,
         status: "blocked",
         reason: outcome.summary,
-        at: new Date().toISOString(),
+        invalidated_steps: outcome.invalidated_steps,
+        evidence_refs: outcome.evidence_refs,
+        expectation_ids: outcome.expectation_ids,
+        freshness_transitions: outcome.freshness_transitions,
+        at,
         gate_id: outcome.gate_id
       });
     }
@@ -401,7 +407,8 @@ export function applyEvaluation(definition, state, outcome) {
       diagnostics: outcome.diagnostics,
       analytics: outcome.analytics,
       analytics_loop_key: outcome.analytics_loop_key,
-      at: new Date().toISOString(),
+      freshness_transitions: outcome.freshness_transitions,
+      at,
       gate_id: outcome.gate_id
     });
   } else {
@@ -411,5 +418,5 @@ export function applyEvaluation(definition, state, outcome) {
   state.next_action = state.status === "completed"
     ? "run complete; no further action required"
     : nextActionForStep(definition, state.current_step, outcome);
-  state.updated_at = new Date().toISOString();
+  state.updated_at = at;
 }

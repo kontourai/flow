@@ -72,6 +72,22 @@
       "description": "Persisted transition history used for continuation, reporting, and route-back attempt counting.",
       "items": { "$ref": "#/$defs/transition" }
     },
+    "pending_gate_rechecks": {
+      "type": "array",
+      "description": "Freshness-triggered checks for previously passed gates that must be revisited when the run cursor is again downstream of that gate.",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "evidence_id", "claimId", "from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "gate_id": { "type": "string", "minLength": 1 },
+          "evidence_id": { "type": "string", "minLength": 1 },
+          "claimId": { "type": "string", "minLength": 1 },
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "lifecycle": {
       "type": "array",
       "description": "Separate pause, resume, and cancellation history. Absence on a legacy run is normalized to an empty array when loaded; lifecycle records never count as Step transitions.",
@@ -214,7 +230,23 @@
         "diagnostics": { "type": "object", "additionalProperties": true },
         "analytics": { "type": "object", "additionalProperties": true },
         "analytics_loop_key": { "type": "string" },
+        "freshness_transitions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/freshness_transition" }
+        },
         "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "freshness_transition": {
+      "type": "object",
+      "required": ["gate_id", "evidence_id", "claimId", "from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "gate_id": { "type": "string", "minLength": 1 },
+        "evidence_id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 }
       }
     },
     "exception": {

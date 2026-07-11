@@ -10,6 +10,7 @@ export type {
   FlowEvidenceEntry,
   FlowEvidenceManifest,
   FlowExpectation,
+  FlowFreshnessGateRecheck,
   FlowGate,
   FlowLifecycleAction,
   FlowLifecycleAuthority,

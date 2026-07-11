@@ -21,7 +21,7 @@ import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { startRun, loadRun, evaluateRun } from "../../dist/index.js";
+import { startRun, loadRun, evaluateRun, reDeriveBundleReports } from "../../dist/index.js";
 
 const T0 = "2026-06-10T00:00:00.000Z";
 const EXPIRES = "2026-06-15T00:00:00.000Z";
@@ -128,10 +128,90 @@ function approvalBundle() {
   };
 }
 
-async function makeRun(cwd) {
+function siblingDefinition() {
+  return {
+    id: "sibling-flow",
+    version: "1",
+    steps: [
+      { id: "plan", next: "build" },
+      { id: "build", next: "release", needs: ["plan"] },
+      { id: "docs", next: null, needs: ["plan"] },
+      { id: "release", next: null, needs: ["build"] }
+    ],
+    gates: {
+      "plan-gate": { step: "plan", expects: [] },
+      "build-gate": { step: "build", expects: [] },
+      "docs-gate": {
+        step: "docs",
+        on_route_back: { missing_evidence: "plan" },
+        expects: [
+          {
+            id: "docs-fresh",
+            kind: "trust.bundle",
+            required: true,
+            description: "Documentation approval remains fresh.",
+            bundle_claim: {
+              claimType: "approval",
+              subjectType: "flow-step",
+              subjectId: "docs",
+              accepted_statuses: ["verified"]
+            }
+          }
+        ]
+      },
+      "release-gate": { step: "release", expects: [] }
+    }
+  };
+}
+
+function convergingDefinition() {
+  const branchExpectation = (step) => ({
+    id: `${step}-fresh`,
+    kind: "trust.bundle",
+    required: true,
+    description: `${step} approval remains fresh.`,
+    bundle_claim: {
+      claimType: "approval",
+      subjectType: "flow-step",
+      subjectId: step,
+      accepted_statuses: ["verified"]
+    }
+  });
+  return {
+    id: "converging-flow",
+    version: "1",
+    steps: [
+      { id: "root", next: "left" },
+      { id: "left", next: "merge", needs: ["root"] },
+      { id: "right", next: "merge", needs: ["root"] },
+      { id: "merge", next: null, needs: ["left", "right"] }
+    ],
+    gates: {
+      "root-gate": { step: "root", expects: [] },
+      "left-gate": { step: "left", on_route_back: { missing_evidence: "left" }, expects: [branchExpectation("left")] },
+      "right-gate": { step: "right", on_route_back: { missing_evidence: "right" }, expects: [branchExpectation("right")] },
+      "merge-gate": { step: "merge", expects: [] }
+    }
+  };
+}
+
+function branchApprovalBundle(step) {
+  const bundle = approvalBundle();
+  bundle.claims[0].id = `claim.${step}`;
+  bundle.claims[0].subjectType = "flow-step";
+  bundle.claims[0].subjectId = step;
+  bundle.evidence[0].id = `evidence.${step}`;
+  bundle.evidence[0].claimId = `claim.${step}`;
+  bundle.events[0].id = `event.${step}.verified`;
+  bundle.events[0].claimId = `claim.${step}`;
+  bundle.events[0].evidenceIds = [`evidence.${step}`];
+  return bundle;
+}
+
+async function makeRun(cwd, flowDefinition = definition()) {
   await mkdir(cwd, { recursive: true });
   const defPath = path.join(cwd, "flow.json");
-  await writeFile(defPath, JSON.stringify(definition()));
+  await writeFile(defPath, JSON.stringify(flowDefinition));
   const { runId } = await startRun("flow.json", { cwd, runId: "wallclock-run" });
 
   // Inject: prepare already passed, the cursor is at verify, and the verify
@@ -252,4 +332,253 @@ test("explicit evaluation of a pending downstream revisit fails closed before th
   assert.equal(after.state.current_step, "prepare", "the stale explicit evaluation cannot advance the run past the route-back target");
   const verifyRouteBack = after.state.transitions.findLast((transition) => transition.gate_id === "verify-gate" && transition.type === "route_back");
   assert.deepEqual(verifyRouteBack?.evidence_refs, ["ev.approval"], "the persisted route-back keeps the diagnostic evidence id");
+});
+
+test("T1 evaluateRun automatically re-evaluates selected stale upstream evidence and invalidates descendants", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-"));
+  const runId = await makeRun(cwd);
+
+  await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
+  const beforeExpiry = await loadRun(runId, cwd);
+  beforeExpiry.state.current_step = "release";
+  beforeExpiry.state.gate_outcomes.push({
+    gate_id: "release-gate",
+    status: "pass",
+    summary: "release passed",
+    evidence_refs: []
+  });
+  beforeExpiry.state.transitions.push({
+    from_step: "release",
+    to_step: null,
+    status: "allowed",
+    gate_id: "release-gate",
+    reason: "release passed",
+    at: T0
+  });
+  await writeFile(path.join(beforeExpiry.dir, "state.json"), `${JSON.stringify(beforeExpiry.state, null, 2)}\n`);
+
+  const result = await evaluateRun(runId, { cwd, now: T1 });
+
+  assert.equal(result.outcomes.length, 1, "the stale upstream gate preempts normal current-gate evaluation");
+  assert.equal(result.outcomes[0].gate_id, "verify-gate");
+  assert.equal(result.outcomes[0].status, "route-back");
+  assert.equal(result.outcomes[0].route_back_to, "prepare", "the upstream gate's policy selects the target");
+  assert.deepEqual(result.outcomes[0].evidence_refs, ["ev.approval"], "the route-back preserves selected evidence refs");
+
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.current_step, "prepare");
+  assert.equal(after.state.status, "active");
+  assert.deepEqual(
+    after.state.gate_outcomes.filter((outcome) => outcome.status === "pass").map((outcome) => outcome.gate_id),
+    ["prepare-gate"],
+    "the stale upstream pass and its downstream release pass are invalidated"
+  );
+  const routeBack = after.state.transitions.findLast((transition) => transition.type === "route_back");
+  assert.deepEqual(routeBack?.invalidated_steps, ["verify", "release"]);
+  assert.deepEqual(routeBack?.evidence_refs, ["ev.approval"], "the persisted audit transition retains evidence refs");
+  assert.deepEqual(routeBack?.freshness_transitions, [{
+    gate_id: "verify-gate",
+    evidence_id: "ev.approval",
+    claimId: "claim.approval",
+    from: "fresh",
+    to: "stale"
+  }], "the persisted route-back canonically records its freshness trigger");
+  assert.equal(routeBack?.at, T1, "the route-back uses the evaluation instant");
+  assert.equal(after.state.updated_at, T1, "the state update uses the same evaluation instant");
+});
+
+test("simultaneously stale converging ancestors are routed back one at a time without losing the second recheck", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-converging-"));
+  await writeFile(path.join(cwd, "flow.json"), JSON.stringify(convergingDefinition()));
+  const { runId } = await startRun("flow.json", { cwd, runId: "converging-run" });
+  const run = await loadRun(runId, cwd);
+  run.state.current_step = "merge";
+  run.state.status = "active";
+  run.state.gate_outcomes = ["root", "left", "right"].map((step) => ({
+    gate_id: `${step}-gate`,
+    status: "pass",
+    summary: `${step} passed`,
+    evidence_refs: step === "root" ? [] : [`ev.${step}`],
+    matched_expectations: step === "root" ? [] : [{ expectation_id: `${step}-fresh`, evidence_id: `ev.${step}` }]
+  }));
+  run.manifest.evidence = ["left", "right"].map((step) => ({
+    id: `ev.${step}`,
+    gate_id: `${step}-gate`,
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    attached_at: T0,
+    bundle: branchApprovalBundle(step)
+  }));
+  reDeriveBundleReports(run.manifest, new Date(T0));
+  await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
+  await writeFile(path.join(run.dir, "evidence", "manifest.json"), `${JSON.stringify(run.manifest, null, 2)}\n`);
+
+  const first = await evaluateRun(runId, { cwd, now: T1 });
+  assert.equal(first.outcomes[0].gate_id, "left-gate");
+  assert.equal(first.outcomes[0].route_back_to, "left");
+  let after = await loadRun(runId, cwd);
+  assert.deepEqual(after.state.pending_gate_rechecks, [{
+    gate_id: "right-gate",
+    evidence_id: "ev.right",
+    claimId: "claim.right",
+    from: "fresh",
+    to: "stale"
+  }], "the other stale ancestor remains durably pending");
+
+  after.state.current_step = "merge";
+  after.state.status = "active";
+  after.state.gate_outcomes = after.state.gate_outcomes.filter((outcome) => outcome.gate_id !== "left-gate");
+  after.state.gate_outcomes.push({
+    gate_id: "left-gate",
+    status: "pass",
+    summary: "left repaired",
+    evidence_refs: ["ev.left"],
+    matched_expectations: [{ expectation_id: "left-fresh", evidence_id: "ev.left" }]
+  });
+  await writeFile(path.join(after.dir, "state.json"), `${JSON.stringify(after.state, null, 2)}\n`);
+
+  const second = await evaluateRun(runId, { cwd, now: T1 });
+  assert.equal(second.outcomes[0].gate_id, "right-gate");
+  assert.equal(second.outcomes[0].route_back_to, "right");
+  after = await loadRun(runId, cwd);
+  assert.deepEqual(after.state.pending_gate_rechecks, [], "the second stale ancestor is consumed only after its route-back");
+  assert.deepEqual(
+    after.state.transitions.filter((transition) => transition.type === "route_back").map((transition) => transition.gate_id),
+    ["left-gate", "right-gate"]
+  );
+});
+
+test("budget-exhausted stale ancestor blocks at its gate and preserves freshness audit evidence", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-exhausted-"));
+  const flowDefinition = definition();
+  flowDefinition.gates["verify-gate"].route_back_policy = { max_attempts: 1, on_exceeded: "block" };
+  const runId = await makeRun(cwd, flowDefinition);
+  await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
+
+  const beforeExpiry = await loadRun(runId, cwd);
+  beforeExpiry.state.gate_outcomes.push({
+    gate_id: "release-gate",
+    status: "pass",
+    summary: "release passed",
+    evidence_refs: []
+  });
+  beforeExpiry.state.transitions.push({
+    type: "route_back",
+    gate_id: "verify-gate",
+    route_reason: "missing_evidence",
+    reason: "missing_evidence",
+    from_step: "verify",
+    to_step: "prepare",
+    status: "blocked",
+    at: T0
+  });
+  await writeFile(path.join(beforeExpiry.dir, "state.json"), `${JSON.stringify(beforeExpiry.state, null, 2)}\n`);
+
+  const result = await evaluateRun(runId, { cwd, now: T1 });
+  assert.equal(result.outcomes[0].gate_id, "verify-gate");
+  assert.equal(result.outcomes[0].status, "block");
+  assert.equal(result.outcomes[0].limit_exceeded, true);
+
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.status, "blocked");
+  assert.equal(after.state.current_step, "verify", "the blocked stale ancestor owns the cursor");
+  assert.ok(!after.state.gate_outcomes.some((outcome) => outcome.gate_id === "release-gate" && outcome.status === "pass"));
+  const blockedRoute = after.state.transitions.findLast((transition) => transition.gate_id === "verify-gate");
+  assert.equal(blockedRoute.type, "route_back");
+  assert.deepEqual(blockedRoute.invalidated_steps, ["release"]);
+  assert.deepEqual(blockedRoute.freshness_transitions, [{
+    gate_id: "verify-gate",
+    evidence_id: "ev.approval",
+    claimId: "claim.approval",
+    from: "fresh",
+    to: "stale"
+  }]);
+  assert.equal(blockedRoute.at, T1);
+
+  const repeated = await evaluateRun(runId, { cwd, now: T1 });
+  assert.equal(repeated.outcomes[0].gate_id, "verify-gate", "the blocked ancestor cannot be bypassed on retry");
+  assert.equal(repeated.outcomes[0].status, "block");
+  const retried = await loadRun(runId, cwd);
+  assert.equal(retried.state.current_step, "verify");
+});
+
+test("T1 evaluateRun ignores stale evidence that was not selected by the passed upstream gate", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-"));
+  const runId = await makeRun(cwd);
+  await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
+
+  const run = await loadRun(runId, cwd);
+  run.manifest.evidence[0].bundle.claims[0].expiresAt = "2026-07-15T00:00:00.000Z";
+  const unrelated = structuredClone(run.manifest.evidence[0]);
+  unrelated.id = "ev.unrelated";
+  unrelated.bundle.claims[0].expiresAt = EXPIRES;
+  unrelated.bundle.claims[0].id = "claim.unrelated";
+  unrelated.bundle.claims[0].claimType = "unrelated";
+  unrelated.bundle.claims[0].facet = "process.unrelated";
+  unrelated.bundle.evidence[0].id = "evidence.unrelated";
+  unrelated.bundle.evidence[0].claimId = "claim.unrelated";
+  unrelated.bundle.events[0].id = "event.unrelated.verified";
+  unrelated.bundle.events[0].claimId = "claim.unrelated";
+  unrelated.bundle.events[0].evidenceIds = ["evidence.unrelated"];
+  run.manifest.evidence.push(unrelated);
+  await writeFile(path.join(run.dir, "evidence", "manifest.json"), `${JSON.stringify(run.manifest, null, 2)}\n`);
+
+  await evaluateRun(runId, { cwd, now: T0 });
+  const result = await evaluateRun(runId, { cwd, now: T1 });
+
+  assert.equal(result.outcomes[0].gate_id, "release-gate", "normal current-gate behavior remains in control");
+  assert.equal(result.outcomes[0].status, "wait");
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.current_step, "release");
+  assert.ok(after.state.gate_outcomes.some((outcome) => outcome.gate_id === "verify-gate" && outcome.status === "pass"));
+  assert.ok(!after.state.transitions.some((transition) => transition.type === "route_back"), "unselected stale evidence cannot route the run back");
+});
+
+test("T1 evaluateRun ignores selected stale evidence from a sibling gate", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-sibling-"));
+  const definitionPath = path.join(cwd, "flow.json");
+  await writeFile(definitionPath, JSON.stringify(siblingDefinition()));
+  const { runId } = await startRun("flow.json", { cwd, runId: "sibling-run" });
+  const run = await loadRun(runId, cwd);
+  const docsBundle = approvalBundle();
+  docsBundle.claims[0].subjectType = "flow-step";
+  docsBundle.claims[0].subjectId = "docs";
+  run.state.current_step = "release";
+  run.state.gate_outcomes = [
+    { gate_id: "plan-gate", status: "pass", summary: "passed", evidence_refs: [] },
+    { gate_id: "build-gate", status: "pass", summary: "passed", evidence_refs: [] },
+    {
+      gate_id: "docs-gate",
+      status: "pass",
+      summary: "docs approved",
+      evidence_refs: ["ev.docs"],
+      matched_expectations: [{ expectation_id: "docs-fresh", evidence_id: "ev.docs" }]
+    }
+  ];
+  run.state.transitions = [
+    { from_step: "plan", to_step: "build", status: "allowed", gate_id: "plan-gate", reason: "passed", at: T0 },
+    { from_step: "build", to_step: "release", status: "allowed", gate_id: "build-gate", reason: "passed", at: T0 }
+  ];
+  run.manifest.evidence = [{
+    id: "ev.docs",
+    gate_id: "docs-gate",
+    kind: "trust.bundle",
+    requested_kind: "trust.bundle",
+    status: "passed",
+    attached_at: T0,
+    bundle: docsBundle
+  }];
+  await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
+  await writeFile(path.join(run.dir, "evidence", "manifest.json"), `${JSON.stringify(run.manifest, null, 2)}\n`);
+
+  await evaluateRun(runId, { cwd, now: T0 });
+  const result = await evaluateRun(runId, { cwd, now: T1 });
+
+  assert.equal(result.outcomes[0].gate_id, "release-gate");
+  assert.equal(result.outcomes[0].status, "wait");
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.current_step, "release");
+  assert.ok(after.state.gate_outcomes.some((outcome) => outcome.gate_id === "docs-gate" && outcome.status === "pass"));
+  assert.ok(!after.state.transitions.some((transition) => transition.type === "route_back"), "a stale sibling gate cannot route another branch back");
 });
