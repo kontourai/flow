@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { readFile, readdir, lstat, open, stat, writeFile, copyFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, lstat, open, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -618,17 +618,43 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("attach_evidence", run.state.status);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
-  await stat(source);
+  const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let sourceBytes: Buffer;
+  try {
+    const sourceStat = await sourceHandle.stat();
+    if (!sourceStat.isFile()) throw new Error(`evidence source must be a regular file: ${source}`);
+    sourceBytes = await sourceHandle.readFile();
+  } finally {
+    await sourceHandle.close();
+  }
+  const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+  if (options.expectedSha256 !== undefined) {
+    if (typeof options.expectedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedSha256)) {
+      throw new Error("expectedSha256 must be a SHA-256 hex digest");
+    }
+    if (options.expectedSha256.toLowerCase() !== sourceSha256) {
+      throw new Error("evidence source digest does not match expectedSha256");
+    }
+  }
   const gate = findGate(run.definition, options.gate);
   if (!gate) throw new Error(`unknown gate: ${options.gate}`);
   const kind = normalizeEvidenceKind(options.kind);
   const requestedKind = options.kind ?? "file";
+  let normalizedBundle: ReturnType<typeof normalizeTrustBundle> | null = null;
+  if (options.bundle || options.kind === "trust.bundle") {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(sourceBytes.toString("utf8"));
+    } catch (error) {
+      throw new Error(`trust bundle JSON parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    normalizedBundle = normalizeTrustBundle(raw);
+  }
   const id = `ev.${Date.now()}.${run.manifest.evidence.length + 1}`;
   const ext = path.extname(source);
   const storedName = `${id}${ext}`;
   const storedPath = await assertSafeRunArtifactWritePath(run.dir, path.join(FLOW_RUN_EVIDENCE_DIR, storedName));
-  await copyFile(source, storedPath);
-  const sourceSha256 = await sha256File(source);
+  await writeFile(storedPath, sourceBytes, { flag: "wx" });
   const entry: FlowEvidenceEntry = {
     id,
     gate_id: options.gate,
@@ -643,9 +669,8 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
 
   // trust.bundle path: read the file as a Hachure TrustBundle, validate,
   // derive statuses via Surface buildTrustReport, store bundle + report.
-  if (options.bundle || options.kind === "trust.bundle") {
-    const raw = await readJson(source);
-    const { bundle, bundle_report } = normalizeTrustBundle(raw);
+  if (normalizedBundle) {
+    const { bundle, bundle_report } = normalizedBundle;
     entry.kind = "trust.bundle";
     entry.requested_kind = "trust.bundle";
     entry.bundle = bundle;
