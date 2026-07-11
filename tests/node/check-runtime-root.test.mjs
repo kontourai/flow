@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   access,
   chmod,
@@ -302,6 +303,82 @@ test("AC-111-03 keeps mutations, reports, projections, sinks, and server artifac
 
   await access(path.join(started.dir, "console-projection.json"), constants.R_OK);
   assert.equal(await exists(legacyRunDir(cwd, "canonical-lifecycle")), false);
+});
+
+test("attachEvidence stores, hashes, and parses one immutable source snapshot", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-atomic-evidence-"));
+  const started = await flow.startRun(definitionPath, { cwd, runId: "atomic-evidence" });
+  const source = path.join(cwd, "bundle.json");
+  const bundle = (label) => ({
+    schemaVersion: 5,
+    source: `atomic/${label}`,
+    claims: [{
+      id: `claim.atomic.${label}`,
+      subjectType: "flow-step",
+      subjectId: "atomic-evidence",
+      facet: "quality.atomic",
+      claimType: "quality.atomic.snapshot",
+      fieldOrBehavior: "snapshot",
+      value: label,
+      createdAt: "2026-07-10T00:00:00.000Z",
+      updatedAt: "2026-07-10T00:00:00.000Z"
+    }],
+    evidence: [],
+    policies: [],
+    events: []
+  });
+  const variants = [bundle("alpha"), bundle("beta")].map((value) => `${JSON.stringify(value)}\n`);
+  await writeFile(source, variants[0]);
+
+  const manifestFile = path.join(started.dir, "evidence", "manifest.json");
+  const before = await readFile(manifestFile, "utf8");
+  await assert.rejects(
+    flow.attachEvidence("atomic-evidence", {
+      cwd,
+      gate: "plan-gate",
+      file: source,
+      kind: "trust.bundle",
+      bundle: true,
+      expectedSha256: "0".repeat(64)
+    }),
+    /does not match expectedSha256/
+  );
+  assert.equal(await readFile(manifestFile, "utf8"), before, "digest mismatch must fail before run mutation");
+
+  let replacing = true;
+  const replacer = (async () => {
+    let index = 0;
+    while (replacing) {
+      const replacement = path.join(cwd, `bundle-${index % 2}.tmp`);
+      await writeFile(replacement, variants[index % 2]);
+      await rename(replacement, source);
+      index += 1;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  })();
+  const entries = [];
+  try {
+    for (let index = 0; index < 12; index += 1) {
+      entries.push(await flow.attachEvidence("atomic-evidence", {
+        cwd,
+        gate: "plan-gate",
+        file: source,
+        kind: "trust.bundle",
+        bundle: true
+      }));
+    }
+  } finally {
+    replacing = false;
+    await replacer;
+  }
+
+  for (const entry of entries) {
+    const stored = await readFile(path.join(started.dir, entry.stored_path));
+    const parsed = JSON.parse(stored.toString("utf8"));
+    assert.equal(entry.sha256, createHash("sha256").update(stored).digest("hex"));
+    assert.equal(entry.bundle.source, parsed.source);
+    assert.equal(entry.bundle.claims[0].value, parsed.claims[0].value);
+  }
 });
 
 test("AC-111-04 flow report refuses linked report artifacts", async () => {
