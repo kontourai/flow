@@ -3,6 +3,7 @@ import { defaultFlowConfig } from "../config/flow-config.js";
 import {
   acceptedExceptionFor,
   attachedEvidenceFor,
+  descendantsOf,
   findGate,
   getStep,
   invalidateDescendants,
@@ -14,6 +15,8 @@ import {
   expectationLabel,
   slugLabel
 } from "../shared/flow-utils.js";
+import { compareRfc3339Timestamps, parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import type { ParsedRfc3339Timestamp } from "../shared/rfc3339.js";
 import { buildTrustReport, validateTrustBundle } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "./trust-bundle-validator.js";
 
@@ -27,9 +30,9 @@ export function expectationsForGate(gate: any, config: MutableRecord = defaultFl
   }));
 }
 
-function findClaimInReport(report: any, selector: any): any | null {
-  if (!report?.claims || !Array.isArray(report.claims)) return null;
-  return report.claims.find((claim: any) => {
+function findClaimsInReport(report: any, selector: any): any[] {
+  if (!report?.claims || !Array.isArray(report.claims)) return [];
+  return report.claims.filter((claim: any) => {
     // Surface preserves producer-level supersession separately from its derived
     // status. Historical critique claims can therefore re-derive as `proposed`
     // while still carrying producerStatus=superseded. They remain audit history,
@@ -39,14 +42,75 @@ function findClaimInReport(report: any, selector: any): any | null {
     if (selector.subjectType && claim.subjectType !== selector.subjectType) return false;
     if (selector.subjectId && claim.subjectId !== selector.subjectId) return false;
     return true;
-  }) ?? null;
+  });
+}
+
+function claimIsCurrentForVisit(bundle: any, claim: any, enteredAt: ParsedRfc3339Timestamp): boolean {
+  const bundleClaim = bundle?.claims?.find((candidate: any) => candidate?.id === claim.id);
+  if (!bundleClaim) return false;
+
+  const createdAt = parseRfc3339Timestamp(bundleClaim.createdAt);
+  if (createdAt === null) return false;
+
+  const observations = (bundle.evidence ?? [])
+    .filter((evidence: any) => evidence?.claimId === bundleClaim.id)
+    .map((evidence: any) => parseRfc3339Timestamp(evidence.observedAt));
+  if (observations.some((observedAt) => observedAt === null)) return false;
+
+  return compareRfc3339Timestamps(createdAt, enteredAt) >= 0
+    || observations.some((observedAt) => compareRfc3339Timestamps(observedAt!, enteredAt) >= 0);
+}
+
+function routeBackAffectsStep(definition: any, transition: any, step: string): boolean {
+  return transition?.type === "route_back" && (
+    transition.from_step === step
+    || transition.to_step === step
+    || (Array.isArray(transition.invalidated_steps) && transition.invalidated_steps.includes(step))
+    || descendantsOf(definition, transition.to_step).includes(step)
+  );
+}
+
+interface GateVisit {
+  revisited: boolean;
+  awaitingReentry: boolean;
+  enteredAt: ParsedRfc3339Timestamp | null;
+}
+
+function currentGateVisit(definition: any, state: any, step: string): GateVisit {
+  let awaitingReentry = false;
+  let reentryAt: ParsedRfc3339Timestamp | null | undefined;
+  for (const transition of state.transitions ?? []) {
+    if (routeBackAffectsStep(definition, transition, step)) {
+      awaitingReentry = transition.to_step !== step;
+      reentryAt = transition.to_step === step ? parseRfc3339Timestamp(transition.at) : undefined;
+    } else if (awaitingReentry && transition?.to_step === step) {
+      awaitingReentry = false;
+      reentryAt = parseRfc3339Timestamp(transition.at);
+    }
+  }
+  return {
+    revisited: reentryAt !== undefined || awaitingReentry,
+    awaitingReentry,
+    enteredAt: reentryAt ?? null
+  };
+}
+
+function evidenceVisitDiagnostic(entry: any, visit: GateVisit): string | null {
+  if (!visit.revisited) return null;
+  if (visit.awaitingReentry) return "gate_reentry_pending";
+  if (visit.enteredAt === null) return "gate_reentry_timestamp_invalid";
+
+  const attachedAt = parseRfc3339Timestamp(entry.attached_at);
+  if (attachedAt === null) return "attachment_timestamp_invalid";
+  if (compareRfc3339Timestamps(attachedAt, visit.enteredAt) < 0) return "attachment_not_current";
+  return null;
 }
 
 function deriveBundleReport(bundle: unknown): { report: any | null; error: string | null } {
   // First validate via Surface (referential/structural)
   let validated: any;
   try {
-    validated = validateTrustBundle(bundle);
+    validated = validateTrustBundle(surfaceTimestampValidationView(bundle));
   } catch (err: any) {
     return { report: null, error: `bundle_invalid: ${err?.message ?? String(err)}` };
   }
@@ -59,7 +123,7 @@ function deriveBundleReport(bundle: unknown): { report: any | null; error: strin
   }
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any): string | null {
+function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null): string | null {
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
   if (entry.status === "failed") return "rejected";
 
@@ -77,11 +141,20 @@ function evidenceBundleDiagnostic(entry: any, expectation: any): string | null {
   const selector = expectation.bundle_claim ?? expectation.claim;
   if (!selector) return "bundle_invalid";
 
-  const claim = findClaimInReport(report, selector);
-  if (!claim) return "claim_not_found";
+  const claims = findClaimsInReport(report, selector);
+  if (!claims.length) return "claim_not_found";
+
+  const currentClaims = enteredAt === null
+    ? claims
+    : claims.filter((claim: any) => claimIsCurrentForVisit(bundle, claim, enteredAt));
+  if (!currentClaims.length) {
+    return "claim_not_current";
+  }
 
   const accepted = selector.accepted_statuses ?? ["verified"];
-  const claimStatus = claim.status ?? "unknown";
+  if (currentClaims.some((claim: any) => accepted.includes(claim.status ?? "unknown"))) return null;
+
+  const claimStatus = currentClaims[0].status ?? "unknown";
   if (!accepted.includes(claimStatus)) {
     if (claimStatus === "stale") return "stale";
     if (claimStatus === "disputed") return "disputed";
@@ -91,7 +164,7 @@ function evidenceBundleDiagnostic(entry: any, expectation: any): string | null {
   return null;
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, _config: MutableRecord = defaultFlowConfig()) {
+export function evidenceMatchesExpectation(entry: any, expectation: any, _config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null) {
   if (expectation.kind !== "trust.bundle") return false;
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
   if (entry.status === "failed") return false;
@@ -114,18 +187,17 @@ export function evidenceMatchesExpectation(entry: any, expectation: any, _config
   const selector = expectation.bundle_claim ?? expectation.claim;
   if (!selector) return false;
 
-  const claim = findClaimInReport(report, selector);
-  if (!claim) return false;
-
   const accepted = selector.accepted_statuses ?? ["verified"];
-  const claimStatus = claim.status ?? "unknown";
-  return accepted.includes(claimStatus);
+  return findClaimsInReport(report, selector).some((claim: any) => {
+    if (!accepted.includes(claim.status ?? "unknown")) return false;
+    return enteredAt === null || claimIsCurrentForVisit(bundle, claim, enteredAt);
+  });
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, _config: MutableRecord = defaultFlowConfig()) {
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, _config: MutableRecord = defaultFlowConfig(), visit: GateVisit) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
-    const reason = evidenceBundleDiagnostic(entry, expectation);
+    const reason = evidenceVisitDiagnostic(entry, visit) ?? evidenceBundleDiagnostic(entry, expectation, visit.enteredAt);
     if (!reason) continue;
     diagnostics.push({
       expectation_id: expectation.id,
@@ -153,18 +225,14 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
 
   // Superseded entries stay in the manifest for audit but no longer drive
   // gate outcomes: replacing failing evidence is how a route-back recovers.
-  const enteredAt = (state.transitions ?? [])
-    .filter((transition: any) => transition?.to_step === gate.step && typeof transition?.at === "string")
-    .map((transition: any) => Date.parse(transition.at))
-    .filter((value: number) => Number.isFinite(value))
-    .sort((left: number, right: number) => left - right)
-    .at(-1);
-  const evidence = attachedEvidenceFor(manifest, gateId).filter((entry) => {
-    if (entry.superseded_by) return false;
-    if (enteredAt === undefined || typeof entry.attached_at !== "string") return true;
-    const attachedAt = Date.parse(entry.attached_at);
-    return !Number.isFinite(attachedAt) || attachedAt >= enteredAt;
-  });
+  const visit = currentGateVisit(definition, state, gate.step);
+  const attachedEvidence = attachedEvidenceFor(manifest, gateId).filter((entry) => !entry.superseded_by);
+  // A failed attachment can never advance a pending revisit, but it must keep
+  // its established route reason and attempt accounting until re-entry occurs.
+  const evidence = attachedEvidence.filter((entry) => (
+    evidenceVisitDiagnostic(entry, visit) === null
+    || (entry.status === "failed" && visit.awaitingReentry)
+  ));
   const failed = evidence.filter((entry) => entry.status === "failed");
   if (failed.length) {
     const routeReason = routeReasonForFailedEvidence(failed[0]);
@@ -184,18 +252,23 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
   const claimDiagnostics: MutableRecord[] = [];
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
-    const match = evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config));
+    const match = visit.revisited && (visit.awaitingReentry || visit.enteredAt === null)
+      ? undefined
+      : evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config, visit.enteredAt));
     if (match) {
       matched.push({ expectation_id: expectation.id, evidence_id: match.id });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(evidence, expectationWithGate, config));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit));
     } else {
       missingOptional.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(evidence, expectationWithGate, config));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit));
     }
   }
   const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics } : undefined;
+  const outcomeEvidenceRefs = evidence.length
+    ? evidence.map((entry) => entry.id)
+    : [...new Set(claimDiagnostics.map((diagnostic) => diagnostic.evidence_id).filter(Boolean))];
 
   if (missingRequired.length) {
     const first = expectations.find((expectation) => expectation.id === missingRequired[0]);
@@ -209,6 +282,7 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
         optional_missing: missingOptional,
         matched_expectations: matched,
         ...route,
+        evidence_refs: outcomeEvidenceRefs,
         ...(diagnosticPayload ? { diagnostics: { ...(route.diagnostics ?? {}), ...diagnosticPayload } } : {})
       };
     }
@@ -220,7 +294,7 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
       optional_missing: missingOptional,
       matched_expectations: matched,
       ...(diagnosticPayload ? { diagnostics: diagnosticPayload } : {}),
-      evidence_refs: evidence.map((entry) => entry.id)
+      evidence_refs: outcomeEvidenceRefs
     };
   }
 

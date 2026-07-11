@@ -112,6 +112,19 @@ test("re-derive yields verified at T0 and stale at T1 (live, not cached)", () =>
   assert.equal(t1Transitions[0].to, "stale");
 });
 
+test("unsupported leap seconds clear cached reports and preserve the raw bundle", () => {
+  const manifest = freshnessBearingManifest();
+  const leapSecond = "2016-12-31t23:59:60.000z";
+  reDeriveBundleReports(manifest, new Date(T0));
+  assert.equal(statusOf(manifest), "verified", "the valid bundle starts with a cached report");
+
+  manifest.evidence[0].bundle.claims[0].expiresAt = leapSecond;
+  const transitions = reDeriveBundleReports(manifest, new Date(T1));
+  assert.equal(manifest.evidence[0].bundle_report, null, "an unsupported leap second cannot leave an accepted cached report");
+  assert.equal(manifest.evidence[0].bundle.claims[0].expiresAt, leapSecond, "raw leap-second input remains unchanged");
+  assert.deepEqual(transitions, []);
+});
+
 test("inquiry records pin statusFunctionVersion and an asOf", () => {
   const manifest = freshnessBearingManifest();
   reDeriveBundleReports(manifest, new Date(T0));

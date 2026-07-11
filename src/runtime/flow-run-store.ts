@@ -36,6 +36,7 @@ import { validateEvaluationTransition } from "../transition/flow-evaluation-tran
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
+import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 import {
@@ -589,9 +590,10 @@ export async function sha256File(file) {
  */
 export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report: any } {
   if (!isObject(raw)) throw new Error("trust bundle must be a JSON object");
+  const surfaceBundle = surfaceTimestampValidationView(raw);
 
   // JSON Schema validation via Hachure
-  const schemaResult = validateTrustBundleSchema(raw);
+  const schemaResult = validateTrustBundleSchema(surfaceBundle);
   if (!schemaResult.valid) {
     throw new Error(`trust bundle does not conform to Hachure schema: ${schemaResult.errors.slice(0, 3).join("; ")}`);
   }
@@ -599,7 +601,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
   // Surface structural validation + status derivation
   let bundle: any;
   try {
-    bundle = validateTrustBundle(raw);
+    bundle = validateTrustBundle(surfaceBundle);
   } catch (err: any) {
     throw new Error(`trust bundle validation failed: ${err?.message ?? String(err)}`);
   }
@@ -611,7 +613,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
     throw new Error(`trust bundle status derivation failed: ${err?.message ?? String(err)}`);
   }
 
-  return { bundle, bundle_report };
+  return { bundle: raw, bundle_report };
 }
 
 export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
@@ -726,8 +728,9 @@ export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[]
     if (!entry.bundle) continue;
     let validated: any;
     try {
-      validated = validateTrustBundle(entry.bundle);
+      validated = validateTrustBundle(surfaceTimestampValidationView(entry.bundle));
     } catch {
+      entry.bundle_report = null;
       continue; // leave invalid bundles for the gate diagnostics to report
     }
     const priorRecords: any[] = Array.isArray(entry.inquiry_records) ? entry.inquiry_records : [];
