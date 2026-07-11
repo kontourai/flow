@@ -13,6 +13,7 @@ import {
   descendantsOf,
   invalidateDescendants,
   applyEvaluation,
+  evaluateGate,
   routeBackAttempt,
   FLOW_SCHEMA_VERSION
 } from "../../dist/index.js";
@@ -208,4 +209,30 @@ test("applyEvaluation route-back: preserves attempt counting across the cascade"
     toStep: "plan"
   });
   assert.equal(nextAttempt, 2);
+});
+
+test("evaluateGate scopes evidence to the latest visit while retaining prior evidence for audit", () => {
+  const definition = diamondDefinition();
+  const state = passedState("verify", ["plan-gate", "build-gate", "docs-gate"]);
+  state.transitions.push({
+    from_step: "build",
+    to_step: "verify",
+    status: "allowed",
+    reason: "corrected implementation re-entered verification",
+    at: "2026-01-02T00:00:00.000Z",
+    gate_id: "build-gate"
+  });
+  const manifest = {
+    evidence: [
+      { id: "old-failure", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "failed", attached_at: "2026-01-01T12:00:00.000Z" },
+      { id: "current-observation", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "passed", attached_at: "2026-01-02T00:01:00.000Z" }
+    ]
+  };
+
+  const outcome = evaluateGate(definition, state, manifest, "verify-gate");
+  assert.equal(outcome.status, "wait", "the old failure no longer governs the new visit");
+  assert.equal(manifest.evidence.length, 2, "historical failed evidence remains auditable");
+
+  manifest.evidence.push({ id: "current-failure", gate_id: "verify-gate", kind: "file", requested_kind: "file", status: "failed", attached_at: "2026-01-02T00:02:00.000Z" });
+  assert.equal(evaluateGate(definition, state, manifest, "verify-gate").status, "route-back", "a failure from the current visit still governs the gate");
 });

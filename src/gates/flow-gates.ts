@@ -153,7 +153,18 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
 
   // Superseded entries stay in the manifest for audit but no longer drive
   // gate outcomes: replacing failing evidence is how a route-back recovers.
-  const evidence = attachedEvidenceFor(manifest, gateId).filter((entry) => !entry.superseded_by);
+  const enteredAt = (state.transitions ?? [])
+    .filter((transition: any) => transition?.to_step === gate.step && typeof transition?.at === "string")
+    .map((transition: any) => Date.parse(transition.at))
+    .filter((value: number) => Number.isFinite(value))
+    .sort((left: number, right: number) => left - right)
+    .at(-1);
+  const evidence = attachedEvidenceFor(manifest, gateId).filter((entry) => {
+    if (entry.superseded_by) return false;
+    if (enteredAt === undefined || typeof entry.attached_at !== "string") return true;
+    const attachedAt = Date.parse(entry.attached_at);
+    return !Number.isFinite(attachedAt) || attachedAt >= enteredAt;
+  });
   const failed = evidence.filter((entry) => entry.status === "failed");
   if (failed.length) {
     const routeReason = routeReasonForFailedEvidence(failed[0]);
