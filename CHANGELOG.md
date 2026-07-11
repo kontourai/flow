@@ -10,6 +10,13 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.1.3](https://github.com/kontourai/flow/compare/v3.1.2...v3.1.3) (2026-07-11)
+
+
+### Fixes
+
+* require current claims after gate re-entry ([#126](https://github.com/kontourai/flow/issues/126)) ([d7b2446](https://github.com/kontourai/flow/commit/d7b2446f8bac547b06eebc0c52e11cc94d69b3ce))
+
 ## [3.1.2](https://github.com/kontourai/flow/compare/v3.1.1...v3.1.2) (2026-07-11)
 
 
