@@ -18,6 +18,16 @@ When a gate passes, Flow advances to the step's `next` value. When a gate blocks
 
 How `trust.bundle` expectations are matched (claim type, subject, status, freshness, producer trust, integrity) is covered in [Evidence](evidence.md).
 
+### Freshness after advancement
+
+Every `evaluateRun` re-derives attached trust bundles before evaluating gates. If that re-derivation marks a claim stale after its gate has already passed, Flow identifies the passed gate itself and evaluates it before the current gate when all of the following are true:
+
+- the changed bundle is evidence selected by that passed gate outcome (with legacy outcomes falling back to their recorded evidence refs);
+- the changed claim still matches one of that gate's `trust.bundle` selectors; and
+- the gate's step is a strict upstream dependency of the current cursor in the authored Flow graph.
+
+The resulting outcome uses the gate's ordinary route-back policy and preserves its evidence refs in the audit transition. A route-back invalidates all graph descendants through the normal cascade. A stale claim in unrelated evidence, or in a sibling branch, does not route the run back; normal current-gate evaluation continues. Flow does not depend on agent or product-specific step ids for this behavior.
+
 ## Exceptions
 
 An accepted exception lets a gate pass without its expected evidence — explicitly, and on the record:

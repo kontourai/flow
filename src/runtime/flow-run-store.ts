@@ -29,9 +29,11 @@ import {
   initialState,
   normalizeRunStateLifecycle,
   openGates,
+  descendantsOf,
+  invalidateDescendants,
   validateDefinition
 } from "../definition/flow-definition.js";
-import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGate, expectationsForGate } from "../gates/flow-gates.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
@@ -753,6 +755,57 @@ export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[]
   return transitions;
 }
 
+function claimMatchesSelector(claim: any, selector: any) {
+  return claim?.claimType === selector?.claimType
+    && (!selector.subjectType || claim.subjectType === selector.subjectType)
+    && (!selector.subjectId || claim.subjectId === selector.subjectId);
+}
+
+function evidenceWasSelected(outcome: any, evidenceId: string) {
+  const matchedEvidenceRefs = (outcome.matched_expectations ?? [])
+    .map((match: any) => match.evidence_id)
+    .filter(Boolean);
+  return (matchedEvidenceRefs.length ? matchedEvidenceRefs : outcome.evidence_refs ?? []).includes(evidenceId);
+}
+
+function staleGateRechecks(definition: any, state: any, manifest: any, freshnessTransitions: MutableRecord[], config: MutableRecord) {
+  const evidenceById = new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+  const passedOutcomes = new Map<string, any>(
+    (state.gate_outcomes ?? [])
+      .filter((outcome: any) => outcome.status === "pass")
+      .map((outcome: any): [string, any] => [outcome.gate_id, outcome])
+  );
+  const candidates = new Map<string, MutableRecord>();
+
+  for (const transition of [...(state.pending_gate_rechecks ?? []), ...freshnessTransitions]) {
+    if (transition.to !== "stale") continue;
+    const entry = evidenceById.get(transition.evidence_id);
+    const gateId = entry?.gate_id;
+    const passedOutcome = passedOutcomes.get(gateId);
+    if (!gateId || !passedOutcome || !evidenceWasSelected(passedOutcome, entry.id)) continue;
+
+    const gate = findGate(definition, gateId);
+    if (!gate) continue;
+
+    const selectedClaim = entry.bundle_report?.claims?.find((claim: any) => claim.id === transition.claimId);
+    const affectsExpectation = expectationsForGate(gate, config).some((expectation: any) => (
+      expectation.kind === "trust.bundle"
+      && claimMatchesSelector(selectedClaim, expectation.bundle_claim ?? expectation.claim)
+    ));
+    if (!affectsExpectation) continue;
+    const key = `${gate.id}\u0000${transition.evidence_id}\u0000${transition.claimId}`;
+    candidates.set(key, {
+      gate_id: gate.id,
+      evidence_id: transition.evidence_id,
+      claimId: transition.claimId,
+      from: transition.from,
+      to: transition.to
+    });
+  }
+
+  return [...candidates.values()];
+}
+
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("evaluate", run.state.status);
@@ -762,23 +815,69 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   // downstream stale passes for free.
   const now = options.now ? new Date(options.now) : new Date();
   const freshnessTransitions = reDeriveBundleReports(run.manifest, now);
-  const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
-  if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
   const outcomes: GateOutcome[] = [];
-  for (const gate of gates) {
+
+  // A passed ancestor may become stale after the cursor has advanced. Queue
+  // every affected gate before handling one route-back so simultaneous stale
+  // branches are not lost when the first route changes the cursor.
+  const pendingRechecks = staleGateRechecks(run.definition, run.state, run.manifest, freshnessTransitions, run.config);
+  run.state.pending_gate_rechecks = pendingRechecks;
+  const pendingByGate = new Map<string, MutableRecord[]>();
+  for (const recheck of pendingRechecks) {
+    const records = pendingByGate.get(recheck.gate_id) ?? [];
+    records.push(recheck);
+    pendingByGate.set(recheck.gate_id, records);
+  }
+  for (const gateId of Object.keys(run.definition.gates ?? {})) {
+    const rechecks = pendingByGate.get(gateId);
+    if (!rechecks?.length) continue;
+    const gate = findGate(run.definition, gateId);
+    if (!gate || !descendantsOf(run.definition, gate.step).includes(run.state.current_step)) continue;
     const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
-    const validationState = options.gate && gate.step !== run.state.current_step
-      ? { ...run.state, current_step: gate.step }
-      : run.state;
-    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config);
+    run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
+    if (outcome.status === "pass") continue;
+    outcome.freshness_transitions = rechecks;
+    const validationState = { ...run.state, current_step: gate.step };
+    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
     if (transitionValidation.status === "invalid") {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
     }
     outcome.transition_validation = transitionValidation;
-    applyEvaluation(run.definition, run.state, outcome);
+    if (outcome.status === "block") {
+      const invalidated = invalidateDescendants(run.definition, run.state, gate.step);
+      run.state.current_step = gate.step;
+      outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
+    }
+    applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+    const stillPassed = new Set(
+      (run.state.gate_outcomes ?? [])
+        .filter((entry: any) => entry.status === "pass")
+        .map((entry: any) => entry.gate_id)
+    );
+    run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => stillPassed.has(entry.gate_id));
     outcomes.push(outcome);
-    if (outcome.status !== "pass") break;
+    break;
+  }
+
+  if (!outcomes.length) {
+    const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
+    if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
+    for (const gate of gates) {
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+      const validationState = options.gate && gate.step !== run.state.current_step
+        ? { ...run.state, current_step: gate.step }
+        : run.state;
+      const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
+      if (transitionValidation.status === "invalid") {
+        const first = transitionValidation.diagnostics[0];
+        throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
+      }
+      outcome.transition_validation = transitionValidation;
+      applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+      outcomes.push(outcome);
+      if (outcome.status !== "pass") break;
+    }
   }
   await saveRun(run);
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
