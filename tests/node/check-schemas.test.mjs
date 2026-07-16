@@ -8,6 +8,7 @@ test("schemas describe the runtime contract", async () => {
   const definitionSchema = await json("schemas/flow-definition.schema.json");
   const runSchema = await json("schemas/flow-run.schema.json");
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
+  const commandEvidenceSchema = await json("schemas/command-evidence.schema.json");
   const reportSchema = await json("schemas/flow-report.schema.json");
   const configSchema = await json("schemas/flow-config.schema.json");
   const configMergeReportSchema = await json("schemas/flow-config-merge-report.schema.json");
@@ -55,6 +56,15 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(runSchema.allOf[0].then.properties.lifecycle.minItems, 1);
   assert.deepEqual(runSchema.$defs.lifecycle_event.properties.prior_status.enum, ["active", "blocked", "needs_decision"]);
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(commandEvidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.deepEqual(commandEvidenceSchema.properties.command.items, { type: "string" });
+  assert.equal(commandEvidenceSchema.properties.exit_code.type[1], "null");
+  assert.equal(commandEvidenceSchema.properties.stdout.$ref, "#/$defs/output");
+  assert.equal(commandEvidenceSchema.properties.stderr.$ref, "#/$defs/output");
+  assert.equal(commandEvidenceSchema.properties.duration_ms.minimum, 0);
+  assert.equal(commandEvidenceSchema.properties.output_sha256.pattern, "^[a-f0-9]{64}$");
+  requireSchemaFields(commandEvidenceSchema, ["schema_version", "command", "exit_code", "stdout", "stderr", "duration_ms", "output_sha256"]);
+  requireSchemaDefFields(commandEvidenceSchema, "output", ["content", "byte_count", "captured_byte_count", "truncated"]);
   assert.match(evidenceSchema.description, /\.kontourai\/flow\/runs\/<run-id>\/evidence\/manifest\.json/);
   assert.match(evidenceSchema.description, /standalone scenario manifests may omit/);
   assert.match(evidenceSchema.description, /not an authored Resource Contract/);

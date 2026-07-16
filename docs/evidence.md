@@ -20,6 +20,20 @@ Unknown kinds are accepted as `custom` and stored with the originally requested 
 
 Every attached file is **copied** into `.kontourai/flow/runs/<run-id>/evidence/` and indexed in `evidence/manifest.json` (shape: `schemas/gate-evidence.schema.json`). The run directory stays self-contained: links don't rot, and later edits to the original file don't silently change the record. Runtime commands do not attach to `.flow/runs/`.
 
+For command output, `flow capture` is an optional convenience over preparing a
+file yourself:
+
+```sh
+flow capture dev-1847 --gate verify-gate --kind command -- npm test
+```
+
+It runs only at capture time, writes a canonical receipt described by
+`schemas/command-evidence.schema.json`, and passes that file through the same
+`attach-evidence` copy and hashing path. The receipt includes the exact argument
+vector, exit code, stdout and stderr, duration, truncation details, and output
+hash. Status comes from the exit code. Gate evaluation stays passive and never
+runs commands.
+
 ## Gate expectations
 
 Gates declare what they expect *before* work runs, as typed `expects` entries. Claim-backed expectations use `kind: "trust.bundle"` with a `bundle_claim` selector:
@@ -150,4 +164,6 @@ For nested metadata, pass `--route-metadata ./route-metadata.json` with any of `
 
 To recover after failed evidence routed work back, attach the replacement with `--supersede <evidence-id>`: the failed entry stays in the manifest for audit but no longer drives the gate.
 
-The v0.1 CLI attaches evidence from files. Richer adapters — CI jobs, agent harness hooks, release tooling — can write the same manifest shape directly through the [library API](library.md).
+The CLI attaches evidence from files; `flow capture` first creates such a file
+for a declared command. Richer adapters — CI jobs, agent harness hooks, release
+tooling — can write the same manifest shape directly through the [library API](library.md).

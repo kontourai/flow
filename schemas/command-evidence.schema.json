@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/command-evidence.schema.json",
+  "title": "Command Evidence",
+  "description": "Canonical command receipt written by flow capture before it is attached to a Flow Run as ordinary command evidence.",
+  "type": "object",
+  "required": ["schema_version", "command", "cwd", "started_at", "exit_code", "signal", "timed_out", "duration_ms", "stdout", "stderr", "output_sha256"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "0.1" },
+    "command": {
+      "type": "array",
+      "description": "The exact executable and argument vector passed without a shell.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "cwd": { "type": "string", "minLength": 1 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "exit_code": { "type": ["integer", "null"] },
+    "signal": { "type": ["string", "null"] },
+    "timed_out": { "type": "boolean" },
+    "duration_ms": { "type": "number", "minimum": 0 },
+    "stdout": { "$ref": "#/$defs/output" },
+    "stderr": { "$ref": "#/$defs/output" },
+    "output_sha256": {
+      "type": "string",
+      "description": "SHA-256 of the recorded stdout content followed by the recorded stderr content.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "error": { "type": "string" }
+  },
+  "$defs": {
+    "output": {
+      "type": "object",
+      "required": ["content", "byte_count", "captured_byte_count", "truncated"],
+      "additionalProperties": false,
+      "properties": {
+        "content": { "type": "string" },
+        "byte_count": { "type": "integer", "minimum": 0 },
+        "captured_byte_count": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  }
+}
