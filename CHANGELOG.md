@@ -10,6 +10,18 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.2.0](https://github.com/kontourai/flow/compare/v3.1.4...v3.2.0) (2026-07-16)
+
+
+### Features
+
+* **cli:** capture command output as gate evidence ([#137](https://github.com/kontourai/flow/issues/137)) ([b4fbcde](https://github.com/kontourai/flow/commit/b4fbcde5278a2d58119fb50ee856d1d9c6b2616a)), closes [#134](https://github.com/kontourai/flow/issues/134)
+
+
+### Documentation
+
+* update trust-bundle-evidence hachure refs to 0.14.0 ([#133](https://github.com/kontourai/flow/issues/133)) ([d057382](https://github.com/kontourai/flow/commit/d057382111a4ddb0678e3405135996f4b7d6dadc))
+
 ## [3.1.4](https://github.com/kontourai/flow/compare/v3.1.3...v3.1.4) (2026-07-11)
 
 
