@@ -8,6 +8,7 @@ import {
   cancelRun,
   ensureFlowLayout,
   evaluateRun,
+  findGate,
   loadRun,
   previewFlowConfigMergeFile,
   projectVersionReleaseReport,
@@ -32,6 +33,7 @@ import { listRunsWithDiagnostics } from "./runtime/flow-run-store.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 import { kitInstall, kitInspect } from "./kit/kit-operations.js";
+import { COMMAND_CAPTURE_DEFAULT_TIMEOUT_MS, captureCommand } from "./runtime/command-evidence.js";
 
 type CliFlags = Record<string, any>;
 
@@ -49,6 +51,7 @@ function usage() {
   flow resume-run <run-id> --request <request-json> [--cwd <path>]
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
@@ -96,6 +99,26 @@ function parseArgs(argv: string[]) {
     }
   }
   return { args, flags };
+}
+
+function parseCaptureArgs(argv: string[]) {
+  const separator = argv.indexOf("--");
+  if (separator === -1) throw new Error("flow capture requires -- before the command");
+  const parsed = parseArgs(argv.slice(0, separator));
+  return { ...parsed, captureCommand: argv.slice(separator + 1) };
+}
+
+function parseCaptureTimeout(value: unknown) {
+  if (value === undefined) return COMMAND_CAPTURE_DEFAULT_TIMEOUT_MS;
+  const timeout = Number(value);
+  if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new Error("--timeout must be a positive integer in milliseconds");
+  return timeout;
+}
+
+function validateCaptureScalarFlags(flags: CliFlags) {
+  for (const key of ["cwd", "gate", "kind", "timeout"]) {
+    if (flags[key] === true) throw new Error(`--${key} requires a value`);
+  }
 }
 
 function parseParams(values: string[] = []) {
@@ -257,7 +280,10 @@ async function main() {
     return;
   }
 
-  const { args, flags } = parseArgs(rest);
+  const { args, flags, captureCommand: captureArgv = [] } = command === "capture"
+    ? parseCaptureArgs(rest)
+    : { ...parseArgs(rest), captureCommand: [] };
+  if (command === "capture") validateCaptureScalarFlags(flags);
   const cwd = resolveCliCwd(flags);
 
   if (command === "init") {
@@ -441,6 +467,43 @@ async function main() {
     console.log(`attached evidence: ${entry.id}`);
     console.log(`gate: ${entry.gate_id}`);
     console.log(`kind: ${entry.kind}`);
+    return;
+  }
+
+  if (command === "capture") {
+    const runId = requireArg(args[0], "flow capture requires a run id");
+    const gate = requireArg(flags.gate, "--gate is required");
+    const kind = requireArg(flags.kind, "--kind is required");
+    if (kind !== "command") throw new Error("flow capture supports only --kind command");
+    if (!captureArgv.length) throw new Error("flow capture requires a command after --");
+    const run = await loadRun(runId, cwd);
+    if (!findGate(run.definition, gate)) throw new Error(`unknown gate: ${gate}`);
+    const captured = await captureCommand(captureArgv, { cwd, timeoutMs: parseCaptureTimeout(flags.timeout) });
+    let entry;
+    try {
+      const status = captured.receipt.exit_code === 0 ? "passed" : "failed";
+      entry = await attachEvidence(runId, {
+        cwd,
+        gate,
+        file: captured.receiptPath,
+        kind: "command",
+        status
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${detail}\ncaptured receipt preserved: ${captured.receiptPath}`);
+    }
+    await captured.cleanup();
+    console.log(`attached evidence: ${entry.id}`);
+    console.log(`gate: ${entry.gate_id}`);
+    console.log(`kind: ${entry.kind}`);
+    console.log(`status: ${entry.status}`);
+    console.log(`exit code: ${captured.receipt.exit_code ?? "none"}`);
+    if (captured.receipt.exit_code !== 0) {
+      process.exitCode = captured.receipt.exit_code && captured.receipt.exit_code > 0
+        ? captured.receipt.exit_code
+        : 1;
+    }
     return;
   }
 

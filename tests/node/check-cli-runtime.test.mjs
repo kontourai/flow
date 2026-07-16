@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { access, constants, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, constants, mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -25,6 +26,7 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.match(help.stdout, /flow pause <run-id> --request <request-json>/);
   assert.match(help.stdout, /flow resume-run <run-id> --request <request-json>/);
   assert.match(help.stdout, /flow cancel <run-id> --request <request-json>/);
+  assert.match(help.stdout, /flow capture <run-id> --gate <gate> --kind command .* -- <cmd\.\.\.>/);
 
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/agent-dev-flow.json", "--json"], {
     cwd: repoRootUrl
@@ -39,6 +41,360 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.pauseRun, "function");
   assert.equal(typeof runtime.resumeRun, "function");
   assert.equal(typeof runtime.cancelRun, "function");
+});
+
+test("CLI capture attaches command receipts with exit-derived status and renders reports", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-cli";
+  const evidenceDir = path.join(cwd, ".kontourai", "flow", "runs", runId, "evidence");
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+
+  const passed = await execFile(process.execPath, [
+    cliPath,
+    "capture",
+    runId,
+    "--gate",
+    "plan-gate",
+    "--kind",
+    "command",
+    "--cwd",
+    cwd,
+    "--",
+    process.execPath,
+    "-e",
+    "process.stdout.write('tests: 4 passed\\n'); process.stderr.write('duration: 12ms\\n')"
+  ]);
+  assert.match(passed.stdout, /attached evidence: ev\./);
+  assert.match(passed.stdout, /status: passed/);
+
+  let failedOutput;
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath,
+      "capture",
+      runId,
+      "--gate",
+      "plan-gate",
+      "--kind",
+      "command",
+      "--cwd",
+      cwd,
+      "--",
+      process.execPath,
+      "-e",
+      "process.stdout.write('partial output\\n'); process.stderr.write('test failed\\n'); process.exit(7)"
+    ]),
+    (error) => {
+      assert.equal(error.code, 7);
+      failedOutput = error.stdout;
+      return true;
+    }
+  );
+  assert.match(failedOutput, /status: failed/);
+  assert.match(failedOutput, /exit code: 7/);
+
+  const manifest = JSON.parse(await readFile(path.join(evidenceDir, "manifest.json"), "utf8"));
+  assert.equal(manifest.evidence.length, 2);
+  assert.deepEqual(manifest.evidence.map((entry) => entry.status), ["passed", "failed"]);
+  assert.ok(manifest.evidence.every((entry) => entry.kind === "command"));
+
+  const receipt = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", runId, manifest.evidence[1].stored_path), "utf8"));
+  assert.equal(receipt.schema_version, "0.1");
+  assert.deepEqual(receipt.command, [process.execPath, "-e", "process.stdout.write('partial output\\n'); process.stderr.write('test failed\\n'); process.exit(7)"]);
+  assert.equal(receipt.exit_code, 7);
+  assert.equal(receipt.stdout.content, "partial output\n");
+  assert.equal(receipt.stderr.content, "test failed\n");
+  assert.equal(receipt.stdout.truncated, false);
+  assert.equal(receipt.stderr.truncated, false);
+  assert.ok(receipt.duration_ms >= 0);
+  assert.equal(
+    receipt.output_sha256,
+    createHash("sha256").update(receipt.stdout.content).update(receipt.stderr.content).digest("hex")
+  );
+  assert.equal(manifest.evidence[1].sha256, createHash("sha256").update(await readFile(path.join(cwd, ".kontourai", "flow", "runs", runId, manifest.evidence[1].stored_path))).digest("hex"));
+
+  const report = await readFile(path.join(cwd, ".kontourai", "flow", "runs", runId, "report.md"), "utf8");
+  assert.match(report, new RegExp(`${manifest.evidence[1].id}: command for plan-gate`));
+
+  const marker = path.join(cwd, "evaluate-must-not-run-command");
+  await execFile(process.execPath, [
+    cliPath,
+    "capture",
+    runId,
+    "--gate",
+    "plan-gate",
+    "--kind",
+    "command",
+    "--cwd",
+    cwd,
+    "--",
+    process.execPath,
+    "-e",
+    "require('node:fs').writeFileSync('evaluate-must-not-run-command', 'ran')"
+  ]);
+  await unlink(marker);
+  await execFile(process.execPath, [cliPath, "evaluate", runId, "--gate", "plan-gate", "--cwd", cwd]);
+  await assert.rejects(access(marker), { code: "ENOENT" });
+});
+
+test("CLI capture bounds output and attaches timed-out commands as failed evidence", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-limits-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-limits";
+  const runDir = path.join(cwd, ".kontourai", "flow", "runs", runId);
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+
+  await execFile(process.execPath, [
+    cliPath,
+    "capture",
+    runId,
+    "--gate",
+    "plan-gate",
+    "--kind",
+    "command",
+    "--cwd",
+    cwd,
+    "--",
+    process.execPath,
+    "-e",
+    "process.stdout.write('o'.repeat(700000)); process.stderr.write('e'.repeat(700000))"
+  ]);
+
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath,
+      "capture",
+      runId,
+      "--gate",
+      "plan-gate",
+      "--kind",
+      "command",
+      "--timeout",
+      "25",
+      "--cwd",
+      cwd,
+      "--",
+      process.execPath,
+      "-e",
+      "setInterval(() => {}, 1000)"
+    ]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /status: failed/);
+      return true;
+    }
+  );
+
+  const manifest = JSON.parse(await readFile(path.join(runDir, "evidence", "manifest.json"), "utf8"));
+  const bounded = JSON.parse(await readFile(path.join(runDir, manifest.evidence[0].stored_path), "utf8"));
+  assert.equal(bounded.stdout.truncated, true);
+  assert.equal(bounded.stderr.truncated, true);
+  assert.ok(bounded.stdout.captured_byte_count + bounded.stderr.captured_byte_count <= 1024 * 1024);
+  const timedOut = JSON.parse(await readFile(path.join(runDir, manifest.evidence[1].stored_path), "utf8"));
+  assert.equal(manifest.evidence[1].status, "failed");
+  assert.equal(timedOut.exit_code, null);
+  assert.equal(timedOut.timed_out, true);
+});
+
+test("CLI capture validates the run and gate before executing a command", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-prevalidate-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const marker = path.join(cwd, "must-not-execute");
+  const command = [process.execPath, "-e", "require('node:fs').writeFileSync('must-not-execute', 'ran')"];
+
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath, "capture", "missing-run", "--gate", "plan-gate", "--kind", "command", "--cwd", cwd, "--", ...command
+    ]),
+    (error) => {
+      assert.match(error.stderr, /flow\.run_location\.not_found/);
+      return true;
+    }
+  );
+  await assert.rejects(access(marker), { code: "ENOENT" });
+
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", "capture-prevalidate", "--cwd", cwd]);
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath, "capture", "capture-prevalidate", "--gate", "missing-gate", "--kind", "command", "--cwd", cwd, "--", ...command
+    ]),
+    (error) => {
+      assert.match(error.stderr, /unknown gate: missing-gate/);
+      return true;
+    }
+  );
+  await assert.rejects(access(marker), { code: "ENOENT" });
+});
+
+test("CLI capture rejects valueless scalar flags without attaching evidence", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-flags-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-flags";
+  const marker = path.join(cwd, "must-not-execute");
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath,
+      "capture",
+      runId,
+      "--gate",
+      "plan-gate",
+      "--kind",
+      "command",
+      "--cwd",
+      cwd,
+      "--timeout",
+      "--",
+      process.execPath,
+      "-e",
+      "require('node:fs').writeFileSync('must-not-execute', 'ran')"
+    ]),
+    (error) => {
+      assert.match(error.stderr, /--timeout requires a value/);
+      return true;
+    }
+  );
+  await assert.rejects(access(marker), { code: "ENOENT" });
+
+  for (const args of [
+    ["--gate", "plan-gate", "--kind"],
+    ["--gate", "plan-gate", "--kind", "command", "--cwd"]
+  ]) {
+    const flag = args.at(-1);
+    await assert.rejects(
+      execFile(process.execPath, [
+        cliPath,
+        "capture",
+        runId,
+        ...args,
+        "--",
+        process.execPath,
+        "-e",
+        "require('node:fs').writeFileSync('must-not-execute', 'ran')"
+      ], { cwd }),
+      (error) => {
+        assert.match(error.stderr, new RegExp(`${flag} requires a value`));
+        return true;
+      }
+    );
+  }
+  await assert.rejects(access(marker), { code: "ENOENT" });
+  const manifest = JSON.parse(await readFile(path.join(cwd, ".kontourai", "flow", "runs", runId, "evidence", "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.evidence, []);
+});
+
+test("CLI capture preserves and reports the receipt when attachment fails after execution", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-preserve-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-preserve";
+  const requestPath = path.join(cwd, "pause.json");
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+  await writeFile(requestPath, `${JSON.stringify({
+    reason: "Exercise post-execution attachment failure",
+    authority: {
+      kind: "user_request",
+      actor: "user:test",
+      request_ref: "request:capture-preserve",
+      requested_at: "2026-07-16T12:00:00.000Z"
+    }
+  })}\n`);
+  await execFile(process.execPath, [cliPath, "pause", runId, "--request", requestPath, "--cwd", cwd]);
+
+  let receiptPath;
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--cwd", cwd, "--", process.execPath, "-e", "process.stdout.write('completed work\\n')"
+    ]),
+    (error) => {
+      assert.match(error.stderr, /flow\.lifecycle\./);
+      receiptPath = error.stderr.match(/captured receipt preserved: (.+)/)?.[1]?.trim();
+      assert.ok(receiptPath, "attachment failure prints the preserved receipt path");
+      return true;
+    }
+  );
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  assert.equal(receipt.exit_code, 0);
+  assert.equal(receipt.stdout.content, "completed work\n");
+});
+
+test("CLI capture escalates a SIGTERM-trapping command to SIGKILL within the timeout bound", { timeout: 10000 }, async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-escalate-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-escalate";
+  const runDir = path.join(cwd, ".kontourai", "flow", "runs", runId);
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+
+  const started = Date.now();
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath,
+      "capture",
+      runId,
+      "--gate",
+      "plan-gate",
+      "--kind",
+      "command",
+      "--timeout",
+      "500",
+      "--cwd",
+      cwd,
+      "--",
+      process.execPath,
+      "-e",
+      "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"
+    ], { timeout: 8000 }),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /status: failed/);
+      return true;
+    }
+  );
+  assert.ok(Date.now() - started < 7500, "capture returns within timeout, grace period, and margin");
+
+  const manifest = JSON.parse(await readFile(path.join(runDir, "evidence", "manifest.json"), "utf8"));
+  const receipt = JSON.parse(await readFile(path.join(runDir, manifest.evidence[0].stored_path), "utf8"));
+  assert.equal(manifest.evidence[0].status, "failed");
+  assert.equal(receipt.timed_out, true);
+  assert.equal(receipt.exit_code, null);
+  assert.equal(receipt.signal, "SIGKILL");
+});
+
+test("CLI capture timeout kills SIGTERM-trapping descendants in the command process group", { skip: process.platform === "win32", timeout: 10000 }, async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-group-"));
+  const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+  const runId = "capture-group";
+  const childScript = path.join(cwd, "grandchild.cjs");
+  const parentScript = path.join(cwd, "parent.cjs");
+  await writeFile(childScript, "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\n");
+  await writeFile(parentScript, [
+    "const { spawn } = require('node:child_process');",
+    "const { writeFileSync } = require('node:fs');",
+    "process.on('SIGTERM', () => {});",
+    `const child = spawn(process.execPath, [${JSON.stringify(childScript)}], { stdio: 'ignore' });`,
+    "writeFileSync('grandchild.pid', String(child.pid));",
+    "setInterval(() => {}, 1000);",
+    ""
+  ].join("\n"));
+  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+
+  await assert.rejects(execFile(process.execPath, [
+    cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd, "--", process.execPath, parentScript
+  ], { timeout: 8000 }));
+  const grandchildPid = Number(await readFile(path.join(cwd, "grandchild.pid"), "utf8"));
+  const deadline = Date.now() + 1000;
+  let alive = true;
+  while (alive && Date.now() < deadline) {
+    try {
+      process.kill(grandchildPid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+      alive = false;
+    }
+  }
+  assert.equal(alive, false, "grandchild is no longer alive after process-group escalation");
 });
 
 test("CLI lifecycle commands require structured authority and preserve read-only resume", async () => {

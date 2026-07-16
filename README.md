@@ -96,7 +96,7 @@ Real teams use Flow for agentic development gates, regulated release decisions, 
 
 1. **Author a Flow Definition** — JSON describing steps, gates, typed evidence expectations, and route-back policy. Validate it with `flow validate-definition`.
 2. **Start a Flow Run** — `flow start` snapshots the definition and creates authoritative run state under `.kontourai/flow/runs/<run-id>/`.
-3. **Attach evidence** — test output, CI results, trust reports, human attestations. Files are copied into the run; nothing is synthesized.
+3. **Attach evidence** — test output, CI results, trust reports, human attestations. Files are copied into the run; `flow capture` can optionally create an exact command receipt first.
 4. **Evaluate gates** — `flow evaluate` passes, blocks, routes back, or waits. Accepted exceptions are first-class, recorded with reason and authority.
 5. **Report and resume** — `report.md` / `report.json` explain the run; `flow resume` gives the next agent everything it needs without chat memory.
 
@@ -119,6 +119,7 @@ flow validate-definition <path>    validate a Flow Definition, with --json diagn
 flow start <definition>            start a run from a definition
 flow status <run-id>               summary, json, or markdown run status
 flow attach-evidence <run-id>      copy an evidence file onto a gate
+flow capture <run-id>              run a command and attach its captured receipt
 flow evaluate <run-id>             evaluate gates and advance, block, or route back
 flow accept-exception <run-id>     pass a gate by explicit, attributed exception
 flow resume <run-id>               print continuation state for the next agent

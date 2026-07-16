@@ -222,6 +222,37 @@ Copies the file into the run's `evidence/` directory and records it in the manif
 - `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
 
+## flow capture
+
+```sh
+flow capture <run-id> --gate <gate> --kind command
+  [--timeout <ms>] [--cwd <path>] -- <cmd...>
+```
+
+Runs the executable and argument vector after `--` without a shell, writes a
+canonical command receipt, then attaches that completed file through the same
+immutable-copy path as `flow attach-evidence`. Exit code `0` attaches `passed`
+evidence; a nonzero exit, signal, launch error, or timeout attaches `failed`
+evidence. After attachment, `flow capture` returns the command's nonzero exit
+code (or `1` when no exit code exists).
+
+The default timeout is 600000 ms (10 minutes). The receipt records the exact
+argument vector, working directory, exit code or signal, duration, stdout,
+stderr, truncation metadata, and a SHA-256 content hash. On POSIX systems the
+command runs in its own process group; timeout sends the group `SIGTERM`, then
+escalates the group to `SIGKILL` after a 5-second grace period. Captured stdout and
+stderr share a 1 MiB budget; both streams receive space when both exceed the
+budget. The stdout/stderr spool files on disk are not bounded while the command
+runs; the 1 MiB limit is applied when Flow reads them back into the receipt.
+`output_sha256` hashes the UTF-8-decoded recorded content; binary output is
+lossily decoded, and truncation at a byte boundary can decode a split multibyte
+character as U+FFFD. Its public shape is
+`schemas/command-evidence.schema.json`.
+
+This is optional authoring convenience. Use `flow attach-evidence` when another
+tool already produced the evidence file. `flow evaluate` remains passive and
+never executes the recorded command.
+
 ## flow evaluate
 
 ```sh
