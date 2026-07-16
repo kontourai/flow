@@ -16,7 +16,7 @@ Flow 1.x wired gate expectations and evidence to `kind: "surface.claim"` — a p
 
 | Role | Package | What it is |
 |------|---------|------------|
-| **Format contract** | `hachure@0.9.0` | Open-format JSON Schemas for `TrustBundle`, `Claim`, `Evidence`, etc. + conformance test vectors + `statusFunctionVersion`. This is the neutral *schema* layer — no runtime behaviour, just the normative shape. |
+| **Format contract** | `hachure@0.14.0` | Open-format JSON Schemas for `TrustBundle`, `Claim`, `Evidence`, etc. + conformance test vectors + `statusFunctionVersion`. This is the neutral *schema* layer — no runtime behaviour, just the normative shape. |
 | **Implementation** | `@kontourai/surface@2.0.0` | `buildTrustReport(bundle): TrustReport` derives claim statuses from a bundle according to the Hachure status function. Also exports `TrustBundle` / `Claim` TypeScript types and `validateTrustBundle`. |
 
 Flow imports Hachure for schema validation and Surface for status derivation. Neither depends on a hosted service.
@@ -118,7 +118,7 @@ The JSON Schema validation uses the Hachure-exported `trust-bundle.schema.json` 
 1. Replace `kind: "surface.claim"` with `kind: "trust.bundle"` in gate definitions.
 2. Replace `claim: { type, subject, accepted_statuses }` with `bundle_claim: { claimType, subjectType, subjectId, accepted_statuses }`.
 3. Attach evidence as `--kind trust.bundle --bundle <path>` (or library `options.bundle`).
-4. The bundle file must conform to the Hachure `TrustBundle` schema (`schemaVersion` 5 exactly, per `hachure@0.9.0`; Flow writes `facet`, matching `@kontourai/surface@2.0.0`'s renamed `Claim.surface` field. Legacy schemaVersion 2-4 bundles are rejected at this Ajv conformance-schema layer -- `@kontourai/surface`'s read-tolerance shim only applies to its own `validateTrustBundle`/`buildTrustReport` functions, not Flow's gate-evaluation-time schema check).
+4. The bundle file must conform to the Hachure `TrustBundle` schema (Flow writes `schemaVersion` 5; `hachure@0.14.0` accepts 5–6; Flow writes `facet`, matching `@kontourai/surface@2.0.0`'s renamed `Claim.surface` field. Legacy schemaVersion 2-4 bundles are rejected at this Ajv conformance-schema layer -- `@kontourai/surface`'s read-tolerance shim only applies to its own `validateTrustBundle`/`buildTrustReport` functions, not Flow's gate-evaluation-time schema check).
 
 The old thin trust artifact shape (`schema_version: "0.1"`, `artifact_type: "trust-report"`) is no longer accepted.
 
