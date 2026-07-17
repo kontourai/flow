@@ -8,6 +8,7 @@ These files are published with `@kontourai/flow` so package users can inspect an
 - `builder-kit-flow.json` shows a Builder Kit-like required path represented as normal Flow steps and gates.
 - `adversarial-pass-flow.json` shows a produce, adversarial review, and resolve loop with route-back policy.
 - `flow-definition-resource-contract.json` shows the Resource Contract authoring shape for Flow Definitions.
+- `deploy-live-verify-flow.json` keeps a deploy run open until a production contract claim derives `verified` from live evidence.
 - `invalid-claim-expectation-flow.json` is a negative validation example for `flow validate-definition --json`.
 
 ## Project Config
@@ -20,6 +21,7 @@ Scenario directories are larger, package-visible examples that exercise a full l
 
 - `scenarios/console-projection/` is a deterministic local `.flow` run for `flow console` and console projection consumers.
 - `scenarios/adversarial-survey/` runs the adversarial route-back pattern end to end with Survey-shaped per-round review evidence, including failed-evidence supersession.
+- `scenarios/deploy-live-verify/` demonstrates static gates passing, test-only contract evidence remaining blocked, and a live receipt completing the run.
 - `scenarios/release-readiness/` shows release lane policy and fixture adapter inputs.
 - `scenarios/surface-claims/` shows neutral Surface-shaped claim evidence outcomes.
 - `scenarios/version-release-report/` shows versioned release report projection inputs.

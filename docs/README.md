@@ -12,6 +12,7 @@ Flow shows why a process was allowed to move forward — gate by gate, with the 
 - [CLI Reference](cli.md) — every command, flag, format, and exit code.
 - [Library](library.md) — the typed API for embedding Flow: run lifecycle, validation, projections.
 - [Evidence](evidence.md) — evidence kinds, `trust.bundle` expectations, trust artifacts, claim diagnostics.
+- [Live-Verify Gates](live-verify-gates.md) — post-deploy contract verification through passive gates and external producers.
 - [Gates & Route-Back](gates-and-route-back.md) — evaluation rules, exceptions, route-back policy, transition validation.
 - [Agent Hooks](agent-hooks.md) — enforcing Flow gates from Claude Code hooks, GitHub Actions, and Git hooks.
 - [Project Config](project-config.md) — trusted producers, gate overrides, config merge preview/apply.

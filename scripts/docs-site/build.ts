@@ -30,6 +30,7 @@ const pages: PageDef[] = [
   { src: "cli.md", out: "cli.html", navTitle: "CLI Reference", section: "Reference" },
   { src: "library.md", out: "library.html", navTitle: "Library", section: "Reference" },
   { src: "evidence.md", out: "evidence.html", navTitle: "Evidence", section: "Reference" },
+  { src: "live-verify-gates.md", out: "live-verify-gates.html", navTitle: "Live-Verify Gates", section: "Reference" },
   { src: "gates-and-route-back.md", out: "gates-and-route-back.html", navTitle: "Gates & Route-Back", section: "Reference" },
   { src: "agent-hooks.md", out: "agent-hooks.html", navTitle: "Agent Hooks", section: "Reference" },
   { src: "flow-kit-container.md", out: "flow-kit-container.html", navTitle: "Flow Kit Container", section: "Reference" },

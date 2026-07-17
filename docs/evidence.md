@@ -34,6 +34,11 @@ vector, exit code, stdout and stderr, duration, truncation details, and output
 hash. Status comes from the exit code. Gate evaluation stays passive and never
 runs commands.
 
+For post-deploy smoke and contract checks, compose captured probe output with a
+Hachure contract-claim bundle and a final [live-verify gate](live-verify-gates.md).
+The command receipt is useful retained evidence, but only the derived contract
+claim satisfies the typed `trust.bundle` expectation.
+
 ## Gate expectations
 
 Gates declare what they expect *before* work runs, as typed `expects` entries. Claim-backed expectations use `kind: "trust.bundle"` with a `bundle_claim` selector:

@@ -1,0 +1,63 @@
+{
+  "id": "deploy-live-verify-flow",
+  "version": "1",
+  "steps": [
+    { "id": "build", "next": "deploy" },
+    { "id": "deploy", "next": "live-verify" },
+    { "id": "live-verify", "next": null }
+  ],
+  "gates": {
+    "build-gate": {
+      "step": "build",
+      "expects": [
+        {
+          "id": "tests-passed",
+          "kind": "trust.bundle",
+          "required": true,
+          "description": "Static build and test evidence is verified before deployment.",
+          "bundle_claim": {
+            "claimType": "quality.tests",
+            "subjectType": "flow-step",
+            "subjectId": "deploy-live-verify.build",
+            "accepted_statuses": ["verified"]
+          }
+        }
+      ]
+    },
+    "deploy-gate": {
+      "step": "deploy",
+      "expects": [
+        {
+          "id": "deployed-sha-present",
+          "kind": "trust.bundle",
+          "required": true,
+          "description": "The intended SHA is present in the target deployment.",
+          "bundle_claim": {
+            "claimType": "deployment.revision",
+            "subjectType": "deployed-service",
+            "subjectId": "service:release-worker",
+            "accepted_statuses": ["verified"]
+          }
+        }
+      ]
+    },
+    "live-confirm-gate": {
+      "step": "live-verify",
+      "expects": [
+        {
+          "id": "production-env-passthrough-confirmed",
+          "kind": "trust.bundle",
+          "required": true,
+          "description": "Production has exercised the deployment-config to release-worker-process contract.",
+          "explore_hint": "Run the post-deploy probe, produce a contract-claim bundle with runtime_observation evidence, and attach it.",
+          "bundle_claim": {
+            "claimType": "contract",
+            "subjectType": "deployed-service",
+            "subjectId": "service:release-worker",
+            "accepted_statuses": ["verified"]
+          }
+        }
+      ]
+    }
+  }
+}
