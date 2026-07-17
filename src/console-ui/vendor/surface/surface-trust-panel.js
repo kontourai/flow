@@ -180,7 +180,7 @@
         </div>
         <div class="chips">${chips}</div>
         ${claimRows || '<p class="empty">The report contains no claims.</p>'}
-        <p class="footnote">Derived by Kontour Surface. Status is derived by construction — inspect the evidence and gaps before relying on a claim.</p>
+        <p class="footnote">Derived by Kontour Surface. Status is derived deterministically — inspect the evidence and gaps before relying on a claim.</p>
       `);
         }
         #renderClaim(claim, report) {

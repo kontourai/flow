@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 7,
+  "source": "deployment-controller:release-worker:1842",
+  "producerId": "deployment-controller",
+  "claims": [
+    {
+      "id": "claim.deployment.revision.release-worker",
+      "subjectType": "deployed-service",
+      "subjectId": "service:release-worker",
+      "claimType": "deployment.revision",
+      "fieldOrBehavior": "deployed-sha",
+      "value": "abc123",
+      "createdAt": "2026-07-16T16:05:00.000Z",
+      "updatedAt": "2026-07-16T16:05:01.000Z",
+      "impactLevel": "critical"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.deployment.revision.release-worker",
+      "claimId": "claim.deployment.revision.release-worker",
+      "evidenceType": "attestation",
+      "method": "observation",
+      "sourceRef": "deploy://release-worker/production/runs/1842",
+      "excerptOrSummary": "Deployment controller reports revision abc123 active in production.",
+      "observedAt": "2026-07-16T16:05:00.000Z",
+      "collectedBy": "deployment-controller",
+      "supportStrength": "entails",
+      "passing": true,
+      "blocking": true
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.deployment.revision.release-worker.verified",
+      "claimId": "claim.deployment.revision.release-worker",
+      "status": "verified",
+      "actor": "deployment-controller",
+      "method": "deployment-status",
+      "evidenceIds": ["evidence.deployment.revision.release-worker"],
+      "createdAt": "2026-07-16T16:05:01.000Z",
+      "verifiedAt": "2026-07-16T16:05:01.000Z"
+    }
+  ]
+}

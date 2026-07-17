@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 7,
+  "source": "ci:release-worker:1842",
+  "producerId": "ci",
+  "claims": [
+    {
+      "id": "claim.quality.tests.release-worker",
+      "subjectType": "flow-step",
+      "subjectId": "deploy-live-verify.build",
+      "claimType": "quality.tests",
+      "fieldOrBehavior": "test-suite",
+      "value": "passed",
+      "createdAt": "2026-07-16T16:00:00.000Z",
+      "updatedAt": "2026-07-16T16:00:01.000Z",
+      "impactLevel": "high"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.quality.tests.release-worker",
+      "claimId": "claim.quality.tests.release-worker",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "ci://release-worker/runs/1842/tests",
+      "excerptOrSummary": "Build and unit test suites passed.",
+      "observedAt": "2026-07-16T16:00:00.000Z",
+      "collectedBy": "ci",
+      "supportStrength": "entails",
+      "passing": true,
+      "blocking": true
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.quality.tests.release-worker.verified",
+      "claimId": "claim.quality.tests.release-worker",
+      "status": "verified",
+      "actor": "ci",
+      "method": "npm test",
+      "evidenceIds": ["evidence.quality.tests.release-worker"],
+      "createdAt": "2026-07-16T16:00:01.000Z",
+      "verifiedAt": "2026-07-16T16:00:01.000Z"
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 7,
+  "source": "deployment-verifier:release-worker:1842",
+  "producerId": "deployment-verifier",
+  "claims": [
+    {
+      "id": "claim.contract.env-passthrough",
+      "subjectType": "deployed-service",
+      "subjectId": "service:release-worker",
+      "facet": "runtime.contract",
+      "claimType": "contract",
+      "fieldOrBehavior": "env-passthrough",
+      "value": true,
+      "createdAt": "2026-07-16T16:00:00.000Z",
+      "updatedAt": "2026-07-16T16:10:00.000Z",
+      "impactLevel": "critical",
+      "verificationPolicyId": "policy.contract.live-exercise",
+      "qualifiers": {
+        "provider": "deployment-config",
+        "consumer": "release-worker-process",
+        "contract": "API_TOKEN is present and non-empty in the release-worker process environment"
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.contract.env-passthrough.test",
+      "claimId": "claim.contract.env-passthrough",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "ci:release-worker-env-contract",
+      "excerptOrSummary": "A test fixture confirmed that the launcher maps the API_TOKEN variable; no secret value was recorded.",
+      "observedAt": "2026-07-16T16:00:00.000Z",
+      "collectedBy": "ci",
+      "supportStrength": "entails",
+      "passing": true,
+      "blocking": true,
+      "execution": {
+        "runner": "bash",
+        "label": "release worker environment contract test",
+        "exitCode": 0,
+        "durationMs": 812,
+        "environment": "test"
+      }
+    },
+    {
+      "id": "evidence.contract.env-passthrough.production-receipt",
+      "claimId": "claim.contract.env-passthrough",
+      "evidenceType": "runtime_observation",
+      "method": "observation",
+      "sourceRef": "deploy://release-worker/production/runs/1842/post-deploy-contract-check",
+      "excerptOrSummary": "Post-deploy probe traversed deployment-config into release-worker-process and confirmed API_TOKEN is present and non-empty; the value was not recorded.",
+      "observedAt": "2026-07-16T16:10:00.000Z",
+      "collectedBy": "deployment-verifier",
+      "supportStrength": "entails",
+      "passing": true,
+      "blocking": true,
+      "execution": {
+        "runner": "bash",
+        "label": "production release worker environment passthrough probe",
+        "exitCode": 0,
+        "durationMs": 1460,
+        "environment": "production",
+        "metadata": {
+          "provider": "deployment-config",
+          "consumer": "release-worker-process",
+          "secretValueRecorded": false
+        }
+      }
+    }
+  ],
+  "policies": [
+    {
+      "id": "policy.contract.live-exercise",
+      "claimType": "contract",
+      "requiredEvidence": ["runtime_observation"],
+      "requiredMethods": ["observation"],
+      "requiresCorroboration": false,
+      "acceptanceCriteria": [
+        "the provider-to-consumer path is exercised in a running target environment",
+        "the observed result directly entails the stated contract"
+      ],
+      "reviewAuthority": "deployment-verifier",
+      "validityRule": { "kind": "duration", "durationDays": 3650 },
+      "stalenessTriggers": [
+        "provider configuration changes",
+        "consumer version changes",
+        "target environment is redeployed"
+      ],
+      "conflictRules": ["a blocking failed live exercise disputes the claim"],
+      "impactLevel": "critical"
+    }
+  ],
+  "events": [
+    {
+      "id": "event.contract.env-passthrough.verified",
+      "claimId": "claim.contract.env-passthrough",
+      "status": "verified",
+      "actor": "deployment-verifier",
+      "method": "automated-contract-check",
+      "evidenceIds": [
+        "evidence.contract.env-passthrough.test",
+        "evidence.contract.env-passthrough.production-receipt"
+      ],
+      "createdAt": "2026-07-16T16:10:01.000Z",
+      "verifiedAt": "2026-07-16T16:10:01.000Z"
+    }
+  ]
+}
