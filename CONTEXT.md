@@ -53,6 +53,14 @@ A recorded change to whether a Flow Run is active, paused, or terminal without m
 Lifecycle cancellation requires a structured external `user_request` or `operator_request`; Flow persists and validates that provider-neutral authority but does not authenticate it. Consumer products own authentication and any assignment release, provider update, archive, or cleanup that follows.
 _Avoid_: Step Transition, skipped step, implicit abandonment, consumer-only status override
 
+**Retry Authorization**:
+A provider-neutral, authority-bearing `retry_authorized` run transition that starts one additional bounded retry epoch for the current exhausted route-back block. It binds an authenticated external request to the exact current run head and exhausted transition, returns only to that transition's declared selected route, preserves the exhausted decision in audit history while removing it from the current gate projection, and reports the new epoch's evolving current budget. The runtime serializes the mutation with unique owner tickets and derives its re-entry timestamp. It is not lifecycle resume, an exception, cancellation, restart, or a Gate pass; consumer products authenticate the authority.
+_Avoid_: Arbitrary recovery target, retry-limit override, provider policy, hidden reset
+
+**Retry Epoch**:
+The persisted attempt-accounting scope for one exact route-back loop. Legacy route-back records without `retry_epoch` are epoch 1. A retry authorization records the next epoch, and only matching route-backs in that epoch consume its declared budget.
+_Avoid_: Lifetime retry reset, deleting failures, in-memory counter
+
 **Route Back**:
 A gate outcome that sends a Flow Run from the gate's step back to a selected step after failed or missing evidence. Route back is a Flow core transition primitive, not a Builder Kit policy.
 _Avoid_: Hidden retry, agent-specific recovery prompt, Builder Kit-only behavior
@@ -62,7 +70,7 @@ An open string id attached to failed gate evidence or inferred by Flow for missi
 _Avoid_: Closed enum, model-only diagnosis, unrecorded explanation
 
 **Route-Back Transition**:
-A persisted transition with route-back metadata: gate id, route reason, source step, selected target step, final route target, attempt, max attempts, exceeded state, evidence refs, expectation ids, and optional classifier, diagnostics, and analytics. Attempt counts are derived from persisted route-back transitions with the same gate id, reason, source step, and selected target step.
+A persisted transition with route-back metadata: gate id, route reason, source step, selected target step, final route target, attempt, retry epoch, max attempts, exceeded state, evidence refs, expectation ids, and optional classifier, diagnostics, and analytics. Attempt counts are derived from persisted route-back transitions with the same gate id, reason, source step, selected target step, and retry epoch.
 _Avoid_: Timestamp-based retry count, in-memory loop counter, chat-memory continuation
 
 **Route-Back Policy**:

@@ -23,6 +23,7 @@ import {
   validateRunTransition
 } from "../../dist/index.js";
 import { normalizeRunStateLifecycle } from "../../dist/definition/flow-definition.js";
+import { withRunMutationLock } from "../../dist/runtime/flow-run-store.js";
 import { hashRunTree, lifecycleStateMatrix, snapshotRunTree } from "./helpers/run-tree.mjs";
 import { json } from "./helpers/fixtures.mjs";
 
@@ -304,6 +305,7 @@ test("lifecycle state matrix rejects invalid sources without writing", async () 
       if (status === "paused") run.state.lifecycle.push(lifecycleEvent());
       if (status === "canceled") run.state.lifecycle.push(lifecycleEvent({ action: "cancel", from_status: "active", to_status: "canceled" }));
       await writeCanonicalState(fixture, run.state);
+      await withRunMutationLock(fixture.runId, fixture.cwd, async () => undefined);
       const beforeHash = await hashRunTree(fixture.dir);
       await assert.rejects(
         operations[operation](fixture.runId, { cwd: fixture.cwd, ...request(`request:reject:${operation}:${status}`) }),

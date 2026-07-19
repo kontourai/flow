@@ -75,7 +75,7 @@ Custom ids are allowed: add them to `on_route_back` when they should select a sp
 
 ### Deterministic attempt counting
 
-Route-back attempts are derived from **persisted state**, not memory. Flow counts prior `route_back` transitions in `state.transitions` with the same gate id, route reason (or `default`), source step, and selected target step. Timestamps, classifier data, diagnostics, analytics metadata, and caller-supplied counters never affect routing or attempt counts — so neither an agent nor an adapter can fudge the loop budget.
+Route-back attempts are derived from **persisted state**, not memory. Flow counts prior `route_back` transitions in `state.transitions` with the same gate id, route reason (or `default`), source step, selected target step, and retry epoch. Legacy transitions without an epoch are epoch 1. Timestamps, classifier data, diagnostics, analytics metadata, and caller-supplied counters never affect routing or attempt counts — so neither an agent nor an adapter can fudge the loop budget.
 
 When `max_attempts` is exceeded, `on_exceeded` decides the outcome:
 
@@ -95,6 +95,39 @@ next action: return to implement and replace failing evidence attempt 1/3
 **Recovering** from a route-back means replacing the failing evidence: attach the new evidence with `--supersede <failed-evidence-id>`. The superseded entry stays in the manifest (reports still show the failed round happened) but stops driving the gate, so the next evaluation can pass on the replacement. The [adversarial-survey scenario](https://github.com/kontourai/flow/blob/main/examples/scenarios/adversarial-survey/README.md) walks the full loop with real output.
 
 Run state and reports expose the full route-back record for continuation and analysis: selected route, final target, reason, attempt, max attempts, exceeded state, evidence refs, expectation ids, and any recorded classifier/diagnostics/analytics metadata.
+
+### Authorized retry after an exhausted block
+
+An exhausted `on_exceeded: "block"` route-back may begin one more bounded epoch on the same run only through an authority-bearing retry authorization. This is a `retry_authorized` run transition, not lifecycle resume and not a Gate pass. It never accepts an exception, deletes history, changes the retry limit, or selects a new recovery target.
+
+Construct the request from the exact persisted state and exhausted transition using the exported hashes, then submit it through the library or CLI:
+
+```ts
+import { authorizeRetry, flowRunHead, flowTransitionRef, loadRun } from "@kontourai/flow";
+
+const run = await loadRun("dev-1847");
+const blocked = run.state.transitions.at(-1);
+await authorizeRetry("dev-1847", {
+  request: {
+    reason: "Operator approved one additional bounded evidence round.",
+    target_step: blocked.selected_route,
+    blocked_transition_ref: flowTransitionRef(blocked),
+    expected_run_head: flowRunHead(run.state),
+    authority: {
+      kind: "operator_request",
+      actor: "operator:alex",
+      request_ref: "change-request:418",
+      requested_at: "2026-07-19T15:30:00.000Z"
+    }
+  }
+});
+```
+
+```sh
+flow authorize-retry dev-1847 --request ./retry-request.json
+```
+
+The request fails closed before any write unless the run is currently blocked, its current state hash matches `expected_run_head`, and `blocked_transition_ref` identifies the current exhausted route-back. `target_step` must equal that transition's declared `selected_route`. An exact replay is idempotent; reusing its `request_ref` with different content is rejected. The persisted `prior_run_head` is the event-time optimistic-concurrency and audit binding copied from `expected_run_head`; in unsigned local run state it is not an independently reconstructible, post-persistence tamper-evidence guarantee. Local unsigned state is a trusted persistence boundary: Flow detects malformed or partial reserved records and binds event-time requests, but does not claim resistance to an attacker who rewrites an entire valid ledger and recomputes every unsigned hash. Signed or externally anchored history belongs to the trust layer tracked in [#93](https://github.com/kontourai/flow/issues/93). Flow serializes every same-run mutation through unique owner-recorded, deterministically ordered tickets. A ticket root permanently publishes a reserved foreign-host `owner.json` compatibility sentinel plus its marker before any ticket; release and stale cleanup touch only the owner ticket, so neither root artifact is removed or rewritten. Any unmarked legacy root (including dead/released/malformed/ownerless forms) fails with `flow.run_mutation.lock.migration_required` without a write. Clean such a root only in an operator-confirmed quiescent window after verifying no process can use the run; never blindly delete the lock root. A marked root with a missing, malformed, or linked marker/sentinel fails closed. Flow derives the authorization timestamp internally and commits `state.json` last after staging its derived reports. The authorization records the old and new epochs, removes the exhausted prior-epoch outcome from the current projection, retains it with completion transitions in append-only audit history (including legacy no-descendant runs), and reports consumed, next, and remaining attempts as the new epoch evolves; an exhausted epoch reports no next attempt. Fresh evidence is required after re-entry before a gate can advance. Flow validates the provider-neutral request shape but the consumer authenticates the actor.
 
 ## Transition validation
 

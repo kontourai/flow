@@ -1732,6 +1732,7 @@
       ],
       "run_id": "console-projection-fixture",
       "schema_version": "0.1",
+      "state_head": "6a13289a2b6a8152504c2317489a05f7da4d7c4eeeb1723e0d1caf6e2218b9e6",
       "status": "active",
       "subject": "console-projection-fixture",
       "summary": "console-projection-flow / console-projection-fixture"
@@ -1783,7 +1784,7 @@
       "reason": "implementation_defect",
       "recovery_step": null,
       "route_back_to": "build",
-      "selected_route": null,
+      "selected_route": "build",
       "source": "transition",
       "to_step": "build"
     }
@@ -1925,13 +1926,15 @@
           "release"
         ],
         "max_attempts": 2,
-        "reason": "tests failed",
+        "reason": "implementation_defect",
         "route_reason": "implementation_defect",
+        "selected_route": "build",
+        "limit_exceeded": false,
         "status": "blocked",
         "to_step": "build",
         "type": "route_back"
       },
-      "reason": "tests failed",
+      "reason": "implementation_defect",
       "route_reason": "implementation_defect",
       "status": "blocked",
       "to_step": "build",

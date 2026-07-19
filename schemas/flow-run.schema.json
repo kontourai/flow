@@ -64,7 +64,12 @@
     },
     "gate_outcomes": {
       "type": "array",
-      "description": "Persisted gate decisions that explain why the run advanced, blocked, waited, routed back, or accepted an exception.",
+      "description": "Current gate decisions projection used for continuation.",
+      "items": { "$ref": "#/$defs/gate_outcome" }
+    },
+    "gate_outcome_history": {
+      "type": "array",
+      "description": "Append-only gate-decision audit ledger. Legacy runs may omit it until their first mutation.",
       "items": { "$ref": "#/$defs/gate_outcome" }
     },
     "transitions": {
@@ -195,6 +200,7 @@
         "recovery_step": { "type": "string" },
         "route_reason": { "type": "string" },
         "attempt": { "type": "integer", "minimum": 1 },
+        "retry_epoch": { "type": "integer", "minimum": 1, "description": "Route-back retry epoch; absent legacy records are epoch 1." },
         "max_attempts": { "type": "integer", "minimum": 1 },
         "limit_exceeded": { "type": "boolean" },
         "expectation_ids": { "type": "array", "items": { "type": "string" } },
@@ -210,10 +216,64 @@
       "type": "object",
       "required": ["from_step", "status", "reason", "at"],
       "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          },
+          "then": {
+            "required": ["type", "from_step", "to_step", "status", "reason", "gate_id", "route_reason", "selected_route", "blocked_transition_ref", "prior_run_head", "prior_retry_epoch", "retry_epoch", "authority", "at"],
+            "properties": {
+              "status": { "const": "retry-authorized" },
+              "to_step": { "type": "string", "minLength": 1 },
+              "gate_id": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["status"],
+            "properties": { "status": { "const": "retry-authorized" } }
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              { "required": ["attempt"] },
+              { "required": ["max_attempts"] },
+              { "required": ["limit_exceeded"] },
+              { "required": ["recovery_step"] }
+            ]
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "route_back" } }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              { "required": ["blocked_transition_ref"] },
+              { "required": ["prior_run_head"] },
+              { "required": ["prior_retry_epoch"] },
+              { "required": ["authority"] }
+            ]
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          }
+        }
+      ],
       "properties": {
         "from_step": { "type": "string" },
         "to_step": { "type": ["string", "null"] },
-        "status": { "type": "string", "enum": ["allowed", "blocked", "skipped", "accepted_by_exception"] },
+        "status": { "type": "string", "enum": ["allowed", "blocked", "skipped", "accepted_by_exception", "retry-authorized"] },
         "type": { "type": "string" },
         "reason": { "type": "string" },
         "gate_id": { "type": ["string", "null"] },
@@ -221,6 +281,7 @@
         "selected_route": { "type": "string" },
         "recovery_step": { "type": "string" },
         "attempt": { "type": "integer", "minimum": 1 },
+        "retry_epoch": { "type": "integer", "minimum": 1, "description": "Route-back retry epoch; absent legacy records are epoch 1." },
         "max_attempts": { "type": "integer", "minimum": 1 },
         "limit_exceeded": { "type": "boolean" },
         "invalidated_steps": { "type": "array", "items": { "type": "string" }, "description": "Steps whose gate outcomes were cleared by the route-back cascade (descendants of the route-back target)." },
@@ -234,6 +295,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/freshness_transition" }
         },
+        "blocked_transition_ref": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "prior_run_head": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "prior_retry_epoch": { "type": "integer", "minimum": 1 },
+        "authority": { "$ref": "#/$defs/lifecycle_authority" },
         "at": { "type": "string", "format": "date-time" }
       }
     },

@@ -1,8 +1,27 @@
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
-import { FLOW_SCHEMA_VERSION, initialState, reportJson } from "../../dist/index.js";
+import {
+  FLOW_SCHEMA_VERSION,
+  attachEvidence,
+  authorizeRetry,
+  evaluateRun,
+  flowRunHead,
+  flowTransitionRef,
+  initialState,
+  loadRun,
+  reportJson,
+  startRun
+} from "../../dist/index.js";
 import { requireSchemaDefFields, requireSchemaFields } from "./helpers/assertions.mjs";
 import { json } from "./helpers/fixtures.mjs";
+
+const require = createRequire(import.meta.url);
+const Ajv = require("ajv/dist/2020");
+const addFormats = require("ajv-formats");
 
 test("schemas describe the runtime contract", async () => {
   const definitionSchema = await json("schemas/flow-definition.schema.json");
@@ -43,6 +62,7 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.properties.run_id.description, /\.kontourai\/flow\/runs\/<run-id>/);
   assert.match(runSchema.properties.current_step.description, /step id/);
   assert.match(runSchema.properties.gate_outcomes.description, /gate decisions/);
+  assert.match(runSchema.properties.gate_outcome_history.description, /Append-only/);
   assert.match(runSchema.properties.transitions.description, /route-back attempt counting/);
   assert.deepEqual(runSchema.properties.status.enum, ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]);
   assert.equal(runSchema.properties.lifecycle.items.$ref, "#/$defs/lifecycle_event");
@@ -55,6 +75,12 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.$defs.lifecycle_authority.properties.actor.pattern, /u001F/);
   assert.equal(runSchema.allOf[0].then.properties.lifecycle.minItems, 1);
   assert.deepEqual(runSchema.$defs.lifecycle_event.properties.prior_status.enum, ["active", "blocked", "needs_decision"]);
+  const retryTransitionContract = runSchema.$defs.transition.allOf[0].then;
+  for (const field of ["gate_id", "route_reason", "selected_route", "blocked_transition_ref", "prior_run_head", "prior_retry_epoch", "retry_epoch", "authority"]) {
+    assert.ok(retryTransitionContract.required.includes(field), `retry transition requires ${field}`);
+  }
+  assert.equal(retryTransitionContract.properties.status.const, "retry-authorized");
+  assert.equal(runSchema.$defs.transition.allOf[1].then.properties.type.const, "retry_authorized");
   assert.equal(evidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(commandEvidenceSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.deepEqual(commandEvidenceSchema.properties.command.items, { type: "string" });
@@ -71,6 +97,7 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(evidenceSchema.properties.run_id.minLength, 1);
   assert.equal(evidenceSchema.properties.definition_id.minLength, 1);
   assert.equal(reportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(reportSchema.properties.state_head.pattern, "^[a-f0-9]{64}$");
   assert.deepEqual(configSchema.oneOf, [
     { $ref: "#/$defs/flat_config" },
     { $ref: "#/$defs/resource_config" }
@@ -113,9 +140,22 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(evidenceSchema.$defs.evidence.properties.authority_traces);
   assert.ok(evidenceSchema.$defs.evidence.properties.classifier);
   assert.ok(runSchema.$defs.gate_outcome.properties.route_reason);
+  assert.ok(runSchema.$defs.gate_outcome.properties.retry_epoch);
   assert.ok(runSchema.$defs.transition.properties.route_reason);
+  assert.ok(runSchema.$defs.transition.properties.retry_epoch);
+  assert.ok(runSchema.$defs.transition.properties.blocked_transition_ref);
+  assert.ok(runSchema.$defs.transition.properties.prior_run_head);
+  assert.ok(runSchema.$defs.transition.properties.prior_retry_epoch);
+  assert.ok(runSchema.$defs.transition.properties.authority);
   assert.ok(runSchema.$defs.lifecycle_event.properties.authority);
+  assert.ok(reportSchema.properties.retry_authorizations);
+  assert.ok(reportSchema.properties.retry_authorizations.items.required.includes("max_attempts"));
+  assert.ok(reportSchema.properties.retry_authorizations.items.required.includes("consumed_attempts"));
+  assert.ok(reportSchema.properties.retry_authorizations.items.required.includes("next_attempt"));
+  assert.ok(reportSchema.properties.retry_authorizations.items.required.includes("remaining_attempts"));
+  assert.ok(reportSchema.properties.retry_authorizations.items.required.includes("budget_status"));
   assert.ok(reportSchema.properties.gate_summaries.items.properties.route_reason);
+  assert.ok(reportSchema.properties.gate_summaries.items.properties.retry_epoch);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.selected_route);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.recovery_step);
   assert.ok(reportSchema.properties.gate_summaries.items.properties.analytics_loop_key);
@@ -134,6 +174,7 @@ test("schemas describe the runtime contract", async () => {
   assert.ok(transitionValidationResultSchema.properties.diagnostics);
   assert.ok(transitionValidationResultSchema.properties.transition);
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.route_reason);
+  assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.retry_epoch);
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.evidence_refs);
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.expectation_ids);
   assert.ok(transitionValidationResultSchema.$defs.transition_preview.properties.classifier);
@@ -149,7 +190,7 @@ test("schemas describe the runtime contract", async () => {
   requireSchemaFields(evidenceSchema, ["schema_version", "evidence"]);
   assert.ok(evidenceSchema.properties.run_id);
   assert.ok(evidenceSchema.properties.definition_id);
-  requireSchemaFields(reportSchema, ["schema_version", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
+  requireSchemaFields(reportSchema, ["schema_version", "state_head", "run_id", "definition_id", "status", "summary", "current_step", "gate_summaries"]);
   requireSchemaDefFields(configSchema, "flat_config", ["schema_version"]);
   requireSchemaDefFields(configSchema, "resource_config", ["apiVersion", "kind", "metadata", "spec"]);
   requireSchemaDefFields(configSchema, "resource_metadata", ["name"]);
@@ -181,4 +222,93 @@ test("runtime-generated run and report satisfy required schema fields", async ()
   assert.deepEqual(state.lifecycle, []);
   assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(report.definition_id, definition.id);
+});
+
+test("transition-validation request schema round-trips a recovered retry-authorized state", async () => {
+  const schemas = await Promise.all([
+    json("schemas/flow-transition-validation-request.schema.json"),
+    json("schemas/flow-definition.schema.json"),
+    json("schemas/gate-evidence.schema.json"),
+    json("schemas/flow-config.schema.json"),
+    json("schemas/flow-run.schema.json")
+  ]);
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  addFormats(ajv);
+  for (const schema of schemas.slice(1)) ajv.addSchema(schema);
+  const validate = ajv.compile(schemas[0]);
+  const validateRun = ajv.getSchema("https://kontourai.io/schemas/flow-run.schema.json");
+
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-schema-recovered-"));
+  const definition = {
+    id: "schema-recovered-retry", version: "1",
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify", expects: [],
+        on_route_back: { implementation_defect: "verify", default: "verify" },
+        route_back_policy: { max_attempts: 3, on_exceeded: "block" }
+      }
+    }
+  };
+  const definitionPath = path.join(cwd, "definition.json");
+  const evidencePath = path.join(cwd, "failed.txt");
+  await writeFile(definitionPath, `${JSON.stringify(definition, null, 2)}\n`);
+  await writeFile(evidencePath, "failed\n");
+  const started = await startRun(definitionPath, { cwd, runId: "schema-recovered-retry" });
+  await attachEvidence(started.runId, {
+    cwd, gate: "verify-gate", file: evidencePath, status: "failed", route_reason: "implementation_defect"
+  });
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    await evaluateRun(started.runId, { cwd, gate: "verify-gate", now: `2026-07-19T15:0${attempt}:00.000Z` });
+  }
+  const exhausted = await loadRun(started.runId, cwd);
+  const blocked = exhausted.state.transitions.at(-1);
+  const recovered = await authorizeRetry(started.runId, {
+    cwd,
+    request: {
+      reason: "Operator approved another bounded epoch.", target_step: blocked.selected_route,
+      blocked_transition_ref: flowTransitionRef(blocked), expected_run_head: flowRunHead(exhausted.state),
+      authority: {
+        kind: "operator_request", actor: "operator:test", request_ref: "request:schema-retry",
+        requested_at: "2026-07-19T15:05:00.000Z"
+      }
+    }
+  });
+  const request = JSON.parse(JSON.stringify({
+    definition: recovered.definition,
+    current_state: recovered.state,
+    proposed_transition: { from_step: "verify", to_step: null, status: "completed" },
+    manifest: recovered.manifest,
+    now: "2026-07-19T15:06:00.000Z"
+  }));
+  assert.equal(validate(request), true, JSON.stringify(validate.errors));
+  assert.equal(request.current_state.transitions.at(-1).type, "retry_authorized");
+  assert.equal(request.current_state.transitions.at(-1).status, "retry-authorized");
+  assert.equal(validateRun(request.current_state), true, JSON.stringify(validateRun.errors));
+
+  const wrongStatus = structuredClone(request);
+  wrongStatus.current_state.transitions.at(-1).status = "blocked";
+  assert.equal(validate(wrongStatus), false, "retry_authorized type requires retry-authorized status");
+  const wrongType = structuredClone(request);
+  wrongType.current_state.transitions.at(-1).type = "step";
+  assert.equal(validate(wrongType), false, "retry-authorized status requires retry_authorized type");
+
+  const hiddenAuthorization = structuredClone(request);
+  hiddenAuthorization.current_state.transitions.at(-1).type = "step";
+  hiddenAuthorization.current_state.transitions.at(-1).status = "allowed";
+  assert.equal(validate(hiddenAuthorization), false, "authorization fields reserve the retry_authorized discriminator");
+  assert.equal(validateRun(hiddenAuthorization.current_state), false, "flow-run schema also reserves authorization fields");
+
+  const ambiguous = structuredClone(request);
+  ambiguous.current_state.transitions.at(-2).blocked_transition_ref = "a".repeat(64);
+  assert.equal(validate(ambiguous), false, "route-only and authorization-only fields cannot share a transition");
+  assert.equal(validateRun(ambiguous.current_state), false, "flow-run schema rejects ambiguous field families");
+
+  const partialRoute = structuredClone(request);
+  partialRoute.proposed_transition.attempt = 1;
+  assert.equal(validate(partialRoute), false, "route-only fields reserve the route_back discriminator");
+
+  const sharedContext = structuredClone(request);
+  sharedContext.proposed_transition.selected_route = "verify";
+  assert.equal(validate(sharedContext), true, "selected_route alone remains valid shared transition context");
 });

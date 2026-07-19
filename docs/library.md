@@ -113,10 +113,85 @@ projections first. The local file store then writes `state.json`, `report.json`,
 and `report.md` sequentially. It is a single-writer filesystem contract, not a
 multi-file transaction; an exceptional I/O failure between writes can leave a
 stale derived report. Reload canonical `state.json` and regenerate reports
-before retrying. Consumers must not run concurrent mutations against one run.
+before retrying. Flow serializes public same-run mutations with the shared
+owner-recorded mutation lock; consumers still must not write run files directly.
 Lifecycle output targets use no-follow descriptor writes and regular-file
 verification. This closes target-symlink swaps without expanding the trusted
 single-writer boundary into a hostile multi-writer filesystem guarantee.
+
+### Authorized retry epochs
+
+`authorizeRetry()` recovers only the current exhausted `on_exceeded: "block"`
+route-back on the same run. It appends a `retry_authorized` run transition,
+moves the cursor only to that exhausted transition's `selected_route`, and
+starts the next persisted retry epoch. It is separate from lifecycle resume and
+does not pass a gate, accept an exception, remove failed history, or choose a
+caller-selected recovery route.
+
+```ts
+import { authorizeRetry, flowRunHead, flowTransitionRef, loadRun } from "@kontourai/flow";
+
+const run = await loadRun("dev-1847");
+const block = run.state.transitions.at(-1);
+const result = await authorizeRetry("dev-1847", {
+  request: {
+    reason: "Approved one additional bounded retry epoch.",
+    target_step: block.selected_route,
+    blocked_transition_ref: flowTransitionRef(block),
+    expected_run_head: flowRunHead(run.state),
+    authority: {
+      kind: "operator_request",
+      actor: "operator:alex",
+      request_ref: "change-request:418",
+      requested_at: "2026-07-19T15:30:00.000Z"
+    }
+  }
+});
+console.log(result.transition.retry_epoch); // 2
+```
+
+The matching request may be replayed exactly and returns the stored transition
+without writing. A stale run head, forged block ref, wrong target, non-blocked
+or terminal run, malformed authority, or changed request content under the
+same `request_ref` fails before mutation. Flow records provider-neutral
+authority but callers authenticate it. The stored `prior_run_head` is the
+event-time optimistic-concurrency and audit binding copied from the request's
+`expected_run_head`. Because local run state is unsigned, that value is not an
+independently reconstructible post-persistence tamper-evidence guarantee;
+authenticity requires a signature or an externally trusted append-only store.
+Local unsigned state is a trusted persistence boundary: Flow rejects malformed
+or partial reserved transition records and binds requests to event-time state,
+but does not claim resistance to an attacker who rewrites an entire valid
+ledger and recomputes every unsigned hash. Signed or externally anchored
+history belongs to the trust layer tracked in
+[#93](https://github.com/kontourai/flow/issues/93).
+Routes without `retry_epoch` remain compatible epoch 1 records; later matching
+failures count only within the new epoch.
+
+All same-run state writers share an owner-recorded mutation lock. Each
+contender owns a unique deterministically ordered ticket, release quarantines and removes only that
+ticket, and stale recovery removes only a demonstrably dead ticket. Reclaimers
+therefore never rename a shared canonical owner or detach a live successor.
+New ticket roots permanently contain both a reserved foreign-host compatibility
+`owner.json` sentinel and the `ticket-lock-v1` marker; neither is rewritten or
+removed by ticket cleanup. An unmarked legacy root — including a dead, released,
+malformed, live, or ownerless legacy owner — fails with
+`flow.run_mutation.lock.migration_required` and Flow makes no change. A marked
+root with a missing, malformed, or linked sentinel/marker likewise fails closed.
+Perform any legacy-root cleanup only during an operator-confirmed quiescent
+window after checking that no process can still use the run; never blindly
+delete `.mutation.lock`. Live tickets serialize retry,
+lifecycle, evidence, evaluation, and exception mutations. Retry authorization
+reloads and rechecks the bound head inside that lock, derives its timestamp
+internally, stages reports, and atomically replaces `state.json` as the final
+commit point. Every report carries the represented `state_head`; a projection
+observed across a crash boundary is current only when that value matches the
+canonical state hash. `transitions` and
+`gate_outcome_history` are audit ledgers; `gate_outcomes` is the compatible
+current projection. Authorization removes the exhausted prior-epoch decision
+from that current projection while retaining it in both audit ledgers. Reports
+show the new epoch's evolving `consumed_attempts`, `next_attempt`, and
+`remaining_attempts`, and distinguish current from historical epoch budgets.
 
 Flow owns canonical lifecycle validation and persistence only. Authentication,
 provider updates, assignment release, artifact archival, and branch/worktree

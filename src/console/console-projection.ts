@@ -114,6 +114,7 @@ export interface FlowConsoleGateProjection {
   route_reason?: string;
   reason?: string;
   attempt?: number;
+  retry_epoch?: number;
   max_attempts?: number;
   limit_exceeded?: boolean;
   expectation_ids?: string[];
@@ -145,6 +146,11 @@ export interface FlowConsoleTransitionProjection {
   gate_id: string | null;
   reason: string | null;
   route_reason: string | null;
+  retry_epoch?: number;
+  blocked_transition_ref?: string;
+  prior_run_head?: string;
+  prior_retry_epoch?: number;
+  authority?: Record<string, unknown>;
   evidence_refs: string[];
   expectation_ids: string[];
   at: string | null;
@@ -447,6 +453,7 @@ function projectGate(definition, state, manifest, config, gateId) {
     "route_reason",
     "reason",
     "attempt",
+    "retry_epoch",
     "max_attempts",
     "limit_exceeded",
     "expectation_ids",
@@ -473,6 +480,11 @@ function projectTransition(transition, index) {
     gate_id: transition.gate_id ?? null,
     reason: transition.reason ?? null,
     route_reason: transition.route_reason ?? null,
+    ...(transition.retry_epoch !== undefined ? { retry_epoch: transition.retry_epoch } : {}),
+    ...(transition.blocked_transition_ref ? { blocked_transition_ref: transition.blocked_transition_ref } : {}),
+    ...(transition.prior_run_head ? { prior_run_head: transition.prior_run_head } : {}),
+    ...(transition.prior_retry_epoch !== undefined ? { prior_retry_epoch: transition.prior_retry_epoch } : {}),
+    ...(transition.authority ? { authority: stableClone(transition.authority) } : {}),
     evidence_refs: stableArray(transition.evidence_refs),
     expectation_ids: stableArray(transition.expectation_ids),
     at: transition.at ?? null,

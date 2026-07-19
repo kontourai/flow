@@ -1,5 +1,6 @@
 {
   "schema_version": "0.1",
+  "state_head": "6a13289a2b6a8152504c2317489a05f7da4d7c4eeeb1723e0d1caf6e2218b9e6",
   "run_id": "console-projection-fixture",
   "definition_id": "console-projection-flow",
   "definition_version": "0.1",

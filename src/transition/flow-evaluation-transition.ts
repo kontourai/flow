@@ -27,6 +27,7 @@ function proposedTransitionForOutcome(definition, gate, outcome, now = new Date(
       selected_route: outcome.selected_route,
       recovery_step: outcome.recovery_step,
       attempt: outcome.attempt,
+      retry_epoch: outcome.retry_epoch,
       max_attempts: outcome.max_attempts,
       limit_exceeded: outcome.limit_exceeded,
       evidence_refs: outcome.evidence_refs,

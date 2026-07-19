@@ -62,7 +62,7 @@ function claimIsCurrentForVisit(bundle: any, claim: any, enteredAt: ParsedRfc333
 }
 
 function routeBackAffectsStep(definition: any, transition: any, step: string): boolean {
-  return transition?.type === "route_back" && (
+  return ["route_back", "retry_authorized"].includes(transition?.type) && (
     transition.from_step === step
     || transition.to_step === step
     || (Array.isArray(transition.invalidated_steps) && transition.invalidated_steps.includes(step))
@@ -321,6 +321,10 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
 }
 
 export function mergeGateOutcome(state, outcome) {
+  if (!Array.isArray(state.gate_outcome_history)) {
+    state.gate_outcome_history = structuredClone(state.gate_outcomes ?? []);
+  }
+  state.gate_outcome_history.push(structuredClone(outcome));
   const without = state.gate_outcomes.filter((entry) => entry.gate_id !== outcome.gate_id);
   state.gate_outcomes = [...without, outcome];
 }
@@ -355,6 +359,7 @@ export function applyEvaluation(definition, state, outcome, at = new Date().toIS
         selected_route: outcome.selected_route,
         recovery_step: outcome.recovery_step,
         attempt: outcome.attempt,
+        retry_epoch: outcome.retry_epoch,
         max_attempts: outcome.max_attempts,
         limit_exceeded: outcome.limit_exceeded,
         invalidated_steps: outcome.invalidated_steps,
@@ -398,6 +403,7 @@ export function applyEvaluation(definition, state, outcome, at = new Date().toIS
       selected_route: outcome.selected_route,
       recovery_step: outcome.recovery_step,
       attempt: outcome.attempt,
+      retry_epoch: outcome.retry_epoch,
       max_attempts: outcome.max_attempts,
       limit_exceeded: outcome.limit_exceeded,
       invalidated_steps: invalidated.length ? invalidated : undefined,
