@@ -10,6 +10,13 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.4.0](https://github.com/kontourai/flow/compare/v3.3.0...v3.4.0) (2026-07-19)
+
+
+### Features
+
+* **runtime:** authorize bounded retry epochs ([#141](https://github.com/kontourai/flow/issues/141)) ([4f9d073](https://github.com/kontourai/flow/commit/4f9d073afa15bcd4a4e5fce89f27a07a10774a72))
+
 ## [3.3.0](https://github.com/kontourai/flow/compare/v3.2.0...v3.3.0) (2026-07-17)
 
 
