@@ -111,11 +111,11 @@ test("invalidateDescendants: clears descendant outcomes, keeps target + ancestor
   assert.deepEqual(invalidated, ["build", "docs", "verify"]);
   // Only plan-gate survives; build/docs/verify gate outcomes are cleared.
   assert.deepEqual(state.gate_outcomes.map((o) => o.gate_id), ["plan-gate"]);
-  // Allowed transitions for descendant steps are cleared; plan's remains.
+  // Completion transitions are immutable history; invalidation is projected by later markers.
   const remaining = state.transitions.map((t) => t.from_step);
   assert.ok(remaining.includes("plan"), "plan transition preserved");
-  assert.ok(!remaining.includes("build"), "build transition cleared");
-  assert.ok(!remaining.includes("docs"), "docs transition cleared");
+  assert.ok(remaining.includes("build"), "build transition retained");
+  assert.ok(remaining.includes("docs"), "docs transition retained");
 });
 
 test("invalidateDescendants: mid-graph target leaves siblings untouched", () => {

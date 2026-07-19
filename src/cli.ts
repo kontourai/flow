@@ -5,6 +5,7 @@ import {
   acceptException,
   applyFlowConfigMerge,
   attachEvidence,
+  authorizeRetry,
   cancelRun,
   ensureFlowLayout,
   evaluateRun,
@@ -50,6 +51,7 @@ function usage() {
   flow pause <run-id> --request <request-json> [--cwd <path>]
   flow resume-run <run-id> --request <request-json> [--cwd <path>]
   flow cancel <run-id> --request <request-json> [--cwd <path>]
+  flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
@@ -249,6 +251,16 @@ function printLifecycleResult(runId: string, result: Awaited<ReturnType<typeof p
   console.log(`request: ${result.event.authority.request_ref}`);
 }
 
+async function readRetryAuthorizationRequest(flags: CliFlags, cwd: string) {
+  const requestPath = requireArg(flags.request, "flow authorize-retry requires --request <request-json>");
+  try {
+    return JSON.parse(await readFile(path.resolve(cwd, requestPath), "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.retry_authorization.request.invalid: unable to read retry authorization request ${requestPath}: ${detail}`);
+  }
+}
+
 function validationPayload(definitionPath, result) {
   return {
     valid: result.valid,
@@ -438,6 +450,17 @@ async function main() {
     const operation = command === "pause" ? pauseRun : command === "resume-run" ? resumeRun : cancelRun;
     const result = await operation(runId, { cwd, ...request });
     printLifecycleResult(runId, result);
+    return;
+  }
+
+  if (command === "authorize-retry") {
+    const runId = requireArg(args[0], "flow authorize-retry requires a run id");
+    const request = await readRetryAuthorizationRequest(flags, cwd);
+    const result = await authorizeRetry(runId, { cwd, request });
+    console.log(`retry authorized${result.idempotent ? " (idempotent)" : ""}: ${runId}`);
+    console.log(`target: ${result.state.current_step}`);
+    console.log(`epoch: ${result.transition.retry_epoch}`);
+    console.log(`request: ${result.transition.authority.request_ref}`);
     return;
   }
 

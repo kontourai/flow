@@ -361,6 +361,7 @@ export function initialState(definition: any, runId: string, params: MutableReco
     current_step: firstStep.id,
     params,
     gate_outcomes: [],
+    gate_outcome_history: [],
     transitions: [],
     lifecycle: [],
     exceptions: [],
@@ -434,21 +435,57 @@ export function routeTargetForReason(gate, routeReason) {
 }
 
 export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep }) {
+  const retryEpoch = routeBackEpoch(state, { gateId, routeReason, fromStep, toStep });
   const reasonKey = routeReason ?? "default";
   const priorMatches = (state.transitions ?? []).filter((transition) => {
     return transition.type === "route_back"
       && transition.gate_id === gateId
       && (transition.route_reason ?? transition.reason) === reasonKey
       && transition.from_step === fromStep
-      && transition.to_step === toStep;
+      && transition.to_step === toStep
+      && (transition.retry_epoch ?? 1) === retryEpoch;
   });
   return priorMatches.length + 1;
+}
+
+/** The current persisted retry epoch for one exact route-back loop. */
+export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep }) {
+  const reasonKey = routeReason ?? "default";
+  const transitions = state.transitions ?? [];
+  for (let index = transitions.length - 1; index >= 0; index -= 1) {
+    const authorization = transitions[index];
+    const blocked = transitions[index - 1];
+    if (authorization?.type === "retry_authorized"
+      && authorization.status === "retry-authorized"
+      && authorization.gate_id === gateId
+      && (authorization.route_reason ?? authorization.reason) === reasonKey
+      && authorization.from_step === fromStep
+      && authorization.to_step === toStep
+      && blocked?.type === "route_back"
+      && blocked.status === "blocked"
+      && blocked.limit_exceeded === true
+      && blocked.gate_id === gateId
+      && blocked.from_step === fromStep
+      && blocked.selected_route === toStep
+      && (blocked.route_reason ?? blocked.reason) === reasonKey
+      && authorization.prior_retry_epoch === (blocked.retry_epoch ?? 1)
+      && authorization.retry_epoch === authorization.prior_retry_epoch + 1) {
+      return authorization.retry_epoch;
+    }
+  }
+  return 1;
 }
 
 export function routeBackDecision(state: any, gate: any, routeReason: string | null | undefined, evidence: any[] = [], options: MutableRecord = {}) {
   const selectedTarget = routeTargetForReason(gate, routeReason);
   const maxAttempts = gate.route_back_policy?.max_attempts;
   const attempt = routeBackAttempt(state, {
+    gateId: gate.id,
+    routeReason,
+    fromStep: gate.step,
+    toStep: selectedTarget
+  });
+  const retryEpoch = routeBackEpoch(state, {
     gateId: gate.id,
     routeReason,
     fromStep: gate.step,
@@ -465,6 +502,7 @@ export function routeBackDecision(state: any, gate: any, routeReason: string | n
     route_reason: routeReason ?? undefined,
     reason: routeReason ?? "default",
     attempt,
+    retry_epoch: retryEpoch,
     max_attempts: maxAttempts,
     limit_exceeded: limitExceeded,
     evidence_refs: evidence.map((entry) => entry.id),
@@ -554,15 +592,14 @@ export function descendantsOf(definition: any, stepId: string): string[] {
  * Route-back cascade (Phase 1.5).
  *
  * When a run routes back to `targetStep`, the work that produced every step
- * downstream of the target is now suspect and must re-run.  This clears the
- * stale `pass` gate outcomes — and the `allowed` transitions — for every
- * descendant of `targetStep`, so `readySteps`/`stageStatuses` stop treating
- * them as passed and the run re-derives them as the cursor advances again.
+ * downstream of the target is now suspect and must re-run. This clears stale
+ * `pass` outcomes from the current projection while retaining the append-only
+ * gate-outcome ledger and completion-transition history. Later route markers
+ * make those historical completions non-current for readiness calculations.
  *
- * Only `pass` outcomes are cleared: a `pass` is what wrongly suppresses a
- * re-run.  Non-pass outcomes (`block`/`route-back`/`wait`) are diagnostic
- * records — including the failure that triggered this route-back — and are
- * preserved so reports and attempt counting (`routeBackAttempt`) keep working.
+ * Only projected `pass` outcomes are cleared: a `pass` is what wrongly
+ * suppresses a re-run. Non-pass outcomes (`block`/`route-back`/`wait`) and all
+ * historical decisions remain represented for audit and attempt accounting.
  * The target itself is untouched: it becomes `current_step` and is
  * re-evaluated through the normal cursor.
  *
@@ -572,6 +609,9 @@ export function descendantsOf(definition: any, stepId: string): string[] {
 export function invalidateDescendants(definition: any, state: any, targetStep: string): string[] {
   const def = normalizeFlowDefinition(definition);
   const descendants = descendantsOf(def, targetStep);
+  if (!Array.isArray(state.gate_outcome_history)) {
+    state.gate_outcome_history = structuredClone(state.gate_outcomes ?? []);
+  }
   if (descendants.length === 0) return [];
   const descendantSet = new Set(descendants);
   const descendantGateIds = new Set(
@@ -584,12 +624,21 @@ export function invalidateDescendants(definition: any, state: any, targetStep: s
       (outcome: any) => !(descendantGateIds.has(outcome.gate_id) && outcome.status === "pass")
     );
   }
-  if (Array.isArray(state.transitions)) {
-    state.transitions = state.transitions.filter(
-      (transition: any) => !(transition.status === "allowed" && descendantSet.has(transition.from_step))
-    );
-  }
   return descendants;
+}
+
+/** Whether the latest completion of a step is newer than every later invalidation marker. */
+export function stepCompletionIsCurrent(state: any, stepId: string): boolean {
+  let completedAt = -1;
+  let invalidatedAt = -1;
+  for (const [index, transition] of (state.transitions ?? []).entries()) {
+    if (transition?.from_step === stepId && transition?.status === "allowed") completedAt = index;
+    if (["route_back", "retry_authorized"].includes(transition?.type)
+      && (transition?.to_step === stepId || transition?.invalidated_steps?.includes(stepId))) {
+      invalidatedAt = index;
+    }
+  }
+  return completedAt > invalidatedAt;
 }
 
 /**
@@ -611,9 +660,7 @@ function predecessorsPassed(definition: any, stepId: string, state: any): boolea
 
     if (predGateIds.length === 0) {
       // No gate: passed if it appears in transitions with status "allowed".
-      return (state.transitions ?? []).some(
-        (t) => t.from_step === predId && t.status === "allowed"
-      );
+      return stepCompletionIsCurrent(state, predId);
     }
     return predGateIds.every((gateId) =>
       (state.gate_outcomes ?? []).some(
@@ -651,9 +698,7 @@ export function readySteps(definition: any, state: any, _manifest: any): string[
 
       // For gate-less steps, check transitions.
       if (stepGates.length === 0) {
-        const appearedInTransitions = (state.transitions ?? []).some(
-          (t) => t.from_step === step.id && t.status === "allowed"
-        );
+        const appearedInTransitions = stepCompletionIsCurrent(state, step.id);
         if (appearedInTransitions) return false;
       }
 
@@ -719,9 +764,7 @@ export function stageStatuses(definition: any, state: any, manifest: any): Recor
       );
     const gatelessPassed =
       stepGates.length === 0 &&
-      (state.transitions ?? []).some(
-        (t) => t.from_step === step.id && t.status === "allowed"
-      );
+      stepCompletionIsCurrent(state, step.id);
     const passed = allGatesPassed || gatelessPassed;
 
     if (hasFailed && step.id !== state.current_step) {

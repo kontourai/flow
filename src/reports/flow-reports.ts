@@ -13,6 +13,7 @@ import {
 } from "../definition/flow-definition.js";
 import { expectationsForGate } from "../gates/flow-gates.js";
 import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "../shared/flow-utils.js";
+import { flowRunHead } from "../runtime/flow-run-retry-authorization.js";
 
 export function reportJson(definition: any, state: any, manifest: any) {
   const lifecycle = (state.lifecycle ?? []).map((event) => ({
@@ -29,8 +30,52 @@ export function reportJson(definition: any, state: any, manifest: any) {
     },
     at: event.at
   }));
+  const retry_authorizations = (state.transitions ?? [])
+    .map((transition, index) => ({ transition, index }))
+    .filter(({ transition }) => transition.type === "retry_authorized")
+    .map(({ transition, index }) => {
+      const blocked = state.transitions[index - 1];
+      const maxAttempts = blocked?.max_attempts;
+      const matchingLaterTransitions = state.transitions.slice(index + 1).filter((candidate) =>
+        candidate.type === "route_back"
+        && candidate.gate_id === transition.gate_id
+        && candidate.from_step === transition.from_step
+        && candidate.selected_route === transition.selected_route
+        && (candidate.route_reason ?? candidate.reason) === transition.route_reason
+        && (candidate.retry_epoch ?? 1) === transition.retry_epoch
+      );
+      const consumedAttempts = Math.min(matchingLaterTransitions.length, maxAttempts);
+      const remainingAttempts = Math.max(maxAttempts - consumedAttempts, 0);
+      const superseded = state.transitions.slice(index + 1).some((candidate) =>
+        candidate.type === "retry_authorized"
+        && candidate.gate_id === transition.gate_id
+        && candidate.from_step === transition.from_step
+        && candidate.selected_route === transition.selected_route
+        && candidate.route_reason === transition.route_reason
+        && candidate.prior_retry_epoch === transition.retry_epoch
+      );
+      return {
+      blocked_transition_ref: transition.blocked_transition_ref,
+      prior_run_head: transition.prior_run_head,
+      gate_id: transition.gate_id,
+      route_reason: transition.route_reason ?? transition.reason,
+      target_step: transition.to_step,
+      prior_retry_epoch: transition.prior_retry_epoch,
+      retry_epoch: transition.retry_epoch,
+      max_attempts: maxAttempts,
+      consumed_attempts: consumedAttempts,
+      next_attempt: remainingAttempts > 0 ? consumedAttempts + 1 : null,
+      remaining_attempts: remainingAttempts,
+      budget_status: superseded ? "historical" : "current",
+      authority: transition.authority,
+      reason: transition.reason,
+      invalidated_steps: transition.invalidated_steps ?? [],
+      at: transition.at
+      };
+    });
   return {
     schema_version: FLOW_SCHEMA_VERSION,
+    state_head: flowRunHead(state),
     run_id: state.run_id,
     definition_id: definition.id,
     definition_version: definition.version,
@@ -41,6 +86,7 @@ export function reportJson(definition: any, state: any, manifest: any) {
     next_action: projectedNextAction(state),
     continuation: continuationLine(state),
     lifecycle,
+    ...(retry_authorizations.length ? { retry_authorizations } : {}),
     open_gates: openGates(definition, state).map((gate) => gate.id),
     accepted_exceptions: state.exceptions,
     gate_summaries: Object.keys(definition.gates).map((gateId) => {
@@ -61,6 +107,7 @@ export function reportJson(definition: any, state: any, manifest: any) {
         "recovery_step",
         "route_reason",
         "attempt",
+        "retry_epoch",
         "max_attempts",
         "limit_exceeded",
         "expectation_ids",
@@ -85,6 +132,7 @@ export function renderMarkdownReport(definition, state, manifest) {
     `- Definition: ${markdownText(definition.id)} v${markdownText(definition.version)}`,
     `- Subject: ${markdownText(state.subject)}`,
     `- Status: ${markdownText(state.status)}`,
+    `- State head: ${markdownText(report.state_head)}`,
     `- Current step: ${markdownText(state.current_step)}`,
     `- Next action: ${markdownText(report.next_action)}`,
     `- Continuation: ${markdownText(report.continuation)}`,
@@ -102,6 +150,17 @@ export function renderMarkdownReport(definition, state, manifest) {
     }
   } else {
     lines.push("No lifecycle events.");
+  }
+  lines.push("", "## Retry Authorizations", "");
+  if (report.retry_authorizations?.length) {
+    for (const authorization of report.retry_authorizations) {
+      lines.push(`- Epoch ${markdownText(String(authorization.prior_retry_epoch))} -> ${markdownText(String(authorization.retry_epoch))}: ${markdownText(authorization.gate_id)} -> ${markdownText(authorization.target_step)} at ${markdownText(authorization.at)}`);
+      lines.push(`  - Block: ${markdownText(authorization.blocked_transition_ref)}`);
+      lines.push(`  - ${authorization.budget_status === "current" ? "Current" : "Historical final"} budget: next attempt ${authorization.next_attempt === null ? "none" : `${markdownText(String(authorization.next_attempt))}/${markdownText(String(authorization.max_attempts))}`}; ${markdownText(String(authorization.remaining_attempts))} attempts remaining; ${markdownText(String(authorization.consumed_attempts))} consumed`);
+      lines.push(`  - Authority: ${markdownText(authorization.authority.kind)} by ${markdownText(authorization.authority.actor)} (${markdownText(authorization.authority.request_ref)})`);
+    }
+  } else {
+    lines.push("No retry authorizations.");
   }
   lines.push(
     "",

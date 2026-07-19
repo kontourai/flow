@@ -54,6 +54,7 @@
         "selected_route": { "type": "string" },
         "recovery_step": { "type": "string" },
         "attempt": { "type": "integer", "minimum": 1 },
+        "retry_epoch": { "type": "integer", "minimum": 1 },
         "max_attempts": { "type": "integer", "minimum": 1 },
         "limit_exceeded": { "type": "boolean" },
         "evidence_refs": {

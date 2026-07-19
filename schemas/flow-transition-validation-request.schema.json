@@ -61,13 +61,63 @@
       "type": "object",
       "required": ["from_step"],
       "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          },
+          "then": {
+            "required": ["type", "from_step", "to_step", "status", "reason", "gate_id", "route_reason", "selected_route", "blocked_transition_ref", "prior_run_head", "prior_retry_epoch", "retry_epoch", "authority", "at"],
+            "properties": { "status": { "const": "retry-authorized" } }
+          }
+        },
+        {
+          "if": {
+            "required": ["status"],
+            "properties": { "status": { "const": "retry-authorized" } }
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              { "required": ["attempt"] },
+              { "required": ["max_attempts"] },
+              { "required": ["limit_exceeded"] },
+              { "required": ["recovery_step"] }
+            ]
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "route_back" } }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              { "required": ["blocked_transition_ref"] },
+              { "required": ["prior_run_head"] },
+              { "required": ["prior_retry_epoch"] },
+              { "required": ["authority"] }
+            ]
+          },
+          "then": {
+            "required": ["type"],
+            "properties": { "type": { "const": "retry_authorized" } }
+          }
+        }
+      ],
       "properties": {
         "type": { "type": "string" },
         "from_step": { "type": "string", "minLength": 1 },
         "to_step": { "type": ["string", "null"] },
         "status": {
           "type": "string",
-          "enum": ["allowed", "blocked", "skipped", "accepted_by_exception", "completed", "route-back", "route_back"]
+          "enum": ["allowed", "blocked", "skipped", "accepted_by_exception", "completed", "route-back", "route_back", "retry-authorized"]
         },
         "proposed_status": {
           "type": "string",
@@ -79,6 +129,7 @@
         "selected_route": { "type": "string" },
         "recovery_step": { "type": "string" },
         "attempt": { "type": "integer", "minimum": 1 },
+        "retry_epoch": { "type": "integer", "minimum": 1 },
         "max_attempts": { "type": "integer", "minimum": 1 },
         "limit_exceeded": { "type": "boolean" },
         "evidence_refs": {
@@ -95,6 +146,10 @@
         "diagnostics": { "type": "object", "additionalProperties": true },
         "analytics": { "type": "object", "additionalProperties": true },
         "analytics_loop_key": { "type": "string" },
+        "blocked_transition_ref": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "prior_run_head": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "prior_retry_epoch": { "type": "integer", "minimum": 1 },
+        "authority": { "$ref": "flow-run.schema.json#/$defs/lifecycle_authority" },
         "at": { "type": "string", "format": "date-time" }
       }
     }

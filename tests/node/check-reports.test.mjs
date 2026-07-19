@@ -36,6 +36,7 @@ test("reports, summary, and resume expose route-back metadata", () => {
   applyEvaluation(definition, state, outcome);
 
   const report = reportJson(definition, state, manifest);
+  assert.match(report.state_head, /^[a-f0-9]{64}$/);
   const gate = report.gate_summaries.find((entry) => entry.gate_id === "verify-gate");
   const transition = state.transitions.at(-1);
   assert.equal(transition.route_reason, "implementation_defect");

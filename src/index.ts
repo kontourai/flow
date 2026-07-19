@@ -19,6 +19,11 @@ export type {
   FlowLifecycleDiagnosticCode,
   FlowLifecycleEvent,
   FlowLifecycleRequest,
+  FlowRetryAuthorizationRequest,
+  FlowRetryAuthorizationResult,
+  FlowRetryAuthorizationTransition,
+  FlowRetryAuthorizationDiagnostic,
+  FlowRetryAuthorizationDiagnosticCode,
   FlowResumableStatus,
   FlowRunState,
   FlowRunStatus,
@@ -100,6 +105,7 @@ export {
   readyGates,
   readySteps,
   routeBackAttempt,
+  routeBackEpoch,
   routeBackDecision,
   routeReasonForFailedEvidence,
   routeTargetForReason,
@@ -142,7 +148,16 @@ export {
   validateLifecycleRequest
 } from "./runtime/flow-run-lifecycle.js";
 export {
+  FlowRetryAuthorizationError,
+  canonicalJson,
+  flowRunHead,
+  flowTransitionRef,
+  retryAuthorizationMatches,
+  validateRetryAuthorizationRequest
+} from "./runtime/flow-run-retry-authorization.js";
+export {
   acceptException,
+  authorizeRetry,
   attachEvidence,
   cancelRun,
   ensureFlowLayout,

@@ -98,6 +98,7 @@ function normalizeTransitionPreview(transition: MutableRecord, extras: MutableRe
     ...(transition.selected_route ?? extras.selected_route ? { selected_route: transition.selected_route ?? extras.selected_route } : {}),
     ...(transition.recovery_step ?? extras.recovery_step ? { recovery_step: transition.recovery_step ?? extras.recovery_step } : {}),
     ...(transition.attempt ?? extras.attempt ? { attempt: transition.attempt ?? extras.attempt } : {}),
+    ...(transition.retry_epoch ?? extras.retry_epoch ? { retry_epoch: transition.retry_epoch ?? extras.retry_epoch } : {}),
     ...(transition.max_attempts ?? extras.max_attempts ? { max_attempts: transition.max_attempts ?? extras.max_attempts } : {}),
     ...(limitExceeded !== undefined ? { limit_exceeded: limitExceeded } : {}),
     ...(transition.evidence_refs ?? extras.evidence_refs ? { evidence_refs: cloneJson(transition.evidence_refs ?? extras.evidence_refs) } : {}),
@@ -200,6 +201,9 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
     }
     if (transition.attempt !== undefined && transition.attempt !== route.attempt) {
       diagnostics.push(transitionDiagnostic("route_back.attempt.mismatch", "$.proposed_transition.attempt", `route-back attempt must be ${route.attempt}`, { proposed_attempt: transition.attempt, attempt: route.attempt }));
+    }
+    if (transition.retry_epoch !== undefined && transition.retry_epoch !== route.retry_epoch) {
+      diagnostics.push(transitionDiagnostic("route_back.retry_epoch.mismatch", "$.proposed_transition.retry_epoch", `route-back retry_epoch must be ${route.retry_epoch}`, { proposed_retry_epoch: transition.retry_epoch, retry_epoch: route.retry_epoch }));
     }
 
     if (diagnostics.length === 0) {

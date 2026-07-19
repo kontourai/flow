@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { readFile, readdir, lstat, open, writeFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, lstat, open, writeFile, mkdir, rename, rm, link } from "node:fs/promises";
+import { hostname } from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   FLOW_RUN_DEFINITION_FILE,
@@ -22,13 +24,14 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
   initialState,
   normalizeRunStateLifecycle,
   openGates,
+  nextActionForStep,
   descendantsOf,
   invalidateDescendants,
   validateDefinition
@@ -48,6 +51,14 @@ import {
   priorResumableStatus,
   validateLifecycleRequest
 } from "./flow-run-lifecycle.js";
+import {
+  FlowRetryAuthorizationError,
+  flowRunHead,
+  flowTransitionRef,
+  retryAuthorizationMatches,
+  validateRetryAuthorizationRequest
+} from "./flow-run-retry-authorization.js";
+import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
 
 type RunLocationDiagnostic = {
   code: string;
@@ -69,6 +80,7 @@ type RunLocation = {
 };
 
 const resolvedRunContexts = new WeakMap<object, { cwd: string }>();
+const activeMutationLockTokens = new Set<string>();
 
 function flowRunsRoot(cwd = process.cwd()) {
   return path.join(flowRuntimeRoot(cwd), "runs");
@@ -419,6 +431,7 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
   validateRunStateSchema(parsedState);
   const state = normalizeRunStateLifecycle(parsedState);
   validateRunStateIdentity(definition, state, runId);
+  validateRetryAuthorizationHistory(definition, state);
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
@@ -473,6 +486,7 @@ async function saveRun(run) {
   await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateRetryAuthorizationHistory(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.definition, run.state);
   await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
@@ -530,7 +544,9 @@ function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleActi
 async function changeRunLifecycle(runId: string, operation: FlowLifecycleAction, options: MutableRecord = {}) {
   const request = validateLifecycleRequest(operation, { reason: options.reason, authority: options.authority });
   const at = lifecycleTimestamp(options, operation);
-  const run = await loadRun(runId, options.cwd);
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+  const run = await loadRun(runId, cwd);
   const existingCancellation = [...(run.state.lifecycle ?? [])].reverse().find((event) => event.action === "cancel");
   if (operation === "cancel" && run.state.status === "canceled" && existingCancellation) {
     if (lifecycleRequestMatches(existingCancellation, request)) {
@@ -567,6 +583,7 @@ async function changeRunLifecycle(runId: string, operation: FlowLifecycleAction,
   };
   await saveLifecycleState(run);
   return { ...run, event, idempotent: false };
+  });
 }
 
 export function pauseRun(runId: string, options: MutableRecord = {}) {
@@ -579,6 +596,475 @@ export function resumeRun(runId: string, options: MutableRecord = {}) {
 
 export function cancelRun(runId: string, options: MutableRecord = {}) {
   return changeRunLifecycle(runId, "cancel", options);
+}
+
+type RunMutationLockHooks = {
+  afterReleaseQuarantine?: (releasedPath: string) => Promise<void> | void;
+};
+
+type MutationLockOwner = {
+  token: string;
+  pid: number;
+  host: string;
+  status: "active" | "holding" | "released";
+  created_at: string;
+  released_at?: string;
+};
+
+const MUTATION_LOCK_MARKER = "ticket-lock-v1";
+const MUTATION_LOCK_ROOT_PROTOCOL = "flow.run-mutation.ticket-root.v1";
+const MUTATION_LOCK_ROOT_TOKEN = "ticket-runtime-root-v1";
+const MUTATION_LOCK_ROOT_HOST = "flow-ticket-runtime.invalid";
+const MUTATION_LOCK_ROOT_CREATED_AT = "1970-01-01T00:00:00.000Z";
+
+async function readMutationLockOwner(file: string): Promise<MutationLockOwner> {
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const fileStat = await handle.stat();
+    if (!fileStat.isFile()) throw new Error(`flow.run_location.invalid_artifact_path: ${file}`);
+    const owner = JSON.parse(await handle.readFile({ encoding: "utf8" }));
+    if (!isNonEmptyString(owner?.token) || !Number.isInteger(owner?.pid) || !isNonEmptyString(owner?.host)) {
+      throw new Error(`flow.run_mutation.lock.owner.invalid: ${file}`);
+    }
+    return owner;
+  } finally {
+    await handle.close();
+  }
+}
+
+function mutationLockOwnerIsStale(owner: MutationLockOwner) {
+  if (owner.status === "released") return true;
+  if (owner.host === hostname() && owner.pid === process.pid) return !activeMutationLockTokens.has(owner.token);
+  if (owner.host === hostname()) {
+    try {
+      process.kill(owner.pid, 0);
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ESRCH";
+    }
+  }
+  return false;
+}
+
+async function publishMutationLockOwner(ticketPath: string, owner: MutationLockOwner) {
+  const ownerPath = path.join(ticketPath, "owner.json");
+  const tempPath = path.join(ticketPath, `.owner-${randomUUID()}.tmp`);
+  try {
+    await writeFile(tempPath, `${JSON.stringify(owner)}\n`, { flag: "wx", mode: 0o600 });
+    await rename(tempPath, ownerPath);
+  } finally {
+    await rm(tempPath, { force: true }).catch(() => undefined);
+  }
+}
+
+function mutationLockRootOwner() {
+  // This remains a valid owner record to pre-ticket runtimes. Its reserved
+  // foreign host means their stale-owner logic cannot reclaim the root.
+  return {
+    token: MUTATION_LOCK_ROOT_TOKEN,
+    pid: 1,
+    host: MUTATION_LOCK_ROOT_HOST,
+    status: "active",
+    created_at: MUTATION_LOCK_ROOT_CREATED_AT,
+    protocol: MUTATION_LOCK_ROOT_PROTOCOL
+  } satisfies MutationLockOwner & { protocol: string };
+}
+
+function isMutationLockRootOwner(owner: any) {
+  return owner?.token === MUTATION_LOCK_ROOT_TOKEN
+    && owner?.pid === 1
+    && owner?.host === MUTATION_LOCK_ROOT_HOST
+    && owner?.status === "active"
+    && owner?.created_at === MUTATION_LOCK_ROOT_CREATED_AT
+    && owner?.protocol === MUTATION_LOCK_ROOT_PROTOCOL;
+}
+
+function mutationLockMigrationRequired(lockRoot: string) {
+  return runLocationError(
+    "flow.run_mutation.lock.migration_required",
+    `unmarked legacy mutation lock at ${lockRoot} requires explicit quiescence-only operator cleanup before retry authorization`
+  );
+}
+
+function mutationLockRootInvalid(lockRoot: string, detail: string) {
+  return runLocationError("flow.run_mutation.lock.root_invalid", `ticket mutation lock root ${lockRoot} is invalid: ${detail}`);
+}
+
+async function readMutationLockMarker(markerPath: string) {
+  const handle = await open(markerPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw mutationLockRootInvalid(path.dirname(markerPath), "marker is not a regular file");
+    const marker = await handle.readFile({ encoding: "utf8" });
+    if (marker.trim() !== MUTATION_LOCK_MARKER) throw mutationLockRootInvalid(path.dirname(markerPath), "marker content does not identify the ticket runtime");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function publishMutationLockMarker(markerPath: string) {
+  const tempPath = `${markerPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tempPath, `${MUTATION_LOCK_MARKER}\n`, { flag: "wx", mode: 0o600 });
+    // link(2) gives us an exclusive, atomic publication of the final marker.
+    await link(tempPath, markerPath);
+  } finally {
+    await rm(tempPath, { force: true }).catch(() => undefined);
+  }
+}
+
+async function rootEntryExists(file: string) {
+  try {
+    return await lstat(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function validateMutationLockRoot(lockRoot: string) {
+  const root = await lstat(lockRoot);
+  if (!root.isDirectory() || root.isSymbolicLink()) throw mutationLockRootInvalid(lockRoot, "root is not a real directory");
+  const markerPath = path.join(lockRoot, MUTATION_LOCK_MARKER);
+  const ownerPath = path.join(lockRoot, "owner.json");
+  const [marker, ownerFile] = await Promise.all([rootEntryExists(markerPath), rootEntryExists(ownerPath)]);
+  if (!marker || !ownerFile) throw mutationLockRootInvalid(lockRoot, "root must retain both marker and owner sentinel");
+  if (marker.isSymbolicLink() || ownerFile.isSymbolicLink()) throw mutationLockRootInvalid(lockRoot, "marker and owner sentinel must not be symbolic links");
+  try {
+    await readMutationLockMarker(markerPath);
+    const owner = await readMutationLockOwner(ownerPath);
+    if (!isMutationLockRootOwner(owner)) throw mutationLockRootInvalid(lockRoot, "owner.json is not the reserved ticket-root sentinel");
+  } catch (error) {
+    if ((error as Error & { code?: string }).code === "flow.run_mutation.lock.root_invalid") throw error;
+    throw mutationLockRootInvalid(lockRoot, "owner sentinel is unreadable or malformed");
+  }
+  for (const entry of await readdir(lockRoot, { withFileTypes: true })) {
+    if (entry.name === MUTATION_LOCK_MARKER || entry.name === "owner.json") continue;
+    if (!/^(ticket|released)-/.test(entry.name) || entry.isSymbolicLink() || !entry.isDirectory()) {
+      throw mutationLockRootInvalid(lockRoot, `unexpected root artifact ${entry.name}`);
+    }
+  }
+  return lockRoot;
+}
+
+async function classifyExistingMutationLockRoot(lockRoot: string, publicationWait = 0): Promise<string> {
+  const root = await rootEntryExists(lockRoot);
+  if (!root || !root.isDirectory() || root.isSymbolicLink()) throw mutationLockMigrationRequired(lockRoot);
+  const markerPath = path.join(lockRoot, MUTATION_LOCK_MARKER);
+  const ownerPath = path.join(lockRoot, "owner.json");
+  const [marker, owner] = await Promise.all([rootEntryExists(markerPath), rootEntryExists(ownerPath)]);
+  // A concurrently-created root can be observed between exclusive mkdir and
+  // publication of its sentinel/marker. Wait only for that generation to
+  // finish publishing; this never writes or repairs an existing root.
+  if (!marker && publicationWait < 20) {
+    await delay(5);
+    return classifyExistingMutationLockRoot(lockRoot, publicationWait + 1);
+  }
+  if (!marker && !owner) throw mutationLockMigrationRequired(lockRoot);
+  if (!marker) {
+    try {
+      const legacyOwner = await readMutationLockOwner(ownerPath);
+      if (isMutationLockRootOwner(legacyOwner)) {
+        if (publicationWait < 20) {
+          await delay(5);
+          return classifyExistingMutationLockRoot(lockRoot, publicationWait + 1);
+        }
+        throw mutationLockRootInvalid(lockRoot, "marked root is missing its marker");
+      }
+    } catch (error) {
+      if ((error as Error & { code?: string }).code === "flow.run_mutation.lock.root_invalid") throw error;
+    }
+    throw mutationLockMigrationRequired(lockRoot);
+  }
+  // A marker denotes the ticket protocol. Its sentinel must never be repaired
+  // or replaced automatically, regardless of whether it is malformed or linked.
+  return validateMutationLockRoot(lockRoot);
+}
+
+async function prepareMutationLockRoot(runDirPath: string) {
+  const lockRoot = path.join(runDirPath, ".mutation.lock");
+  const markerPath = path.join(lockRoot, MUTATION_LOCK_MARKER);
+  try {
+    await mkdir(lockRoot, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return classifyExistingMutationLockRoot(lockRoot);
+  }
+  // A newly claimed root publishes its compatibility sentinel first, then its
+  // marker, and validates both before any ticket can be created.
+  await writeFile(path.join(lockRoot, "owner.json"), `${JSON.stringify(mutationLockRootOwner())}\n`, { flag: "wx", mode: 0o600 });
+  await publishMutationLockMarker(markerPath);
+  return validateMutationLockRoot(lockRoot);
+}
+
+async function publishMutationTicket(lockRoot: string, owner: MutationLockOwner) {
+  const ticketName = `ticket-${Date.now().toString().padStart(13, "0")}-${owner.token}`;
+  const ticketPath = path.join(lockRoot, ticketName);
+  // Construct outside the published lock root, then rename only the complete
+  // owner-recorded directory into the visible ticket namespace. A reader can
+  // therefore never observe ticket-* without a complete owner.json.
+  const pendingPath = path.join(path.dirname(lockRoot), `.${path.basename(lockRoot)}.pending-${owner.token}`);
+  await validateMutationLockRoot(lockRoot);
+  await mkdir(pendingPath, { mode: 0o700 });
+  try {
+    await publishMutationLockOwner(pendingPath, owner);
+    await rename(pendingPath, ticketPath);
+    // Abort if the root changed or gained an unexpected artifact while the
+    // pending directory was being constructed.
+    await validateMutationLockRoot(lockRoot);
+  } catch (error) {
+    await rm(pendingPath, { recursive: true, force: true }).catch(() => undefined);
+    await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+  return { ticketName, ticketPath };
+}
+
+async function scanLiveMutationTickets(lockRoot: string) {
+  await validateMutationLockRoot(lockRoot);
+  const live: Array<{ name: string; path: string; owner: MutationLockOwner }> = [];
+  for (const entry of await readdir(lockRoot, { withFileTypes: true })) {
+    if (entry.name === MUTATION_LOCK_MARKER || entry.name === "owner.json") continue;
+    if (!entry.name.startsWith("ticket-")) continue;
+    const ticketPath = path.join(lockRoot, entry.name);
+    if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error(`flow.run_location.symlink_not_allowed: ${ticketPath}`);
+    let owner: MutationLockOwner;
+    try {
+      owner = await readMutationLockOwner(path.join(ticketPath, "owner.json"));
+    } catch {
+      const ticketStat = await lstat(ticketPath).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (!ticketStat) continue;
+      throw runLocationError("flow.run_mutation.lock.owner_unreadable", `ticket has no readable owner: ${ticketPath}`);
+    }
+    if (mutationLockOwnerIsStale(owner)) {
+      await rm(ticketPath, { recursive: true, force: true });
+    } else {
+      live.push({ name: entry.name, path: ticketPath, owner });
+    }
+  }
+  return live;
+}
+
+async function awaitMutationTicket(lockRoot: string, ticketName: string, ticketPath: string, owner: MutationLockOwner) {
+  await delay(25);
+  for (let attempt = 0; ; attempt += 1) {
+    const live = await scanLiveMutationTickets(lockRoot);
+    const holding = live.find((entry) => entry.owner.status === "holding");
+    const first = [...live].sort((left, right) => left.name.localeCompare(right.name))[0];
+    if ((!holding || holding.owner.token === owner.token) && first?.owner.token === owner.token) {
+      await publishMutationLockOwner(ticketPath, { ...owner, status: "holding" });
+      return;
+    }
+    if (attempt >= 500) {
+      throw runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
+    }
+    await delay(10);
+  }
+}
+
+async function releaseMutationTicket(lockRoot: string, ticketPath: string, owner: MutationLockOwner, hooks: RunMutationLockHooks) {
+  const releasedPath = path.join(lockRoot, `released-${owner.token}`);
+  let quarantined = false;
+  try {
+    await rename(ticketPath, releasedPath);
+    quarantined = true;
+  } catch {
+    await publishMutationLockOwner(ticketPath, { ...owner, status: "released", released_at: new Date().toISOString() }).catch(() => undefined);
+  }
+  try {
+    if (quarantined) await hooks.afterReleaseQuarantine?.(releasedPath);
+  } finally {
+    activeMutationLockTokens.delete(owner.token);
+    if (quarantined) await rm(releasedPath, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+export async function withRunMutationLock<T>(
+  runId: string,
+  cwd: string,
+  operation: () => Promise<T>,
+  hooks: RunMutationLockHooks = {}
+): Promise<T> {
+  const location = await resolveRunLocation(runId, cwd);
+  const token = randomUUID();
+  const owner: MutationLockOwner = { token, pid: process.pid, host: hostname(), status: "active", created_at: new Date().toISOString() };
+  const lockRoot = await prepareMutationLockRoot(location.dir);
+  activeMutationLockTokens.add(token);
+  let ticketPath: string | undefined;
+  try {
+    const ticket = await publishMutationTicket(lockRoot, owner);
+    ticketPath = ticket.ticketPath;
+    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner);
+    return await operation();
+  } catch (error) {
+    activeMutationLockTokens.delete(token);
+    if (ticketPath) await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  } finally {
+    if (ticketPath && activeMutationLockTokens.has(token)) await releaseMutationTicket(lockRoot, ticketPath, owner, hooks);
+  }
+}
+
+async function saveRetryAuthorizationState(run: any) {
+  validateRunStateSchema(run.state);
+  validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateRetryAuthorizationHistory(run.definition, run.state);
+  const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
+  const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
+  const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
+  const suffix = `.retry-${randomUUID()}.tmp`;
+  const staged = [
+    { target: reportJsonPath, temp: `${reportJsonPath}${suffix}`, contents: `${JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2)}\n` },
+    { target: reportMarkdownPath, temp: `${reportMarkdownPath}${suffix}`, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
+    { target: statePath, temp: `${statePath}${suffix}`, contents: `${JSON.stringify(run.state, null, 2)}\n` }
+  ];
+  const priorReports = [
+    { target: reportJsonPath, contents: await readFile(reportJsonPath, "utf8") },
+    { target: reportMarkdownPath, contents: await readFile(reportMarkdownPath, "utf8") }
+  ];
+  let committed = false;
+  try {
+    for (const entry of staged) await writeFile(entry.temp, entry.contents, { flag: "wx", mode: 0o600 });
+    // Derived projections land first. state.json is the final atomic commit point.
+    for (const entry of staged) await rename(entry.temp, entry.target);
+    committed = true;
+  } catch (error) {
+    if (!committed) {
+      // A normal I/O failure before the state commit restores both derived
+      // projections to the prior authoritative state. Crash recovery still
+      // treats state.json as the commit point and regenerates projections.
+      await Promise.all(priorReports.map((entry) => writeExistingFileNoFollow(entry.target, entry.contents)));
+    }
+    throw error;
+  } finally {
+    await Promise.all(staged.map((entry) => rm(entry.temp, { force: true }).catch(() => undefined)));
+  }
+}
+
+type RetryAuthorizationPreflight =
+  | {
+      kind: "replay";
+      run: Awaited<ReturnType<typeof loadRun>>;
+      transition: FlowRetryAuthorizationTransition;
+    }
+  | {
+      kind: "ready";
+      run: Awaited<ReturnType<typeof loadRun>>;
+      blocked: MutableRecord;
+    };
+
+/**
+ * Read-only semantic admission for retry authorization. Callers run this once
+ * before acquiring the shared mutation lock so invalid requests cannot create
+ * lock artifacts, and again after locking to close the state-change window.
+ */
+async function preflightRetryAuthorization(
+  runId: string,
+  cwd: string,
+  request: FlowRetryAuthorizationRequest
+): Promise<RetryAuthorizationPreflight> {
+  const run = await loadRun(runId, cwd);
+  const existing = (run.state.transitions ?? []).find(
+    (transition) => transition?.authority?.request_ref === request.authority.request_ref
+  );
+  if (existing) {
+    if (retryAuthorizationMatches(existing, request)) {
+      return { kind: "replay", run, transition: existing as FlowRetryAuthorizationTransition };
+    }
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.replay.conflict", "$.authority.request_ref", "request_ref conflicts with an existing retry authorization");
+  }
+  if (["canceled", "completed", "failed", "accepted_by_exception"].includes(run.state.status)) {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.run_terminal", "$.status", `runs with status ${run.state.status} cannot authorize retry`);
+  }
+  if (run.state.status !== "blocked") {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.run_not_blocked", "$.status", "retry authorization requires a blocked run");
+  }
+  const currentHead = flowRunHead(run.state);
+  if (currentHead !== request.expected_run_head) {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.run_head.stale", "$.expected_run_head", "expected_run_head does not match the current run state");
+  }
+  const blockedIndex = run.state.transitions.length - 1;
+  const blocked = run.state.transitions[blockedIndex];
+  if (!blocked || flowTransitionRef(blocked) !== request.blocked_transition_ref
+    || run.state.current_step !== blocked.from_step) {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.block.invalid", "$.blocked_transition_ref", "blocked_transition_ref must identify the current exhausted route-back transition");
+  }
+  const proof = exhaustedRouteBackProof(run.definition, run.state.transitions, blockedIndex);
+  if (!proof) throw new FlowRetryAuthorizationError("flow.retry_authorization.block.invalid", "$.blocked_transition_ref", "current exhausted route-back transition is inconsistent with its history and Flow Definition");
+  if (request.target_step !== blocked.selected_route) {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.block.invalid", "$.target_step", "target_step must equal the exhausted transition selected_route");
+  }
+  return { kind: "ready", run, blocked };
+}
+
+/**
+ * Authorize one new bounded epoch for the current exhausted route-back block.
+ * This is a run transition, deliberately separate from pause/resume/cancel.
+ */
+export async function authorizeRetry(runId: string, options: MutableRecord = {}): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+  if (Object.hasOwn(options, "at")) {
+    throw new FlowRetryAuthorizationError("flow.retry_authorization.request.invalid", "$.at", "authorization timestamps are runtime-derived and cannot be supplied by callers");
+  }
+  const requestValue = options.request ?? Object.fromEntries(Object.entries(options).filter(([key]) => key !== "cwd"));
+  const request = validateRetryAuthorizationRequest(requestValue) as FlowRetryAuthorizationRequest;
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  // Reject all semantic failures before lock initialization. Exact replay is
+  // itself read-only, so return the coherent run snapshot observed by this
+  // preflight without initializing a lock root. As with loadRun, another
+  // operation may advance the run after this snapshot has been read.
+  const initialPreflight = await preflightRetryAuthorization(runId, cwd, request);
+  if (initialPreflight.kind === "replay") {
+    return { ...initialPreflight.run, transition: initialPreflight.transition, idempotent: true };
+  }
+  return withRunMutationLock(runId, cwd, async () => {
+    const preflight = await preflightRetryAuthorization(runId, cwd, request);
+    if (preflight.kind === "replay") {
+      return { ...preflight.run, transition: preflight.transition, idempotent: true };
+    }
+    const { run, blocked } = preflight;
+    const priorEpoch = blocked.retry_epoch ?? 1;
+    const retryEpoch = priorEpoch + 1;
+    const invalidated = invalidateDescendants(run.definition, run.state, request.target_step);
+    // The exhausted decision remains in gate_outcome_history and transition
+    // history, but it is no longer the current projection in the authorized
+    // epoch. The gate returns to wait until fresh evidence is evaluated.
+    run.state.gate_outcomes = (run.state.gate_outcomes ?? []).filter(
+      (outcome) => outcome.gate_id !== blocked.gate_id
+    );
+    const at = new Date().toISOString();
+    const transition: FlowRetryAuthorizationTransition = {
+    type: "retry_authorized",
+    from_step: blocked.from_step,
+    to_step: request.target_step,
+    status: "retry-authorized",
+    reason: request.reason,
+    gate_id: blocked.gate_id,
+    // Persist the effective loop reason (`default` when the failed evidence
+    // had none), rather than the operator's human reason, so future attempt
+    // accounting selects this exact recovered loop.
+    route_reason: blocked.route_reason ?? blocked.reason,
+    selected_route: blocked.selected_route,
+    blocked_transition_ref: request.blocked_transition_ref,
+    prior_run_head: request.expected_run_head,
+    prior_retry_epoch: priorEpoch,
+    retry_epoch: retryEpoch,
+    authority: request.authority,
+    invalidated_steps: invalidated.length ? invalidated : undefined,
+    at
+    };
+    run.state = {
+      ...run.state,
+      status: "active",
+      current_step: request.target_step,
+      transitions: [...run.state.transitions, transition],
+      next_action: nextActionForStep(run.definition, request.target_step),
+      updated_at: at
+    };
+    await saveRetryAuthorizationState(run);
+    return { ...run, transition, idempotent: false };
+  });
 }
 
 export async function sha256File(file) {
@@ -618,7 +1104,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
   return { bundle: raw, bundle_report };
 }
 
-export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
+async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("attach_evidence", run.state.status);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
@@ -704,6 +1190,11 @@ export async function attachEvidence(runId: string, options: MutableRecord): Pro
   run.manifest.evidence.push(entry);
   await saveRun(run);
   return entry;
+}
+
+export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd }));
 }
 
 /**
@@ -806,7 +1297,7 @@ function staleGateRechecks(definition: any, state: any, manifest: any, freshness
   return [...candidates.values()];
 }
 
-export async function evaluateRun(runId: string, options: MutableRecord = {}) {
+async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("evaluate", run.state.status);
   // §1: re-derive freshness-bearing reports with the current `now` BEFORE
@@ -883,7 +1374,12 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
 }
 
-export async function acceptException(runId, options) {
+export function evaluateRun(runId: string, options: MutableRecord = {}) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd }));
+}
+
+async function acceptExceptionUnlocked(runId, options) {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("accept_exception", run.state.status);
   if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
@@ -899,6 +1395,11 @@ export async function acceptException(runId, options) {
   run.state.next_action = `evaluate ${slugLabel(options.gate)} with accepted exception`;
   await saveRun(run);
   return exception;
+}
+
+export function acceptException(runId, options) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, () => acceptExceptionUnlocked(runId, { ...options, cwd }));
 }
 
 export async function listRuns(cwd = process.cwd()) {

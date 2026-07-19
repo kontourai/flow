@@ -145,6 +145,52 @@ export interface FlowLifecycleRequest {
   authority: FlowLifecycleAuthority;
 }
 
+/** A provider-neutral decision to begin one more bounded route-back epoch. */
+export interface FlowRetryAuthorizationRequest {
+  reason: string;
+  target_step: string;
+  blocked_transition_ref: string;
+  expected_run_head: string;
+  authority: FlowLifecycleAuthority;
+}
+
+export interface FlowRetryAuthorizationTransition extends MutableRecord {
+  type: "retry_authorized";
+  from_step: string;
+  to_step: string;
+  status: "retry-authorized";
+  reason: string;
+  gate_id: string;
+  route_reason: string;
+  selected_route: string;
+  blocked_transition_ref: string;
+  prior_run_head: string;
+  prior_retry_epoch: number;
+  retry_epoch: number;
+  authority: FlowLifecycleAuthority;
+  invalidated_steps?: string[];
+  at: string;
+}
+
+export interface FlowRetryAuthorizationResult extends MutableRecord {
+  transition: FlowRetryAuthorizationTransition;
+  idempotent: boolean;
+}
+
+export type FlowRetryAuthorizationDiagnosticCode =
+  | "flow.retry_authorization.request.invalid"
+  | "flow.retry_authorization.authority.invalid"
+  | "flow.retry_authorization.run_terminal"
+  | "flow.retry_authorization.run_not_blocked"
+  | "flow.retry_authorization.block.invalid"
+  | "flow.retry_authorization.history.invalid"
+  | "flow.retry_authorization.run_head.stale"
+  | "flow.retry_authorization.replay.conflict";
+
+export interface FlowRetryAuthorizationDiagnostic extends FlowDiagnostic {
+  code: FlowRetryAuthorizationDiagnosticCode;
+}
+
 export interface FlowFreshnessGateRecheck {
   gate_id: string;
   evidence_id: string;
@@ -163,6 +209,8 @@ export interface FlowRunState extends MutableRecord {
   current_step: string;
   params?: MutableRecord;
   gate_outcomes: GateOutcome[];
+  /** Append-only audit ledger; absent legacy runs are seeded from gate_outcomes on first mutation. */
+  gate_outcome_history?: GateOutcome[];
   transitions: MutableRecord[];
   pending_gate_rechecks?: FlowFreshnessGateRecheck[];
   /** Absent only on legacy persisted runs before canonical load normalization. */
@@ -186,6 +234,8 @@ export interface GateOutcome extends MutableRecord {
   missing?: string[];
   optional_missing?: string[];
   matched_expectations?: Array<{ expectation_id: string; evidence_id: string }>;
+  /** Missing on legacy outcomes and transitions means retry epoch 1. */
+  retry_epoch?: number;
 }
 
 export type ReleaseReadinessDecision = "pass" | "hold";

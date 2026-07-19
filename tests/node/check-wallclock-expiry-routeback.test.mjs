@@ -59,7 +59,10 @@ function definition() {
           }
         ]
       },
-      "release-gate": { step: "release", expects: [] }
+      "release-gate": {
+        step: "release", expects: [],
+        on_route_back: { "release revision required": "prepare" }
+      }
     }
   };
 }
@@ -316,6 +319,10 @@ test("explicit evaluation of a pending downstream revisit fails closed before th
     to_step: "prepare",
     status: "blocked",
     reason: "release revision required",
+    route_reason: "release revision required",
+    selected_route: "prepare",
+    attempt: 1,
+    limit_exceeded: false,
     at: T0,
     gate_id: "release-gate"
   });
@@ -470,6 +477,10 @@ test("budget-exhausted stale ancestor blocks at its gate and preserves freshness
     reason: "missing_evidence",
     from_step: "verify",
     to_step: "prepare",
+    selected_route: "prepare",
+    attempt: 1,
+    max_attempts: 1,
+    limit_exceeded: false,
     status: "blocked",
     at: T0
   });

@@ -88,8 +88,9 @@
       "to_step": "build",
       "status": "blocked",
       "gate_id": "verify-gate",
-      "reason": "tests failed",
+      "reason": "implementation_defect",
       "route_reason": "implementation_defect",
+      "selected_route": "build",
       "evidence_refs": [
         "ev.failed-tests"
       ],
@@ -98,6 +99,7 @@
       ],
       "attempt": 1,
       "max_attempts": 2,
+      "limit_exceeded": false,
       "external_refs": [
         {
           "id": "pr-18",
