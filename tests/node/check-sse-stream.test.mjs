@@ -2,7 +2,7 @@
  * Node test: SSE /api/stream endpoint emits a "projection" event on file change.
  */
 import assert from "node:assert/strict";
-import { cp, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import http from "node:http";
 import path from "node:path";
@@ -66,6 +66,15 @@ function collectSseEvents(baseUrl, eventName, maxCount, timeoutMs) {
       reject(err);
     });
   });
+}
+
+async function waitFor(predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("timed out waiting for condition");
 }
 
 test("SSE /api/stream emits projection event when run state file changes", async () => {
@@ -137,5 +146,47 @@ test("SSE /api/stream responds with correct content-type and initial comment", a
     });
   } finally {
     await server.close();
+  }
+});
+
+test("console server close drains an in-flight watcher repair before fixture cleanup", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-sse-close-fixture-"));
+  const runDir = path.join(cwd, ".kontourai", "flow", "runs", fixtureRunId);
+  const statePath = path.join(runDir, "state.json");
+  await mkdir(path.dirname(runDir), { recursive: true });
+  await cp(fixtureSourceDir, runDir, { recursive: true });
+  const server = await startFlowConsoleServer({ runId: fixtureRunId, cwd, host: "127.0.0.1", port: 0 });
+  const lockRoot = path.join(runDir, ".mutation.lock");
+  const blocker = path.join(lockRoot, "ticket-0000000000000-close-regression");
+  const pendingBlocker = path.join(runDir, ".close-regression-blocker");
+
+  try {
+    await mkdir(pendingBlocker);
+    await writeFile(path.join(pendingBlocker, "owner.json"), `${JSON.stringify({
+      token: "close-regression",
+      pid: 1,
+      host: "close-regression.invalid",
+      status: "holding",
+      created_at: new Date().toISOString(),
+    })}\n`);
+    await rename(pendingBlocker, blocker);
+
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.next_action = `close regression ${Date.now()}`;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    await waitFor(async () => (await readdir(lockRoot)).filter((entry) => /^ticket-\d/.test(entry)).length > 1);
+
+    let closed = false;
+    const closePromise = server.close().then(() => { closed = true; });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(closed, false, "close must wait for the watcher mutation already in flight");
+    await rm(blocker, { recursive: true });
+    await closePromise;
+    await rm(cwd, { recursive: true });
+  } finally {
+    await rm(pendingBlocker, { recursive: true, force: true });
+    await rm(blocker, { recursive: true, force: true });
+    await server.close().catch(() => undefined);
+    await rm(cwd, { recursive: true, force: true });
   }
 });

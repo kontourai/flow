@@ -122,7 +122,7 @@ type SseSubscriber = (data: string) => void;
 
 export interface RunWatcher {
   subscribe: (fn: SseSubscriber) => () => void;
-  close: () => void;
+  close: () => Promise<void>;
 }
 
 export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: string): RunWatcher {
@@ -133,6 +133,7 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let lastProjectionJson = "";
   let closed = false;
+  const pendingNotifications = new Set<Promise<void>>();
 
   const notify = async () => {
     if (closed) return;
@@ -149,9 +150,18 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
     } catch { /* file not ready yet */ }
   };
 
+  const startNotification = () => {
+    const pending = notify();
+    pendingNotifications.add(pending);
+    void pending.finally(() => pendingNotifications.delete(pending));
+  };
+
   const schedule = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => { void notify(); }, SSE_DEBOUNCE_MS);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      startNotification();
+    }, SSE_DEBOUNCE_MS);
   };
 
   // Try fs.watch; fall back to polling on error
@@ -167,7 +177,7 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
 
   function startPolling() {
     if (pollTimer || closed) return;
-    pollTimer = setInterval(() => { void notify(); }, SSE_POLL_INTERVAL_MS);
+    pollTimer = setInterval(startNotification, SSE_POLL_INTERVAL_MS);
     if (pollTimer.unref) pollTimer.unref();
   }
 
@@ -179,11 +189,13 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
       subscribers.add(fn);
       return () => { subscribers.delete(fn); };
     },
-    close() {
+    async close() {
       closed = true;
       if (debounceTimer) clearTimeout(debounceTimer);
       if (pollTimer) clearInterval(pollTimer);
       try { watcher?.close(); } catch { /* ignore */ }
+      await Promise.allSettled([...pendingNotifications]);
+      subscribers.clear();
     }
   };
 }
@@ -291,11 +303,12 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   const normalizedHost = host === "::1" ? "[::1]" : host;
   const url = `http://${normalizedHost}:${address.port}/`;
   return {
-    close: () =>
-      new Promise<void>((resolve, reject) => {
-        watcher.close();
+    close: async () => {
+      await watcher.close();
+      await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
-      }),
+      });
+    },
     host,
     port: address.port,
     runId: options.runId,
