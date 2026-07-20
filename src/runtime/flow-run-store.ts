@@ -220,9 +220,7 @@ async function inspectRunCandidate(runId: string, cwd: string): Promise<RunCandi
   const stateResult = await candidateFileJson(runId, dir, FLOW_RUN_STATE_FILE);
   if (stateResult.reason) return { dir, status: "incomplete", reason: stateResult.reason };
   try {
-    validateRunStateSchema(stateResult.value);
-    const effectiveDefinition = resolveEffectiveDefinition(definition, stateResult.value);
-    validateRunStateIdentity(effectiveDefinition, stateResult.value, runId);
+    validateRunStateConsistency(definition, stateResult.value, { runId });
   } catch (error) {
     return {
       dir,
@@ -393,6 +391,26 @@ export function validateRunStateIdentity(definition, state, runId) {
   return state;
 }
 
+/**
+ * Pure, complete validation of canonical Flow run state against its immutable
+ * start definition. This performs the same schema, lifecycle, amendment-ledger,
+ * effective-identity, and retry/route-history checks used by loadRun without
+ * reading, repairing, or writing any run artifact.
+ */
+export function validateRunStateConsistency(
+  startDefinitionValue: unknown,
+  stateValue: unknown,
+  options: { runId?: string } = {}
+) {
+  const startDefinition = validateDefinition(startDefinitionValue);
+  validateRunStateSchema(stateValue);
+  const state = normalizeRunStateLifecycle(stateValue);
+  const definition = resolveEffectiveDefinition(startDefinition, state);
+  validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
+  validateRetryAuthorizationHistory(definition, state);
+  return { startDefinition, definition, state };
+}
+
 export function validateEvidenceManifestIdentity(manifest, definition, state) {
   validateEvidenceManifestSchema(manifest);
   if (!isObject(manifest)) throw new Error("evidence manifest must be an object");
@@ -455,13 +473,8 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
 async function readRunAtLocation(runId: string, location: RunLocation, cwd: string) {
   const { dir } = location;
   const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
-  const startDefinition = validateDefinition(rawDefinition);
   const parsedState = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
-  validateRunStateSchema(parsedState);
-  const state = normalizeRunStateLifecycle(parsedState);
-  const definition = resolveEffectiveDefinition(startDefinition, state);
-  validateRunStateIdentity(definition, state, runId);
-  validateRetryAuthorizationHistory(definition, state);
+  const { startDefinition, definition, state } = validateRunStateConsistency(rawDefinition, parsedState, { runId });
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
@@ -1317,6 +1330,9 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
 
 async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
+  if (options.expectedRunHead !== undefined && flowRunHead(run.state) !== options.expectedRunHead) {
+    throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
+  }
   assertLifecycleEligible("attach_evidence", run.state.status);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
   const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -1396,7 +1412,14 @@ async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Pr
 
 export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  return withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd }));
+  let expectedRunHead: string | undefined;
+  if (options.expectedRunHead !== undefined) {
+    if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+      throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
+    }
+    expectedRunHead = options.expectedRunHead.toLowerCase();
+  }
+  return withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd, expectedRunHead }));
 }
 
 /**

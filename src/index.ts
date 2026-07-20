@@ -205,7 +205,8 @@ export {
   scaffoldDemoRun,
   sha256File,
   startRun,
-  resumeRun
+  resumeRun,
+  validateRunStateConsistency
 } from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,

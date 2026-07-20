@@ -38,6 +38,14 @@ neutral authority shape while consumers authenticate actors and bind their
 capabilities to the effective identity. It does not automatically migrate,
 backfill legacy digests, downgrade, or integrate Flow Agents envelopes.
 
+The package root exposes `validateRunStateConsistency` for consumers that
+securely read canonical bytes themselves. It is the same pure, non-mutating
+schema/lifecycle/amendment/identity/retry-history validation used by `loadRun`.
+Definition-sensitive evidence writes use `attachEvidence.expectedRunHead`; Flow
+rechecks that head while holding its per-run mutation ticket, so an amendment
+and an evidence commit have one deterministic order rather than a capability
+check/write race.
+
 ## Flow Definition To Run Lifecycle
 
 ```mermaid

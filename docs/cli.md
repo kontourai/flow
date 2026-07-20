@@ -224,6 +224,7 @@ responsibilities.
 
 ```sh
 flow attach-evidence <run-id> --gate <gate> --file <file>
+  [--expected-run-head <sha256>]
   [--kind <kind>] [--bundle] [--status failed] [--supersede <evidence-id> ...]
   [--producer <id>] [--authority-trace <trace>]
   [--route-reason <reason>] [--expectation-id <id> ...]
@@ -234,6 +235,10 @@ flow attach-evidence <run-id> --gate <gate> --file <file>
 
 Copies the file into the run's `evidence/` directory and records it in the manifest.
 
+- `--expected-run-head` adds an optimistic-concurrency guard. Flow reloads and
+  compares the canonical state while holding the same per-run mutation lock
+  used to commit evidence; malformed or stale heads reject before evidence
+  bytes or manifest entries are written.
 - `--kind` is one of the [documented evidence kinds](evidence.md#evidence-kinds); unknown kinds are stored as `custom` with the original name preserved.
 - `--bundle` (or `--kind trust.bundle`) parses the file as a Hachure TrustBundle, validates it against the Hachure schema, and stores the bundle plus its derived trust report on the evidence entry. See [Trust artifacts](evidence.md#trust-artifacts).
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).

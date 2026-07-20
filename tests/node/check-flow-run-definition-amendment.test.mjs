@@ -15,7 +15,8 @@ import {
   flowRunHead,
   loadRun,
   evaluateRun,
-  startRun
+  startRun,
+  validateRunStateConsistency
 } from "../../dist/index.js";
 import { repairRunReports } from "../../dist/runtime/flow-run-store.js";
 import { cliPath, execFile } from "./helpers/cli.mjs";
@@ -83,11 +84,33 @@ test("AC1 AC4 AC5: compatible amendment preserves immutable artifacts and projec
   );
   const failedEvidence = path.join(cwd, "failed.txt");
   await writeFile(failedEvidence, "route this correction back to plan\n");
-  await attachEvidence(runId, { cwd, gate: "execute-gate", file: failedEvidence, status: "failed", route_reason: "plan_gap" });
+  const manifestBeforeStaleAttachment = await readFile(manifestFile);
+  await assert.rejects(
+    attachEvidence(runId, {
+      cwd, gate: "execute-gate", file: failedEvidence, status: "failed", route_reason: "plan_gap",
+      expectedRunHead: flowRunHead(before.state)
+    }),
+    /flow\.run_head\.stale/
+  );
+  assert.deepEqual(await readFile(manifestFile), manifestBeforeStaleAttachment, "stale expected head rejects before evidence mutation");
+  await attachEvidence(runId, {
+    cwd, gate: "execute-gate", file: failedEvidence, status: "failed", route_reason: "plan_gap",
+    expectedRunHead: flowRunHead(after.state)
+  });
   const evaluated = await evaluateRun(runId, { cwd, gate: "execute-gate" });
   assert.equal(evaluated.state.current_step, "plan", "AC2: ordinary route-back uses the newly declared plan_gap route");
   const afterRoute = await loadRun(runId, cwd);
   assert.equal(afterRoute.state.current_step, "plan", "the amended ledger remains valid after successor-only history is recorded");
+  const validated = validateRunStateConsistency(afterRoute.startDefinition, afterRoute.state, { runId });
+  assert.deepEqual(validated.definition, afterRoute.definition, "the public pure validator returns the canonical effective definition");
+  assert.deepEqual(validated.state, afterRoute.state, "the public pure validator returns normalized canonical state");
+  const forgedRouteHistory = structuredClone(afterRoute.state);
+  forgedRouteHistory.transitions.at(-1).attempt = 999;
+  assert.throws(
+    () => validateRunStateConsistency(afterRoute.startDefinition, forgedRouteHistory, { runId }),
+    /flow\.retry_authorization\.history\.invalid/,
+    "schema-valid forged route history is rejected by the same semantic validator as loadRun"
+  );
   const later = structuredClone(next);
   later.version = "opaque-later-head";
   later.gates["plan-gate"] = { step: "plan", expects: [] };
@@ -105,6 +128,11 @@ test("AC3 AC5: replay, stale heads, and pre-state faults reject without canonica
   const reportFile = path.join(before.dir, "report.json");
   const snapshot = async () => Promise.all([readFile(stateFile), readFile(reportFile)]);
   const prior = await snapshot();
+  assert.throws(
+    () => attachEvidence(runId, { cwd, gate: "execute-gate", file: stateFile, expectedRunHead: "not-a-digest" }),
+    /flow\.run_head\.invalid/
+  );
+  assert.deepEqual(await snapshot(), prior, "malformed attachment CAS rejects without canonical mutation");
   await assert.rejects(
     amendRunDefinition(runId, { cwd, request: { ...acceptedRequest, expected_run_head: "0".repeat(64) }, definition: next }),
     /flow\.definition_amendment\.run_head\.stale/
@@ -227,5 +255,20 @@ test("AC2 AC6: CLI amends the same run and reports prior and effective identitie
   assert.match(result.stdout, /definition amended: amendment-run/);
   assert.match(result.stdout, /prior: definition-amendment-fixture v1/);
   assert.match(result.stdout, /effective: definition-amendment-fixture vopaque-corrected-head/);
-  assert.equal((await loadRun(runId, cwd)).state.definition_version, "opaque-corrected-head");
+  const amended = await loadRun(runId, cwd);
+  assert.equal(amended.state.definition_version, "opaque-corrected-head");
+  const evidencePath = path.join(cwd, "cli-evidence.txt");
+  await writeFile(evidencePath, "definition-bound evidence\n");
+  await assert.rejects(
+    execFile(process.execPath, [
+      cliPath, "attach-evidence", runId, "--gate", "execute-gate", "--file", evidencePath,
+      "--expected-run-head", flowRunHead(before.state), "--cwd", cwd
+    ]),
+    (error) => /flow\.run_head\.stale/.test(error.stderr)
+  );
+  const attached = await execFile(process.execPath, [
+    cliPath, "attach-evidence", runId, "--gate", "execute-gate", "--file", evidencePath,
+    "--expected-run-head", flowRunHead(amended.state), "--cwd", cwd
+  ]);
+  assert.match(attached.stdout, /attached evidence:/);
 });

@@ -53,3 +53,20 @@ Flow performs no automatic legacy digest backfill, migration, downgrade, or
 rollback. A correction after an accepted amendment is a new compatible
 amendment with fresh authority and heads. Consumers holding the prior effective
 identity must treat it as stale.
+
+## Consumer validation and mutation binding
+
+Consumers may securely read canonical bytes without asking Flow to repair
+derived reports. `validateRunStateConsistency` is the single public pure
+validator shared with `loadRun`: it applies schema and lifecycle validation,
+replays the complete amendment ledger, checks effective identity, and proves
+semantic retry and route-back history. Consumers must not deep-import or copy a
+subset of those validators.
+
+When a consumer capability authorizes an evidence mutation against a particular
+run head, it passes that head as `attachEvidence.expectedRunHead`. Flow compares
+the head only after acquiring the run's mutation ticket and reloading canonical
+state, then retains that ticket through the evidence commit. A concurrent
+amendment therefore linearizes before the attachment and makes it stale, or
+after the completed attachment; a definition-bound capability cannot be
+converted into an unqualified actor outside Flow's mutation boundary.

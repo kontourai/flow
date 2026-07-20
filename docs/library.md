@@ -7,7 +7,9 @@ import {
   startRun,
   attachEvidence,
   evaluateRun,
+  flowRunHead,
   loadRun,
+  validateRunStateConsistency,
   validateDefinitionWithDiagnostics,
   validateRunTransition
 } from "@kontourai/flow";
@@ -27,7 +29,8 @@ const { runId, state } = await startRun(".flow/definitions/agent-dev-flow.json",
 await attachEvidence("dev-1847", {
   gate: "plan-gate",
   file: "./acceptance-bundle.json",
-  kind: "trust.bundle"
+  kind: "trust.bundle",
+  expectedRunHead: flowRunHead(state)
 });
 
 const result = await evaluateRun("dev-1847");
@@ -37,6 +40,28 @@ const run = await loadRun("dev-1847"); // { dir, definition, state, manifest, co
 ```
 
 These functions read and write the same `.kontourai/flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`. They do not fall back to `.flow/runs/`; migrate generated state from older versions before loading it.
+
+`expectedRunHead` is an optional optimistic-concurrency guard for evidence
+attachment. Flow validates its shape before acquiring the run mutation ticket,
+then reloads canonical state and compares the head while holding the same
+per-run mutation lock that commits evidence. A stale or malformed head rejects
+before evidence bytes or manifests are written. This lets a consumer bind a
+definition-sensitive capability to the exact state it authorized without
+reimplementing Flow's lock or amendment semantics. The CLI exposes the same
+contract as `flow attach-evidence --expected-run-head <sha256>`.
+
+### Pure canonical state validation
+
+`validateRunStateConsistency(startDefinition, state, { runId })` is the pure,
+non-mutating validation path used by `loadRun`. It validates the shipped run
+schema and lifecycle, replays the complete definition-amendment ledger, checks
+the effective definition and optional run id, and proves semantic retry and
+route-back history. It returns normalized `{ startDefinition, definition,
+state }` and performs no file reads, report repair, locking, or writes.
+
+Consumers that securely read canonical bytes themselves can use this public
+root export instead of importing private `dist/` modules or copying only part
+of Flow's validation semantics.
 
 ### Pure trust attachment reducer
 
