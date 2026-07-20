@@ -71,6 +71,12 @@
     "validate:repo-hooks": "node scripts/validate-repo-hooks.mjs",
     "prepack": "npm run typecheck && npm test"
   },
+  "trust-reconcile-manifest": [
+    {
+      "id": "active-definition-amendment-focused",
+      "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs"
+    }
+  ],
   "keywords": [
     "agents",
     "ai-agents",
