@@ -26,3 +26,8 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 ## Useful Commands
 
 - `npm test` · `npm run typecheck` · `npm run docs:check` · `npm run check:schemas` · `node dist/cli.js --help`
+
+<!-- veritas:governance-block:start -->
+This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
+After changes, run `veritas readiness` and address any FAIL lines before finishing.
+<!-- veritas:governance-block:end -->
