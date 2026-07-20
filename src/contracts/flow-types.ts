@@ -177,6 +177,56 @@ export interface FlowRetryAuthorizationResult extends MutableRecord {
   idempotent: boolean;
 }
 
+/** Canonical identity of the definition currently governing a Flow Run. */
+export interface FlowDefinitionIdentity {
+  id: string;
+  version: string;
+  digest: string;
+}
+
+/** Provider-neutral, exact-head authority to amend an active run definition. */
+export interface FlowDefinitionAmendmentRequest {
+  reason: string;
+  expected_run_head: string;
+  expected_definition: FlowDefinitionIdentity;
+  successor_digest: string;
+  authority: FlowLifecycleAuthority;
+}
+
+export interface FlowDefinitionAmendmentEvent extends MutableRecord {
+  type: "definition_amended";
+  prior_definition: FlowDefinitionIdentity;
+  successor_definition: FlowDefinitionIdentity;
+  prior_run_head: string;
+  /** Exact pre-amendment state except for the separately reconstructed ledger prefix. */
+  prior_state: MutableRecord;
+  successor: FlowDefinition;
+  authority: FlowLifecycleAuthority;
+  reason: string;
+  at: string;
+}
+
+export interface FlowDefinitionAmendmentResult extends MutableRecord {
+  event: FlowDefinitionAmendmentEvent;
+  idempotent: false;
+  prior_definition: FlowDefinitionIdentity;
+  effective_definition: FlowDefinitionIdentity;
+}
+
+export type FlowDefinitionAmendmentDiagnosticCode =
+  | "flow.definition_amendment.request.invalid"
+  | "flow.definition_amendment.authority.invalid"
+  | "flow.definition_amendment.run_terminal"
+  | "flow.definition_amendment.run_paused"
+  | "flow.definition_amendment.run_head.stale"
+  | "flow.definition_amendment.definition_head.stale"
+  | "flow.definition_amendment.replay.conflict"
+  | "flow.definition_amendment.compatibility.invalid";
+
+export interface FlowDefinitionAmendmentDiagnostic extends FlowDiagnostic {
+  code: FlowDefinitionAmendmentDiagnosticCode;
+}
+
 export type FlowRetryAuthorizationDiagnosticCode =
   | "flow.retry_authorization.request.invalid"
   | "flow.retry_authorization.authority.invalid"
@@ -204,6 +254,10 @@ export interface FlowRunState extends MutableRecord {
   run_id: string;
   definition_id: string;
   definition_version: string;
+  /** Present only after an explicit amendment; ordinary runs retain no silently-backfilled digest. */
+  definition_digest?: string;
+  /** Append-only, self-contained effective-definition audit ledger. */
+  definition_amendments?: FlowDefinitionAmendmentEvent[];
   subject: string;
   status: FlowRunStatus;
   current_step: string;

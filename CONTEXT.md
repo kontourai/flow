@@ -61,6 +61,19 @@ _Avoid_: Arbitrary recovery target, retry-limit override, provider policy, hidde
 The persisted attempt-accounting scope for one exact route-back loop. Legacy route-back records without `retry_epoch` are epoch 1. A retry authorization records the next epoch, and only matching route-backs in that epoch consume its declared budget.
 _Avoid_: Lifetime retry reset, deleting failures, in-memory counter
 
+**Definition Amendment**:
+An explicit, authority-bearing replacement of the effective Flow Definition for
+one active Flow Run. It keeps the immutable start snapshot, subject, evidence,
+and history; the complete normalized successor and audit event are appended only
+to canonical `state.json` after strict history compatibility is proven.
+_Avoid_: Editing definition.json, replacement run, automatic migration, patch-only audit
+
+**Effective Definition Identity**:
+The `{id, version, digest}` identity of the definition that currently governs a
+run. The digest is SHA-256 over normalized canonical JSON. Consumers bind a
+capability to this identity and must reject it after a compatible amendment.
+_Avoid_: Version-only freshness, silent legacy backfill, provider envelope
+
 **Route Back**:
 A gate outcome that sends a Flow Run from the gate's step back to a selected step after failed or missing evidence. Route back is a Flow core transition primitive, not a Builder Kit policy.
 _Avoid_: Hidden retry, agent-specific recovery prompt, Builder Kit-only behavior

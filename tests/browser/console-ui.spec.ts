@@ -1,12 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 
-const FIXTURE_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../.kontourai/flow/test-projects/console-projection/.kontourai/flow/runs/console-projection-fixture"
-);
+const browserTestRoot = process.env.FLOW_CONSOLE_TEST_ROOT;
+if (!browserTestRoot || !path.isAbsolute(browserTestRoot)) throw new Error("FLOW_CONSOLE_TEST_ROOT must be an absolute path");
+const FIXTURE_ROOT = path.join(browserTestRoot, ".kontourai", "flow", "test-projects", "console-projection", ".kontourai", "flow", "runs", "console-projection-fixture");
 const STATE_FILE = path.join(FIXTURE_ROOT, "state.json");
 
 test("renders the Flow console projection with gates, graph, and links", async ({ page }) => {

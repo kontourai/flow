@@ -11,6 +11,7 @@ import {
 } from "../index.js";
 import { projectedNextAction } from "../definition/flow-definition.js";
 import { reportJson } from "../reports/flow-reports.js";
+import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -34,6 +35,7 @@ export interface FlowConsoleRunIdentity {
   run_id: string;
   definition_id: string;
   definition_version: string;
+  definition_digest?: string;
   subject: string | null;
   status: string | null;
   current_step: string | null;
@@ -46,6 +48,9 @@ export interface FlowConsoleDefinitionProjection {
   version: string;
   title: string | null;
   description: string | null;
+  digest?: string;
+  start_identity?: { id: string; version: string; digest?: string };
+  amendments?: Array<Record<string, unknown>>;
   raw: Record<string, unknown>;
 }
 
@@ -594,6 +599,7 @@ function projectRunIdentity(definition, state): FlowConsoleRunIdentity {
     run_id: state.run_id,
     definition_id: state.definition_id ?? definition.id,
     definition_version: state.definition_version ?? definition.version,
+    ...(state.definition_digest !== undefined ? { definition_digest: state.definition_digest } : {}),
     subject: state.subject ?? null,
     status: state.status ?? null,
     current_step: state.current_step ?? null,
@@ -602,12 +608,26 @@ function projectRunIdentity(definition, state): FlowConsoleRunIdentity {
   };
 }
 
-function projectDefinition(definition): FlowConsoleDefinitionProjection {
+function projectDefinition(definition, state, manifest): FlowConsoleDefinitionProjection {
+  const firstAmendment = state.definition_amendments?.[0];
+  const effective = definitionIdentity(definition);
   return {
     id: definition.id,
     version: definition.version,
     title: definition.title ?? definition.name ?? null,
     description: definition.description ?? null,
+    ...(state.definition_digest !== undefined || state.definition_amendments?.length ? {
+      digest: effective.digest,
+      start_identity: firstAmendment?.prior_definition ?? { id: manifest?.definition_id ?? definition.id, version: manifest?.definition_version ?? definition.version },
+      amendments: stableArray(state.definition_amendments).map((event) => stableClone({
+      prior_definition: event.prior_definition,
+      successor_definition: event.successor_definition,
+      prior_run_head: event.prior_run_head,
+      authority: event.authority,
+      reason: event.reason,
+      at: event.at
+      }))
+    } : {}),
     raw: stableClone(definition)
   };
 }
@@ -655,7 +675,7 @@ export function projectFlowRun(
   return stableClone({
     schema_version: "0.1",
     run: projectRunIdentity(definition, state),
-    definition: projectDefinition(definition),
+    definition: projectDefinition(definition, state, manifest),
     steps: projectSteps(definition, gateIds),
     current_step: state.current_step ?? null,
     open_gates: openGates(definition, state).map((gate) => gate.id).sort((left, right) => left.localeCompare(right)),

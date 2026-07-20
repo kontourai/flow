@@ -40,6 +40,25 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
 
 Exits `1` when the definition is invalid, so it slots directly into CI.
 
+## flow amend-definition
+
+```sh
+flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
+```
+
+Applies one authorized compatible successor to an active run. The request must
+contain `expected_run_head`, `expected_definition` (`id`, opaque `version`, and
+digest), `successor_digest`, reason, and provider-neutral authority. Obtain the
+heads from `flow status <run-id> --format json` or the library, authenticate the
+authority in the consumer, and create the request before invoking the command.
+The command prints prior and effective identities.
+
+It never edits `definition.json`, evidence, or the manifest. A stale head,
+reused request reference, malformed successor, incompatible history, paused or
+terminal run exits nonzero without canonical mutation. `flow report` and
+Console read canonical state and repair disposable report files; no automatic
+migration or rollback exists.
+
 ## flow kit
 
 Agent-blind kit operations: fetch, validate, place, and report structure — without interpreting what a skill or adapter means. These commands know nothing about extension asset class semantics; that is [flow-agents'](https://kontourai.github.io/flow-agents/) responsibility. See [ADR 0008](adr/0008-kit-operation-boundary.md) for the boundary decision.
@@ -205,6 +224,7 @@ responsibilities.
 
 ```sh
 flow attach-evidence <run-id> --gate <gate> --file <file>
+  [--expected-run-head <sha256>]
   [--kind <kind>] [--bundle] [--status failed] [--supersede <evidence-id> ...]
   [--producer <id>] [--authority-trace <trace>]
   [--route-reason <reason>] [--expectation-id <id> ...]
@@ -215,6 +235,10 @@ flow attach-evidence <run-id> --gate <gate> --file <file>
 
 Copies the file into the run's `evidence/` directory and records it in the manifest.
 
+- `--expected-run-head` adds an optimistic-concurrency guard. Flow reloads and
+  compares the canonical state while holding the same per-run mutation lock
+  used to commit evidence; malformed or stale heads reject before evidence
+  bytes or manifest entries are written.
 - `--kind` is one of the [documented evidence kinds](evidence.md#evidence-kinds); unknown kinds are stored as `custom` with the original name preserved.
 - `--bundle` (or `--kind trust.bundle`) parses the file as a Hachure TrustBundle, validates it against the Hachure schema, and stores the bundle plus its derived trust report on the evidence entry. See [Trust artifacts](evidence.md#trust-artifacts).
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).

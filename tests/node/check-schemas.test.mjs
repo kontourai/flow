@@ -26,6 +26,7 @@ const addFormats = require("ajv-formats");
 test("schemas describe the runtime contract", async () => {
   const definitionSchema = await json("schemas/flow-definition.schema.json");
   const runSchema = await json("schemas/flow-run.schema.json");
+  const amendmentRequestSchema = await json("schemas/flow-definition-amendment-request.schema.json");
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
   const commandEvidenceSchema = await json("schemas/command-evidence.schema.json");
   const reportSchema = await json("schemas/flow-report.schema.json");
@@ -59,6 +60,10 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.description, /state\.json/);
   assert.match(runSchema.description, /not a Resource Contract envelope/);
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
+  assert.equal(runSchema.properties.definition_digest.pattern, "^[a-f0-9]{64}$");
+  assert.equal(runSchema.properties.definition_amendments.items.$ref, "#/$defs/definition_amendment");
+  requireSchemaDefFields(runSchema, "definition_amendment", ["type", "prior_definition", "successor_definition", "prior_run_head", "successor", "authority", "reason", "at"]);
+  requireSchemaFields(amendmentRequestSchema, ["reason", "expected_run_head", "expected_definition", "successor_digest", "authority"]);
   assert.match(runSchema.properties.run_id.description, /\.kontourai\/flow\/runs\/<run-id>/);
   assert.match(runSchema.properties.current_step.description, /step id/);
   assert.match(runSchema.properties.gate_outcomes.description, /gate decisions/);

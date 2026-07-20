@@ -5,6 +5,7 @@ import {
   acceptException,
   applyFlowConfigMerge,
   attachEvidence,
+  amendRunDefinition,
   authorizeRetry,
   cancelRun,
   ensureFlowLayout,
@@ -16,7 +17,6 @@ import {
   pauseRun,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary,
-  renderAndWriteReport,
   renderMarkdownReport,
   renderResume,
   renderSummary,
@@ -30,7 +30,7 @@ import {
   stageStatuses,
   validateDefinitionWithDiagnostics
 } from "./index.js";
-import { listRunsWithDiagnostics } from "./runtime/flow-run-store.js";
+import { listRunsWithDiagnostics, repairRunReports } from "./runtime/flow-run-store.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 import { kitInstall, kitInspect } from "./kit/kit-operations.js";
@@ -52,7 +52,8 @@ function usage() {
   flow resume-run <run-id> --request <request-json> [--cwd <path>]
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--expected-run-head <sha256>] [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
@@ -261,6 +262,26 @@ async function readRetryAuthorizationRequest(flags: CliFlags, cwd: string) {
   }
 }
 
+async function readDefinitionAmendmentRequest(flags: CliFlags, cwd: string) {
+  const requestPath = requireArg(flags.request, "flow amend-definition requires --request <request-json>");
+  try {
+    return JSON.parse(await readFile(path.resolve(cwd, requestPath), "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.definition_amendment.request.invalid: unable to read amendment request ${requestPath}: ${detail}`);
+  }
+}
+
+async function readSuccessorDefinition(flags: CliFlags, cwd: string) {
+  const definitionPath = requireArg(flags.definition, "flow amend-definition requires --definition <successor-json>");
+  try {
+    return JSON.parse(await readFile(path.resolve(cwd, definitionPath), "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.definition_amendment.request.invalid: unable to read successor definition ${definitionPath}: ${detail}`);
+  }
+}
+
 function validationPayload(definitionPath, result) {
   return {
     valid: result.valid,
@@ -464,6 +485,20 @@ async function main() {
     return;
   }
 
+  if (command === "amend-definition") {
+    const runId = requireArg(args[0], "flow amend-definition requires a run id");
+    const [request, definition] = await Promise.all([
+      readDefinitionAmendmentRequest(flags, cwd),
+      readSuccessorDefinition(flags, cwd)
+    ]);
+    const result = await amendRunDefinition(runId, { cwd, request, definition });
+    console.log(`definition amended: ${runId}`);
+    console.log(`prior: ${result.prior_definition.id} v${result.prior_definition.version} ${result.prior_definition.digest}`);
+    console.log(`effective: ${result.effective_definition.id} v${result.effective_definition.version} ${result.effective_definition.digest}`);
+    console.log(`request: ${result.event.authority.request_ref}`);
+    return;
+  }
+
   if (command === "attach-evidence") {
     const runId = requireArg(args[0], "flow attach-evidence requires a run id");
     if (flags["trust-artifact"]) {
@@ -477,6 +512,7 @@ async function main() {
       kind: flags.kind,
       bundle: Boolean(flags.bundle),
       trustArtifact: Boolean(flags["trust-artifact"]),
+      expectedRunHead: flags["expected-run-head"],
       status: flags.status,
       supersede: flags.supersede,
       claimType: flags["claim-type"],
@@ -562,11 +598,11 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
-    const run = await loadRun(runId, cwd);
+    let run = await loadRun(runId, cwd);
     const diagnostics = run.diagnostics;
+    run = await repairRunReports(run);
     const report = reportJson(run.definition, run.state, run.manifest);
     const markdown = renderMarkdownReport(run.definition, run.state, run.manifest);
-    await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
     if (format === "summary") {
       console.log(`${report.status} ${report.summary}`);
       console.log(`report: ${runReportPath(run.dir, cwd)}`);
