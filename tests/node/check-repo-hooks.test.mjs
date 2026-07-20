@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { processGroupExists } from "../../scripts/lib/process-group.mjs";
 
 const hookPath = new URL("../../.githooks/pre-push", import.meta.url);
 const gitignorePath = new URL("../../.gitignore", import.meta.url);
@@ -138,6 +139,16 @@ test("terminating the build-lease wrapper terminates its child process group bef
     if (wrapper.exitCode === null && wrapper.signalCode === null) wrapper.kill("SIGKILL");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("process-group probes treat EPERM as alive and ESRCH as exited", () => {
+  assert.equal(processGroupExists(42, () => {}), true);
+  assert.equal(processGroupExists(42, () => { throw Object.assign(new Error("denied"), { code: "EPERM" }); }), true);
+  assert.equal(processGroupExists(42, () => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); }), false);
+  assert.throws(
+    () => processGroupExists(42, () => { throw Object.assign(new Error("invalid"), { code: "EINVAL" }); }),
+    /invalid/
+  );
 });
 
 async function waitForFile(file, timeoutMs = 5_000) {

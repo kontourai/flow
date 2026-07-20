@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { acquireBuildLease } from "./lib/build-lease.mjs";
+import { waitForProcessGroupExit } from "./lib/process-group.mjs";
 
 const [command, ...args] = process.argv.slice(2);
 if (!command) throw new Error("with-build-lease requires a command");
@@ -46,17 +47,5 @@ function signalChildTree(signal) {
     else process.kill(-child.pid, signal);
   } catch (error) {
     if (error?.code !== "ESRCH") child.kill(signal);
-  }
-}
-
-async function waitForProcessGroupExit(pid) {
-  while (true) {
-    try {
-      process.kill(-pid, 0);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    } catch (error) {
-      if (error?.code === "ESRCH") return;
-      throw error;
-    }
   }
 }
