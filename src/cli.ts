@@ -52,7 +52,7 @@ function usage() {
   flow resume-run <run-id> --request <request-json> [--cwd <path>]
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
@@ -466,6 +466,9 @@ async function main() {
 
   if (command === "attach-evidence") {
     const runId = requireArg(args[0], "flow attach-evidence requires a run id");
+    if (flags["trust-artifact"]) {
+      console.error("--trust-artifact is deprecated; use --kind trust.bundle");
+    }
     const routeMetadata = await parseRouteMetadata(flags, cwd);
     const entry = await attachEvidence(runId, {
       cwd,

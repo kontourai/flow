@@ -221,7 +221,9 @@ Copies the file into the run's `evidence/` directory and records it in the manif
 - `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
 
-`--help` also lists `--trust-artifact`, `--claim-type`, `--claim-subject`, and `--claim-status`. These flags are parsed but currently have no effect on attached evidence — use `--bundle` (or `--kind trust.bundle`) with a Hachure TrustBundle file instead.
+`--trust-artifact` is a deprecated alias for `--bundle` / `--kind trust.bundle`: using it attaches the file through the same trust.bundle path and prints a deprecation warning to stderr. Prefer `--bundle` (or `--kind trust.bundle`) directly.
+
+`--claim-type`, `--claim-subject`, and `--claim-status` are still accepted for backward compatibility but are deprecated no-ops with no effect on attached evidence, so they no longer appear in `--help`; the claim type and subject a Hachure TrustBundle satisfies come from the bundle's own claims, matched against the gate's `bundle_claim` expectation.
 
 ## flow capture
 
