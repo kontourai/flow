@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { access, constants, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ const consoleSmokePath = new URL("../../scripts/check-console-smoke.mjs", import
 const browserServerPath = new URL("../../tests/browser/serve-flow-console.mjs", import.meta.url);
 const setupPath = new URL("../../scripts/setup-repo-hooks.mjs", import.meta.url);
 const validatePath = new URL("../../scripts/validate-repo-hooks.mjs", import.meta.url);
+const buildLeaseWrapperPath = new URL("../../scripts/with-build-lease.mjs", import.meta.url);
 
 const downstreamNamePatterns = [
   ["Camp", "fit"],
@@ -58,8 +59,9 @@ test("console smoke output uses the Flow product namespace", async () => {
 });
 
 test("browser server rejects and preserves an unowned caller-supplied root", async () => {
-  const unownedRoot = await mkdtemp(path.join(tmpdir(), "flow-browser-unowned-"));
+  const unownedRoot = await mkdtemp(path.join(tmpdir(), "kontourai-flow-browser-unowned-"));
   const sentinel = path.join(unownedRoot, "keep.txt");
+  await writeFile(path.join(unownedRoot, ".flow-browser-owner.json"), `${JSON.stringify({ token: "different-owner" })}\n`);
   await writeFile(sentinel, "preserve\n");
   try {
     const result = spawnSync(process.execPath, [fileURLToPath(browserServerPath)], {
@@ -72,7 +74,7 @@ test("browser server rejects and preserves an unowned caller-supplied root", asy
       },
     });
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /not a dedicated Flow temp directory/);
+    assert.match(result.stderr, /ownership marker does not match/);
     assert.equal(await readFile(sentinel, "utf8"), "preserve\n");
   } finally {
     await rm(unownedRoot, { recursive: true, force: true });
@@ -85,12 +87,90 @@ test("repo hook package scripts stay wired", async () => {
   assert.equal(packageJson.scripts["setup:repo-hooks"], "node scripts/setup-repo-hooks.mjs");
   assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
   assert.equal(packageJson.scripts["check:repo-hooks"], "node scripts/with-build-lease.mjs npm run check:repo-hooks:locked");
-  assert.equal(packageJson.scripts["test:node"], "node --test tests/node/*.test.mjs");
+  assert.equal(packageJson.scripts["test:node"], "node scripts/with-build-lease.mjs npm run test:node:locked");
+  assert.equal(packageJson.scripts["test:node:locked"], "node --test tests/node/*.test.mjs");
   assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
   assert.equal(packageJson.scripts.test, "node scripts/with-build-lease.mjs npm run test:locked");
   assert.match(packageJson.scripts["test:locked"], /tests\/node\/\*\.test\.mjs/);
   assert.doesNotMatch(packageJson.scripts.test, /scripts\/check-(schemas|repo-hooks|console-projection|package-contents)\.mjs/);
 });
+
+test("terminating the build-lease wrapper terminates its child process group before releasing the lease", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "flow-build-lease-signal-"));
+  const ready = path.join(root, "ready");
+  const childPidFile = path.join(root, "child-pid");
+  const descendantScript = [
+    'const fs = require("node:fs")',
+    'process.on("SIGTERM", () => {})',
+    `fs.writeFileSync(${JSON.stringify(ready)}, "ready\\n")`,
+    'setInterval(() => {}, 1000)',
+  ].join(";");
+  const childScript = [
+    'const fs = require("node:fs")',
+    'const { spawn } = require("node:child_process")',
+    `const descendant = spawn(process.execPath, ["-e", ${JSON.stringify(descendantScript)}], { stdio: "ignore" })`,
+    `fs.writeFileSync(${JSON.stringify(childPidFile)}, String(descendant.pid))`,
+    'setInterval(() => {}, 1000)',
+  ].join(";");
+  const wrapper = spawn(process.execPath, [fileURLToPath(buildLeaseWrapperPath), process.execPath, "-e", childScript], {
+    stdio: "ignore",
+  });
+
+  try {
+    await waitForFile(ready);
+    const childPid = Number(await readFile(childPidFile, "utf8"));
+    wrapper.kill("SIGTERM");
+    const result = await waitForExit(wrapper);
+    assert.equal(result.code, 143);
+    await waitForProcessExit(childPid);
+
+    const startedAt = Date.now();
+    const next = spawnSync(process.execPath, [fileURLToPath(buildLeaseWrapperPath), process.execPath, "-e", ""], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    assert.equal(next.status, 0, next.stderr);
+    assert.ok(Date.now() - startedAt < 2_000, "the released lease should be immediately reusable");
+  } finally {
+    if (wrapper.exitCode === null && wrapper.signalCode === null) wrapper.kill("SIGKILL");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function waitForFile(file, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await access(file);
+      return;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`timed out waiting for ${file}`);
+}
+
+function waitForExit(child) {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+}
+
+async function waitForProcessExit(pid, timeoutMs = 7_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    } catch (error) {
+      if (error?.code === "ESRCH") return;
+      throw error;
+    }
+  }
+  throw new Error(`child process ${pid} remained alive after wrapper termination`);
+}
 
 test("pre-push hook is executable and runs the bounded local lane", async () => {
   const hook = await text(hookPath);
