@@ -440,7 +440,6 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
   const runId = options.runId ?? `run.${Date.now()}`;
   const dir = await allocateNewRunLocation(runId, cwd);
   const state = initialState(definition, runId, options.params ?? {}) as FlowRunState;
-  state.definition_digest = definitionDigest(definition);
   const manifest = initialEvidenceManifest(definition, state);
   await ensureDirectoryPathWithoutSymlinks(
     cwd,
@@ -470,6 +469,35 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
     : initialEvidenceManifest(startDefinition, state);
   const run = { dir, definition, startDefinition, state, manifest, config, diagnostics: location.diagnostics };
   resolvedRunContexts.set(run, { cwd: path.resolve(cwd) });
+  return run;
+}
+
+/** Repair disposable reports from an already validated canonical run. */
+export async function repairRunReports(run: any) {
+  const targets = [
+    {
+      path: await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson),
+      contents: `${JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2)}\n`
+    },
+    {
+      path: await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown),
+      contents: renderMarkdownReport(run.definition, run.state, run.manifest)
+    }
+  ];
+  for (const target of targets) {
+    try {
+      if (await readFile(target.path, "utf8") === target.contents) continue;
+      await writeExistingFileNoFollow(target.path, target.contents);
+    } catch (error) {
+      if (!isMissingPathError(error)) throw error;
+      try {
+        await writeFile(target.path, target.contents, { flag: "wx", mode: 0o600 });
+      } catch (createError) {
+        if ((createError as NodeJS.ErrnoException).code !== "EEXIST") throw createError;
+        await writeExistingFileNoFollow(target.path, target.contents);
+      }
+    }
+  }
   return run;
 }
 
@@ -1061,7 +1089,9 @@ async function preflightDefinitionAmendment(
     throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.successor", "successor must retain id and use a new version and digest");
   }
   const amendments = run.state.definition_amendments ?? [];
-  if (amendments.some((event: FlowDefinitionAmendmentEvent) => event.successor_definition?.version === successor.version || event.successor_definition?.digest === successorDigest)) {
+  const startIdentity = definitionIdentity(run.startDefinition ?? run.definition);
+  if (successor.version === startIdentity.version || successorDigest === startIdentity.digest
+    || amendments.some((event: FlowDefinitionAmendmentEvent) => event.successor_definition?.version === successor.version || event.successor_definition?.digest === successorDigest)) {
     throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.successor", "successor version or digest was already used in this run");
   }
   assertDefinitionCompatibility(run.definition, successor, run.state);
@@ -1088,11 +1118,13 @@ export async function amendRunDefinition(runId: string, options: MutableRecord =
     const { run, prior, successor } = await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
     const successorIdentity = definitionIdentity(successor);
     const at = new Date().toISOString();
+    const { definition_amendments: _priorAmendments, ...priorState } = structuredClone(run.state);
     const event: FlowDefinitionAmendmentEvent = {
       type: "definition_amended",
       prior_definition: prior,
       successor_definition: successorIdentity,
       prior_run_head: request.expected_run_head,
+      prior_state: priorState,
       successor,
       authority: request.authority,
       reason: request.reason,
@@ -1108,6 +1140,8 @@ export async function amendRunDefinition(runId: string, options: MutableRecord =
       next_action: nextActionForStep(successor, run.state.current_step),
       updated_at: at
     };
+    // Validate the completed ledger before state.json can become canonical.
+    resolveEffectiveDefinition(run.startDefinition ?? run.definition, run.state);
     await saveDefinitionAmendmentState(run, options);
     return { ...run, event, idempotent: false, prior_definition: prior, effective_definition: successorIdentity };
   });

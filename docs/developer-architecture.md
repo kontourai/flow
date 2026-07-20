@@ -29,7 +29,9 @@ Flow does not run agents, dispatch work, replace CI, own repo governance, own Su
 The run's `definition.json` and evidence manifest identify the immutable start
 snapshot. `state.json` may contain an append-only `definition_amendments` ledger
 whose final complete successor is the effective definition. Flow resolves and
-revalidates that ledger on every load, exposes its digest identity, and writes
+revalidates that ledger on every load. Each event binds an exact pre-amendment
+state to its prior run head so compatibility replays against that event's
+historical boundary even after the successor records new transitions. Flow exposes its digest identity, and writes
 only state as the final canonical commit; reports are derived and repairable.
 Compatibility is persisted-history based, not Builder-specific. Flow validates
 neutral authority shape while consumers authenticate actors and bind their

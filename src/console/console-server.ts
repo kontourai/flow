@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { projectFlowRunFromResolvedRun, type FlowConsoleProjection } from "./console-projection.js";
-import { loadRun, loadRunAtResolvedLocation } from "../runtime/flow-run-store.js";
+import { loadRun, loadRunAtResolvedLocation, repairRunReports } from "../runtime/flow-run-store.js";
 
 export interface FlowConsoleServerOptions {
   runId: string;
@@ -89,6 +89,7 @@ async function safeArtifactPath(runRoot: string, pinnedRunRoot: string, relative
 
 async function readProjection(runId: string, cwd: string, resolvedRunDir: string): Promise<FlowConsoleProjection> {
   const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
+  await repairRunReports(run);
   return projectFlowRunFromResolvedRun(run, { cwd });
 }
 
@@ -137,6 +138,7 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
     if (closed) return;
     try {
       const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
+      await repairRunReports(run);
       const projection = await projectFlowRunFromResolvedRun(run, { cwd });
       const json = JSON.stringify(projection);
       if (json === lastProjectionJson) return;
@@ -270,6 +272,7 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("flow console only serves loopback hosts");
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const run = await loadRun(options.runId, cwd);
+  await repairRunReports(run);
   const pinnedRunRoot = await realpath(run.dir);
   await projectFlowRunFromResolvedRun(run, { cwd });
 

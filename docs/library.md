@@ -82,7 +82,11 @@ await amendRunDefinition("dev-1847", {
 
 The request is exact-head and non-idempotent: stale heads or a reused
 `request_ref` reject without mutation. Flow validates the neutral authority
-record but does not authenticate the actor. The repository decision record
+record but does not authenticate the actor. Each audit event retains the exact
+pre-amendment state without nesting the ledger; Flow reconstructs the ledger
+prefix and replays compatibility against the history that existed when that
+successor was admitted, not against history created by the successor later.
+The repository decision record
 `docs/decisions/definition-amendment.md` carries the durable rationale.
 
 Use `listRunsWithDiagnostics(cwd)` when corrupt or incomplete canonical entries must be surfaced alongside valid run summaries. `listRuns(cwd)` preserves the original summaries-only return shape.

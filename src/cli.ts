@@ -17,7 +17,6 @@ import {
   pauseRun,
   renderConfigMergeMarkdown,
   renderConfigMergeSummary,
-  renderAndWriteReport,
   renderMarkdownReport,
   renderResume,
   renderSummary,
@@ -31,7 +30,7 @@ import {
   stageStatuses,
   validateDefinitionWithDiagnostics
 } from "./index.js";
-import { listRunsWithDiagnostics } from "./runtime/flow-run-store.js";
+import { listRunsWithDiagnostics, repairRunReports } from "./runtime/flow-run-store.js";
 import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 import { kitInstall, kitInspect } from "./kit/kit-operations.js";
@@ -602,7 +601,7 @@ async function main() {
     const diagnostics = run.diagnostics;
     const report = reportJson(run.definition, run.state, run.manifest);
     const markdown = renderMarkdownReport(run.definition, run.state, run.manifest);
-    await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
+    await repairRunReports(run);
     if (format === "summary") {
       console.log(`${report.status} ${report.summary}`);
       console.log(`report: ${runReportPath(run.dir, cwd)}`);

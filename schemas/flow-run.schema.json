@@ -138,13 +138,20 @@
     },
     "definition_amendment": {
       "type": "object",
-      "required": ["type", "prior_definition", "successor_definition", "prior_run_head", "successor", "authority", "reason", "at"],
+      "required": ["type", "prior_definition", "successor_definition", "prior_run_head", "prior_state", "successor", "authority", "reason", "at"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "definition_amended" },
         "prior_definition": { "$ref": "#/$defs/definition_identity" },
         "successor_definition": { "$ref": "#/$defs/definition_identity" },
         "prior_run_head": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "prior_state": {
+          "type": "object",
+          "description": "Exact pre-amendment run state without definition_amendments; the ledger prefix is reconstructed by position so compatibility can be replayed after later history is added.",
+          "required": ["schema_version", "run_id", "definition_id", "definition_version", "subject", "status", "current_step", "gate_outcomes", "transitions", "exceptions", "next_action", "updated_at"],
+          "not": { "required": ["definition_amendments"] },
+          "additionalProperties": true
+        },
         "successor": { "$ref": "#/$defs/definition_successor" },
         "authority": { "$ref": "#/$defs/lifecycle_authority" },
         "reason": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },

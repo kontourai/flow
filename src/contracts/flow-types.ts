@@ -198,6 +198,8 @@ export interface FlowDefinitionAmendmentEvent extends MutableRecord {
   prior_definition: FlowDefinitionIdentity;
   successor_definition: FlowDefinitionIdentity;
   prior_run_head: string;
+  /** Exact pre-amendment state except for the separately reconstructed ledger prefix. */
+  prior_state: MutableRecord;
   successor: FlowDefinition;
   authority: FlowLifecycleAuthority;
   reason: string;
@@ -252,7 +254,7 @@ export interface FlowRunState extends MutableRecord {
   run_id: string;
   definition_id: string;
   definition_version: string;
-  /** Present for new/amended runs; legacy runs retain no silently-backfilled digest. */
+  /** Present only after an explicit amendment; ordinary runs retain no silently-backfilled digest. */
   definition_digest?: string;
   /** Append-only, self-contained effective-definition audit ledger. */
   definition_amendments?: FlowDefinitionAmendmentEvent[];

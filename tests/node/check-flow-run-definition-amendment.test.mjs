@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -60,6 +61,7 @@ function request(before, next, requestRef = "request:definition-amendment") {
 
 test("AC1 AC4 AC5: compatible amendment preserves immutable artifacts and projects an effective identity", async () => {
   const { cwd, runId, before } = await fixture("accepted");
+  assert.equal(Object.hasOwn(before.state, "definition_digest"), false, "ordinary runs keep the pre-amendment state contract");
   const definitionFile = path.join(before.dir, "definition.json");
   const manifestFile = path.join(before.dir, "evidence", "manifest.json");
   const [definitionBytes, manifestBytes] = await Promise.all([readFile(definitionFile), readFile(manifestFile)]);
@@ -83,6 +85,15 @@ test("AC1 AC4 AC5: compatible amendment preserves immutable artifacts and projec
   await attachEvidence(runId, { cwd, gate: "execute-gate", file: failedEvidence, status: "failed", route_reason: "plan_gap" });
   const evaluated = await evaluateRun(runId, { cwd, gate: "execute-gate" });
   assert.equal(evaluated.state.current_step, "plan", "AC2: ordinary route-back uses the newly declared plan_gap route");
+  const afterRoute = await loadRun(runId, cwd);
+  assert.equal(afterRoute.state.current_step, "plan", "the amended ledger remains valid after successor-only history is recorded");
+  const later = structuredClone(next);
+  later.version = "opaque-later-head";
+  later.gates["plan-gate"] = { step: "plan", expects: [] };
+  await amendRunDefinition(runId, { cwd, request: request(afterRoute, later, "request:definition-amendment-later"), definition: later });
+  const twiceAmended = await loadRun(runId, cwd);
+  assert.equal(twiceAmended.definition.version, later.version);
+  assert.equal(twiceAmended.state.definition_amendments.length, 2, "each compatibility proof replays against its own exact prior state");
 });
 
 test("AC3 AC5: replay, stale heads, and pre-state faults reject without canonical mutation", async () => {
@@ -107,6 +118,93 @@ test("AC3 AC5: replay, stale heads, and pre-state faults reject without canonica
   const committed = await snapshot();
   await assert.rejects(amendRunDefinition(runId, { cwd, request: acceptedRequest, definition: next }), /flow\.definition_amendment\.replay\.conflict/);
   assert.deepEqual(await snapshot(), committed);
+
+  const amended = await loadRun(runId, cwd);
+  const rollbackRequest = request(amended, initialDefinition, "request:definition-amendment-rollback");
+  await assert.rejects(
+    amendRunDefinition(runId, { cwd, request: rollbackRequest, definition: initialDefinition }),
+    /flow\.definition_amendment\.compatibility\.invalid/
+  );
+  assert.deepEqual(await snapshot(), committed, "reusing the immutable start identity rejects before canonical mutation");
+});
+
+test("AC5: an interrupted ahead-report publication is repaired from the canonical state on load", async () => {
+  const { cwd, runId, before } = await fixture("crash-repair");
+  const next = successor();
+  const successorPath = path.join(cwd, "successor.json");
+  const requestPath = path.join(cwd, "request.json");
+  await Promise.all([
+    writeFile(successorPath, `${JSON.stringify(next, null, 2)}\n`),
+    writeFile(requestPath, `${JSON.stringify(request(before, next, "request:definition-amendment-crash"), null, 2)}\n`)
+  ]);
+  const statePath = path.join(before.dir, "state.json");
+  const reportJsonPath = path.join(before.dir, "report.json");
+  const reportMarkdownPath = path.join(before.dir, "report.md");
+  const prior = await Promise.all([readFile(statePath), readFile(reportJsonPath), readFile(reportMarkdownPath)]);
+  const moduleUrl = new URL("../../dist/index.js", import.meta.url).href;
+  const script = `
+    import fs from "node:fs";
+    import { amendRunDefinition } from ${JSON.stringify(moduleUrl)};
+    const [cwd, successorPath, requestPath] = process.argv.slice(1);
+    await amendRunDefinition("amendment-run", {
+      cwd,
+      definition: JSON.parse(fs.readFileSync(successorPath, "utf8")),
+      request: JSON.parse(fs.readFileSync(requestPath, "utf8")),
+      faultInjection(stage) { if (stage === "before_rename_state") process.exit(91); }
+    });
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", script, cwd, successorPath, requestPath], { encoding: "utf8" });
+  assert.equal(child.status, 91, child.stderr);
+  assert.deepEqual(await readFile(statePath), prior[0], "state is still the sole commit point");
+  assert.notDeepEqual(await readFile(reportJsonPath), prior[1], "the interrupted process left an ahead JSON projection");
+  const reportResult = await execFile(process.execPath, [cliPath, "report", runId, "--cwd", cwd]);
+  assert.match(reportResult.stdout, /report:/);
+  assert.deepEqual(await readFile(reportJsonPath), prior[1], "canonical load repairs ahead JSON");
+  assert.deepEqual(await readFile(reportMarkdownPath), prior[2], "canonical load repairs ahead Markdown");
+});
+
+test("AC3: accepted history and same-head concurrency reject before a losing write", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-definition-amendment-history-"));
+  const definition = structuredClone(initialDefinition);
+  definition.gates["execute-gate"].expects = [{
+    id: "scope-accepted", kind: "trust.bundle", required: true, description: "Accepted execution scope.",
+    bundle_claim: { claimType: "builder.execute.scope", subjectId: "history-run", accepted_statuses: ["verified"] }
+  }];
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, `${JSON.stringify(definition, null, 2)}\n`);
+  const started = await startRun(definitionPath, { cwd, runId: "history-run" });
+  const statePath = path.join(started.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.gate_outcomes = [{
+    gate_id: "execute-gate", status: "pass", summary: "scope accepted", evidence_refs: ["ev.scope"],
+    matched_expectations: [{ expectation_id: "scope-accepted", evidence_id: "ev.scope" }]
+  }];
+  state.gate_outcome_history = structuredClone(state.gate_outcomes);
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  const before = await loadRun(started.runId, cwd);
+  const removed = structuredClone(definition);
+  removed.version = "removed-accepted-expectation";
+  removed.gates["execute-gate"].expects = [];
+  const bytes = await readFile(statePath);
+  await assert.rejects(
+    amendRunDefinition(started.runId, { cwd, request: request(before, removed, "request:remove-accepted"), definition: removed }),
+    /successor (?:changes|reinterprets) accepted expectation|successor reinterprets persisted gate/
+  );
+  assert.deepEqual(await readFile(statePath), bytes);
+
+  const race = await fixture("concurrent");
+  const left = successor();
+  left.version = "concurrent-left";
+  const right = successor();
+  right.version = "concurrent-right";
+  right.gates["execute-gate"].on_route_back.decision_gap = "plan";
+  const settled = await Promise.allSettled([
+    amendRunDefinition(race.runId, { cwd: race.cwd, request: request(race.before, left, "request:concurrent-left"), definition: left }),
+    amendRunDefinition(race.runId, { cwd: race.cwd, request: request(race.before, right, "request:concurrent-right"), definition: right })
+  ]);
+  assert.equal(settled.filter((entry) => entry.status === "fulfilled").length, 1);
+  assert.equal(settled.filter((entry) => entry.status === "rejected" && /flow\.definition_amendment\.run_head\.stale/.test(String(entry.reason))).length, 1);
+  assert.equal((await loadRun(race.runId, race.cwd)).state.definition_amendments.length, 1);
 });
 
 test("AC2 AC6: CLI amends the same run and reports prior and effective identities", async () => {

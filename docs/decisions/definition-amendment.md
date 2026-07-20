@@ -35,6 +35,10 @@ proof. Persisted steps, gates, transitions, accepted expectation contracts and
 matched evidence identities, route-back/retry accounting, and current cursor
 must still be valid under the successor. History-free current/future behavior
 can change, such as adding a new route-back reason for the current gate.
+The audit event stores the exact prior state without its amendment ledger. On
+load, Flow reconstructs the preceding ledger prefix, verifies `prior_run_head`,
+and replays compatibility against that boundary. Successor-created history
+therefore cannot retroactively invalidate the amendment that enabled it.
 
 ## Persistence and recovery
 

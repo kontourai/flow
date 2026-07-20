@@ -11,6 +11,7 @@ import { isNonEmptyString, isObject } from "../shared/flow-utils.js";
 import { parseRfc3339Timestamp } from "../shared/rfc3339.js";
 import { canonicalJson, flowRunHead } from "./flow-run-retry-authorization.js";
 import { validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
+import { validateRunStateSchema } from "./flow-run-validator.js";
 
 const AUTHORITY_KINDS = new Set(["user_request", "operator_request"]);
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/u;
@@ -103,6 +104,11 @@ export function resolveEffectiveDefinition(startDefinition: unknown, state: any)
   let currentIdentity = definitionIdentity(current);
   const amendments = state?.definition_amendments;
   if (amendments !== undefined && !Array.isArray(amendments)) fail("flow.definition_amendment.compatibility.invalid", "$.definition_amendments", "definition_amendments must be an array");
+  // Unamended runs retain the pre-amendment identity and validation contract.
+  // In particular, do not require or interpret a digest for ordinary runs:
+  // definition.json remains their sole definition head and the store's existing
+  // identity checks retain their established diagnostics.
+  if ((amendments?.length ?? 0) === 0) return current;
   const seenVersions = new Set([currentIdentity.version]);
   const seenDigests = new Set([currentIdentity.digest]);
   for (const [index, event] of (amendments ?? []).entries()) {
@@ -115,11 +121,28 @@ export function resolveEffectiveDefinition(startDefinition: unknown, state: any)
       fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}]`, "amendment successor identity does not match its complete normalized successor");
     }
     if (seenVersions.has(successor.version) || seenDigests.has(successor.digest)) fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}]`, "amendment reuses a definition version or digest");
-    assertDefinitionCompatibility(current, next, state, `$.definition_amendments[${index}].successor`);
+    if (!isObject(event.prior_state) || Object.hasOwn(event.prior_state, "definition_amendments")) {
+      fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}].prior_state`, "prior_state must be an object without a nested amendment ledger");
+    }
+    const priorState = {
+      ...event.prior_state,
+      ...(index > 0 ? { definition_amendments: (amendments as any[]).slice(0, index) } : {})
+    };
+    try { validateRunStateSchema(priorState); } catch (error) {
+      fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}].prior_state`, `prior_state is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (flowRunHead(priorState) !== event.prior_run_head) {
+      fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}].prior_run_head`, "prior_run_head does not match the reconstructed pre-amendment state");
+    }
+    if (priorState.definition_id !== currentIdentity.id || priorState.definition_version !== currentIdentity.version
+      || (index > 0 && priorState.definition_digest !== currentIdentity.digest)) {
+      fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}].prior_state`, "prior_state definition identity does not match the ledger head");
+    }
+    assertDefinitionCompatibility(current, next, priorState, `$.definition_amendments[${index}].successor`);
     seenVersions.add(successor.version); seenDigests.add(successor.digest); current = next; currentIdentity = successor;
   }
   if (state?.definition_id !== current.id || state?.definition_version !== current.version) fail("flow.definition_amendment.compatibility.invalid", "$.definition_version", "state definition identity does not match the effective definition");
-  if (state?.definition_digest !== undefined && state.definition_digest !== currentIdentity.digest) fail("flow.definition_amendment.compatibility.invalid", "$.definition_digest", "state definition_digest does not match the effective definition");
+  if (state?.definition_digest !== currentIdentity.digest) fail("flow.definition_amendment.compatibility.invalid", "$.definition_digest", "state definition_digest does not match the effective definition");
   return current;
 }
 
