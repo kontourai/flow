@@ -6,4 +6,3 @@ test-results/
 playwright-report/
 .DS_Store
 site/
-.surface/
