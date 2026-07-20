@@ -10,6 +10,26 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.6.0](https://github.com/kontourai/flow/compare/v3.5.0...v3.6.0) (2026-07-20)
+
+
+### Features
+
+* authorize active Flow definition amendments ([43ac6fc](https://github.com/kontourai/flow/commit/43ac6fcfe884535b49b92d70c2941bd394ae09de))
+* authorize active run definition amendments ([0b37170](https://github.com/kontourai/flow/commit/0b37170c609254ce3d67f6673961b52e8ddabdcc))
+
+
+### Fixes
+
+* bind consumer validation to canonical run head ([33de3ad](https://github.com/kontourai/flow/commit/33de3adbc8f96ebe790b2542f4512c78759a8867))
+* drain console watcher repairs on close ([640ce44](https://github.com/kontourai/flow/commit/640ce44452cceccaa1b7fd8710255ce9cb3b0a81))
+* handle EPERM process group probes ([71a0cf1](https://github.com/kontourai/flow/commit/71a0cf139b079e7aa508590b8bbebf8eb84185e5))
+* hold verification lease across Flow tests ([acb8757](https://github.com/kontourai/flow/commit/acb87579600be00396aeade260384fdbb96b9169))
+* isolate concurrent Flow verification ([45217d9](https://github.com/kontourai/flow/commit/45217d9d9dc3064131b6175475edb9dfa51d645a))
+* make definition amendment ledgers replayable ([a75bacb](https://github.com/kontourai/flow/commit/a75bacb609781f121f545bca25bbd00e85620deb))
+* retain build lease through child shutdown ([f7a1d18](https://github.com/kontourai/flow/commit/f7a1d186b48a501a09ef061b3780ebce05cea4b5))
+* serialize report projection repair ([a9cb155](https://github.com/kontourai/flow/commit/a9cb1559eb5f476631d4e862de7cba352e20d371))
+
 ## [3.5.0](https://github.com/kontourai/flow/compare/v3.4.0...v3.5.0) (2026-07-20)
 
 
