@@ -1,0 +1,50 @@
+# Trust Verify — dogfoods the Flow Agents external trust anchor on this repo.
+#
+# On every PR, re-runs this repo's canonical verification FRESH in a clean CI
+# environment an agent does not control (build + tests + lint — whatever this
+# repo declares as its comprehensive verify). If a Flow Agents session has
+# published delivery/trust.bundle, it also RECONCILES the agent's claimed passes
+# against CI's own fresh results and fails on any divergence. When no bundle is
+# present, only the fresh verify is enforced (fail-open on bundle absence;
+# fail-closed on divergence when present).
+#
+# ADVISORY PHASE: this workflow runs and reports but is NOT yet a required status
+# check — a failing Trust Verify run does not block merge. To ARM it: add
+# "Trust Verify" as a required, no-bypass status check in this repo's branch
+# protection settings (Settings -> Branches -> main), and add a CODEOWNERS entry
+# protecting this file + package.json so the verify command cannot be quietly
+# weakened. See https://github.com/kontourai/flow-agents/blob/main/docs/trust-anchor-adoption.md
+# for the full adoption guide.
+name: Trust Verify
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  trust-verify:
+    name: Trust Verify
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 0: the reconciler binds delivery bundles to commits via
+      # `git merge-base --is-ancestor`, which cannot walk a shallow clone —
+      # with the default depth-1 checkout every committed bundle looks stale
+      # in CI (sealed commit never equals the synthetic merge SHA).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      # This repo's canonical verify (`npm run verify`) ends with Playwright
+      # browser tests (`test:browser`), so — like the main CI job — the browser
+      # must be present before the anchor shells out to the verify command.
+      - run: npx playwright install --with-deps chromium
+      # The external anchor: re-run our real verify fresh + reconcile any delivered bundle.
+      # SHA-pinned (mutable tags are not trusted for a cross-repo action that gates merges).
+      - uses: kontourai/flow-agents/.github/actions/trust-verify@f2efb33ef683793bbec01dcf7e909f3e1423c04d # flow-agents @ locked action runtime dependencies
+        with:
+          verify-command: "npx playwright install --with-deps chromium && npm test && npm run check:schemas && npm pack --dry-run"
