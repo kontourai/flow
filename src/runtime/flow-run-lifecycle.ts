@@ -51,8 +51,12 @@ function diagnostic(
 
 export function lifecycleEligibilityDiagnostic(
   operation: FlowLifecycleDiagnostic["operation"],
-  status: FlowRunStatus
+  status: FlowRunStatus,
+  options: { blocked_by_exhaustion?: boolean } = {}
 ): FlowLifecycleDiagnostic | null {
+  if (["evaluate", "attach_evidence"].includes(operation) && status === "blocked" && options.blocked_by_exhaustion) {
+    return diagnostic("flow.lifecycle.run_blocked", operation, status, "$.status", `blocked runs cannot ${operation.replaceAll("_", " ")}`);
+  }
   if (["evaluate", "advance", "attach_evidence", "accept_exception", "persist"].includes(operation)) {
     if (status === "paused") return diagnostic("flow.lifecycle.run_paused", operation, status, "$.status", `paused runs cannot ${operation.replaceAll("_", " ")}`);
     if (status === "canceled") return diagnostic("flow.lifecycle.run_canceled", operation, status, "$.status", `canceled runs cannot ${operation.replaceAll("_", " ")}`);
@@ -76,8 +80,12 @@ export function lifecycleEligibilityDiagnostic(
   return null;
 }
 
-export function assertLifecycleEligible(operation: FlowLifecycleDiagnostic["operation"], status: FlowRunStatus) {
-  const issue = lifecycleEligibilityDiagnostic(operation, status);
+export function assertLifecycleEligible(
+  operation: FlowLifecycleDiagnostic["operation"],
+  status: FlowRunStatus,
+  options: { blocked_by_exhaustion?: boolean } = {}
+) {
+  const issue = lifecycleEligibilityDiagnostic(operation, status, options);
   if (issue) throw new FlowLifecycleError(issue);
 }
 

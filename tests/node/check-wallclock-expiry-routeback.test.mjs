@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { startRun, loadRun, evaluateRun, reDeriveBundleReports } from "../../dist/index.js";
+import { hashRunTree } from "./helpers/run-tree.mjs";
 
 const T0 = "2026-06-10T00:00:00.000Z";
 const EXPIRES = "2026-06-15T00:00:00.000Z";
@@ -507,11 +508,16 @@ test("budget-exhausted stale ancestor blocks at its gate and preserves freshness
   }]);
   assert.equal(blockedRoute.at, T1);
 
-  const repeated = await evaluateRun(runId, { cwd, now: T1 });
-  assert.equal(repeated.outcomes[0].gate_id, "verify-gate", "the blocked ancestor cannot be bypassed on retry");
-  assert.equal(repeated.outcomes[0].status, "block");
+  const blockedTree = await hashRunTree(after.dir);
+  const blockedTransitionCount = after.state.transitions.filter((transition) => transition.gate_id === "verify-gate").length;
+  await assert.rejects(
+    () => evaluateRun(runId, { cwd, now: T1 }),
+    (error) => error.code === "flow.lifecycle.run_blocked"
+  );
+  assert.equal(await hashRunTree(after.dir), blockedTree, "an exhausted blocked ancestor is immutable without retry authority");
   const retried = await loadRun(runId, cwd);
   assert.equal(retried.state.current_step, "verify");
+  assert.equal(retried.state.transitions.filter((transition) => transition.gate_id === "verify-gate").length, blockedTransitionCount);
 });
 
 test("T1 evaluateRun ignores stale evidence that was not selected by the passed upstream gate", async () => {

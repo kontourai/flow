@@ -58,11 +58,32 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
   return valid ? { record, gate, decision, routeReason } : null;
 }
 
+function sameExhaustedLoop(first: any, candidate: any) {
+  return candidate.gate.id === first.gate.id
+    && candidate.record.from_step === first.record.from_step
+    && candidate.record.to_step === first.record.to_step
+    && candidate.record.reason === first.record.reason
+    && (candidate.record.route_reason ?? candidate.record.reason) === (first.record.route_reason ?? first.record.reason)
+    && candidate.record.selected_route === first.record.selected_route
+    && candidate.record.recovery_step === first.record.recovery_step
+    && (candidate.record.retry_epoch ?? 1) === (first.record.retry_epoch ?? 1)
+    && candidate.record.max_attempts === first.record.max_attempts
+    && candidate.record.status === "blocked"
+    && candidate.record.limit_exceeded === true
+    && candidate.decision.status === "block"
+    && candidate.decision.limit_exceeded === true;
+}
+
+function isTerminalBlock(proof: any) {
+  return proof.decision.status === "block" && proof.decision.limit_exceeded === true;
+}
+
 /**
- * Prove the first and only canonical exhaustion in one exact route-back epoch.
- * Each matching predecessor is independently derived from its immutable
- * prefix. Matching uses the loop identity rather than the type discriminator,
- * so changing `route_back` to another type cannot hide a predecessor.
+ * Prove the terminal exhausted suffix of one exact route-back epoch. Historical
+ * persistence could append the same canonical exhausted decision repeatedly;
+ * that suffix is compatible only when it is contiguous, exact, and derived
+ * from every immutable prefix. A different or interleaved exhausted loop is
+ * never an alternate authorization target.
  */
 export function exhaustedRouteBackProof(definition: any, transitions: any[], blockedIndex: number) {
   const proof = routeBackRecordProof(definition, transitions, blockedIndex);
@@ -71,21 +92,50 @@ export function exhaustedRouteBackProof(definition: any, transitions: any[], blo
     || !Number.isInteger(proof.gate.route_back_policy?.max_attempts)
     || proof.decision.status !== "block"
     || proof.decision.limit_exceeded !== true) return null;
-  const loopReason = proof.record.route_reason ?? proof.record.reason;
-  const retryEpoch = proof.decision.retry_epoch;
-  for (let index = 0; index < blockedIndex; index += 1) {
+  let suffixStart = blockedIndex;
+  let suffixFirst = proof;
+  let expectedAttempt = proof.decision.attempt;
+  while (suffixStart > 0) {
+    const predecessor = transitions[suffixStart - 1];
+    const shape = transitionShape(predecessor);
+    if (shape.routeFamily && shape.authorizationFamily) return null;
+    if (!shape.routeBack) break;
+    const predecessorProof = routeBackRecordProof(definition, transitions, suffixStart - 1);
+    if (!predecessorProof) return null;
+    if (!sameExhaustedLoop(proof, predecessorProof)) break;
+    if (predecessorProof.decision.attempt !== expectedAttempt - 1) return null;
+    suffixFirst = predecessorProof;
+    expectedAttempt = predecessorProof.decision.attempt;
+    suffixStart -= 1;
+  }
+  if (suffixFirst.decision.attempt !== suffixFirst.decision.max_attempts + 1) return null;
+
+  for (let index = 0; index < suffixStart; index += 1) {
     const predecessor = transitions[index];
     const shape = transitionShape(predecessor);
     if (shape.routeFamily && shape.authorizationFamily) return null;
     if (!shape.routeBack) continue;
     const predecessorProof = routeBackRecordProof(definition, transitions, index);
     if (!predecessorProof) return null;
-    const sameLoop = predecessorProof.gate.id === proof.gate.id
-      && predecessorProof.gate.step === proof.gate.step
-      && (predecessorProof.record.route_reason ?? predecessorProof.record.reason) === loopReason
-      && predecessorProof.decision.selected_route === proof.decision.selected_route;
-    if (sameLoop && predecessorProof.decision.retry_epoch === retryEpoch
-      && (predecessorProof.decision.status === "block" || predecessorProof.decision.limit_exceeded === true)) return null;
+    if (!isTerminalBlock(predecessorProof)) continue;
+    if (predecessorProof.decision.attempt !== predecessorProof.decision.max_attempts + 1) return null;
+
+    let end = index;
+    let prior = predecessorProof;
+    while (end + 1 < suffixStart) {
+      const next = transitions[end + 1];
+      const nextShape = transitionShape(next);
+      if (nextShape.routeFamily && nextShape.authorizationFamily) return null;
+      if (!nextShape.routeBack) break;
+      const nextProof = routeBackRecordProof(definition, transitions, end + 1);
+      if (!nextProof) return null;
+      if (!sameExhaustedLoop(predecessorProof, nextProof)) break;
+      if (nextProof.decision.attempt !== prior.decision.attempt + 1) return null;
+      prior = nextProof;
+      end += 1;
+    }
+    if (transitions[end + 1]?.type !== "retry_authorized") return null;
+    index = end;
   }
   return { blocked: proof.record, gate: proof.gate, decision: proof.decision, routeReason: proof.routeReason };
 }

@@ -1097,7 +1097,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
 
 async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
-  assertLifecycleEligible("attach_evidence", run.state.status);
+  assertRunMutationLifecycleEligible("attach_evidence", run);
   const source = path.resolve(options.cwd ?? process.cwd(), options.file);
   const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
   let sourceBytes: Buffer;
@@ -1174,8 +1174,30 @@ async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Pr
   return attachmentPlan.evidence;
 }
 
-export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
+function isExhaustedBlockedRun(run: Awaited<ReturnType<typeof loadRun>>) {
+  const blockedIndex = run.state.transitions.length - 1;
+  const blocked = run.state.transitions[blockedIndex];
+  return run.state.status === "blocked"
+    && blocked !== undefined
+    && run.state.current_step === blocked.from_step
+    && exhaustedRouteBackProof(run.definition, run.state.transitions, blockedIndex) !== null;
+}
+
+function assertRunMutationLifecycleEligible(
+  operation: "attach_evidence" | "evaluate",
+  run: Awaited<ReturnType<typeof loadRun>>
+) {
+  assertLifecycleEligible(operation, run.state.status, { blocked_by_exhaustion: isExhaustedBlockedRun(run) });
+}
+
+async function preflightRunMutationLifecycle(runId: string, cwd: string, operation: "attach_evidence" | "evaluate") {
+  const run = await loadRun(runId, cwd);
+  assertRunMutationLifecycleEligible(operation, run);
+}
+
+export async function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
+  await preflightRunMutationLifecycle(runId, cwd, "attach_evidence");
   return withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd }));
 }
 
@@ -1281,7 +1303,7 @@ function staleGateRechecks(definition: any, state: any, manifest: any, freshness
 
 async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
-  assertLifecycleEligible("evaluate", run.state.status);
+  assertRunMutationLifecycleEligible("evaluate", run);
   // §1: re-derive freshness-bearing reports with the current `now` BEFORE
   // gates read them, so a claim that has gone stale flips the gate outcome.
   // The existing route-back cascade (invalidateDescendants) then clears any
@@ -1356,8 +1378,9 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
 }
 
-export function evaluateRun(runId: string, options: MutableRecord = {}) {
+export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
+  await preflightRunMutationLifecycle(runId, cwd, "evaluate");
   return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd }));
 }
 

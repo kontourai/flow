@@ -132,6 +132,7 @@ export type FlowLifecycleDiagnosticCode =
   | "flow.lifecycle.replay.conflict"
   | "flow.lifecycle.run_terminal"
   | "flow.lifecycle.run_paused"
+  | "flow.lifecycle.run_blocked"
   | "flow.lifecycle.run_canceled";
 
 export interface FlowLifecycleDiagnostic extends FlowDiagnostic {

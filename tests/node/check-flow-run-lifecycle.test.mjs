@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -26,6 +26,7 @@ import { normalizeRunStateLifecycle } from "../../dist/definition/flow-definitio
 import { withRunMutationLock } from "../../dist/runtime/flow-run-store.js";
 import { hashRunTree, lifecycleStateMatrix, snapshotRunTree } from "./helpers/run-tree.mjs";
 import { json } from "./helpers/fixtures.mjs";
+import { routeBackDefinition } from "./helpers/route-back-fixtures.mjs";
 
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv/dist/2020");
@@ -82,6 +83,29 @@ async function runtimeRun(name) {
   const definitionPath = path.join(cwd, "definition.json");
   await writeFile(definitionPath, `${JSON.stringify(definition, null, 2)}\n`);
   const started = await startRun(definitionPath, { cwd, runId: name, params: { subject: "flow#115" } });
+  return { cwd, definition, ...started };
+}
+
+async function exhaustedBlockedRun(name) {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), `flow-lifecycle-${name}-`));
+  const definition = routeBackDefinition({ route_back_policy: { max_attempts: 3, on_exceeded: "block" } });
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, `${JSON.stringify(definition, null, 2)}\n`);
+  const started = await startRun(definitionPath, { cwd, runId: name });
+  const state = (await loadRun(started.runId, cwd)).state;
+  state.status = "blocked";
+  state.current_step = "verify";
+  state.gate_outcomes = [{
+    gate_id: "verify-gate", status: "block", summary: "budget exhausted", evidence_refs: [],
+    route_reason: "implementation_defect", selected_route: "implement", attempt: 4, max_attempts: 3, limit_exceeded: true
+  }];
+  state.transitions = [1, 2, 3, 4].map((attempt) => ({
+    type: "route_back", from_step: "verify", to_step: "implement", status: "blocked",
+    reason: "implementation_defect", route_reason: "implementation_defect", selected_route: "implement",
+    attempt, max_attempts: 3, limit_exceeded: attempt === 4, gate_id: "verify-gate",
+    at: `2026-07-20T12:0${attempt}:00.000Z`
+  }));
+  await writeFile(path.join(started.dir, "state.json"), `${JSON.stringify(state, null, 2)}\n`);
   return { cwd, definition, ...started };
 }
 
@@ -408,6 +432,27 @@ test("evidence and exception mutations reject paused/canceled runs before any wr
     );
     assert.equal(await hashRunTree(fixture.dir), beforeHash);
     assert.deepEqual(await snapshotRunTree(fixture.dir), before);
+  }
+});
+
+test("a blocked exhausted run rejects evidence and evaluation before lock admission", async () => {
+  const fixture = await exhaustedBlockedRun("blocked-exhausted-admission");
+  const source = path.join(fixture.cwd, "evidence.txt");
+  await writeFile(source, "evidence\n");
+
+  const before = await snapshotRunTree(fixture.dir);
+  const beforeHash = await hashRunTree(fixture.dir);
+  for (const operation of [
+    () => attachEvidence(fixture.runId, { cwd: fixture.cwd, gate: "verify-gate", file: source }),
+    () => evaluateRun(fixture.runId, { cwd: fixture.cwd })
+  ]) {
+    await assert.rejects(operation, (error) => error.code === "flow.lifecycle.run_blocked");
+    assert.equal(await hashRunTree(fixture.dir), beforeHash);
+    assert.deepEqual(await snapshotRunTree(fixture.dir), before);
+    await assert.rejects(
+      () => lstat(path.join(fixture.dir, ".mutation.lock")),
+      (error) => error?.code === "ENOENT"
+    );
   }
 });
 
