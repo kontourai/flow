@@ -40,7 +40,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/sync-ui-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
+    "build": "node scripts/build.mjs",
     "test": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
     "test:node": "node --test tests/node/*.test.mjs",
     "test:browser": "playwright test",

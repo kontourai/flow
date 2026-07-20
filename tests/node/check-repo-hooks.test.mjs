@@ -47,7 +47,8 @@ test("console smoke output uses the Flow product namespace", async () => {
   const browserServer = await text(browserServerPath);
   assert.match(consoleSmoke, /"\.kontourai", "flow", "console-smoke"/);
   assert.match(consoleSmoke, /mkdtemp\(path\.join\(tmpdir\(\), "kontourai-flow-console-smoke-"\)\)/);
-  assert.match(browserServer, /"\.kontourai", "flow", "test-projects", "console-projection"/);
+  assert.match(browserServer, /browserTestRoot, "\.kontourai", "flow", "test-projects", "console-projection"/);
+  assert.match(browserServer, /FLOW_CONSOLE_TEST_PORT/);
   assert.doesNotMatch(consoleSmoke, /\.flow-agents/);
   assert.doesNotMatch(`${consoleSmoke}\n${browserServer}`, /rm\(fixtureRunDir/);
 });
@@ -59,6 +60,7 @@ test("repo hook package scripts stay wired", async () => {
   assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
   assert.equal(packageJson.scripts["check:repo-hooks"], "node --test tests/node/check-repo-hooks.test.mjs");
   assert.equal(packageJson.scripts["test:node"], "node --test tests/node/*.test.mjs");
+  assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
   assert.match(packageJson.scripts.test, /tests\/node\/\*\.test\.mjs/);
   assert.doesNotMatch(packageJson.scripts.test, /scripts\/check-(schemas|repo-hooks|console-projection|package-contents)\.mjs/);
 });
