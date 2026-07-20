@@ -38,6 +38,24 @@ const run = await loadRun("dev-1847"); // { dir, definition, state, manifest, co
 
 These functions read and write the same `.kontourai/flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`. They do not fall back to `.flow/runs/`; migrate generated state from older versions before loading it.
 
+### Pure trust attachment reducer
+
+`reduceTrustAttachment()` is the separately versioned `1.0.0` reducer for an
+OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
+manifest, bundle, attachment metadata (including ID, source digest, and
+timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
+adapters. It returns the next manifest/state, derived report, evaluation result,
+and a complete descriptive write set. It never reads files, uses ambient time,
+or performs network/process operations.
+
+The reducer does not embed Hachure schema or Surface trust semantics. A caller
+supplies the `hachure@0.15.0` schema validator and `@kontourai/surface@2.12.0`
+validator/report builder as explicit dependencies; `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`
+is Flow's adapter for those locked package versions. Pin the published package
+integrity plus `trustAttachmentReducerIdentity()` when a privileged coordinator
+needs a stable reducer contract. The identity hash binds the reducer API version
+and dependency versions, while package integrity binds the artifact bytes.
+
 Use `listRunsWithDiagnostics(cwd)` when corrupt or incomplete canonical entries must be surfaced alongside valid run summaries. `listRuns(cwd)` preserves the original summaries-only return shape.
 
 ### Pause, resume, and cancellation
