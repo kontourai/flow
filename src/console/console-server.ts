@@ -89,8 +89,8 @@ async function safeArtifactPath(runRoot: string, pinnedRunRoot: string, relative
 
 async function readProjection(runId: string, cwd: string, resolvedRunDir: string): Promise<FlowConsoleProjection> {
   const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
-  await repairRunReports(run);
-  return projectFlowRunFromResolvedRun(run, { cwd });
+  const repaired = await repairRunReports(run);
+  return projectFlowRunFromResolvedRun(repaired, { cwd });
 }
 
 async function serveStatic(urlPath: string, response: ServerResponse) {
@@ -138,8 +138,8 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
     if (closed) return;
     try {
       const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
-      await repairRunReports(run);
-      const projection = await projectFlowRunFromResolvedRun(run, { cwd });
+      const repaired = await repairRunReports(run);
+      const projection = await projectFlowRunFromResolvedRun(repaired, { cwd });
       const json = JSON.stringify(projection);
       if (json === lastProjectionJson) return;
       lastProjectionJson = json;
@@ -271,8 +271,8 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("flow console only serves loopback hosts");
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const run = await loadRun(options.runId, cwd);
-  await repairRunReports(run);
+  const loaded = await loadRun(options.runId, cwd);
+  const run = await repairRunReports(loaded);
   const pinnedRunRoot = await realpath(run.dir);
   await projectFlowRunFromResolvedRun(run, { cwd });
 

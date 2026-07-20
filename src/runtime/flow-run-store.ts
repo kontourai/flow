@@ -474,6 +474,18 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
 
 /** Repair disposable reports from an already validated canonical run. */
 export async function repairRunReports(run: any) {
+  const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
+  return withRunMutationLock(run.state.run_id, context.cwd, async () => {
+    // The caller's snapshot may be stale. Reload inside the same mutation
+    // ticket used by state writers so repair can never publish an older
+    // projection after a newer canonical commit.
+    const current = await loadRunAtResolvedLocation(run.state.run_id, run.dir, context.cwd);
+    await writeRunReportsIfChanged(current);
+    return current;
+  });
+}
+
+async function writeRunReportsIfChanged(run: any) {
   const targets = [
     {
       path: await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson),
@@ -486,19 +498,38 @@ export async function repairRunReports(run: any) {
   ];
   for (const target of targets) {
     try {
-      if (await readFile(target.path, "utf8") === target.contents) continue;
+      if (await readExistingFileNoFollow(target.path) === target.contents) continue;
       await writeExistingFileNoFollow(target.path, target.contents);
     } catch (error) {
       if (!isMissingPathError(error)) throw error;
       try {
-        await writeFile(target.path, target.contents, { flag: "wx", mode: 0o600 });
+        await createFileNoFollow(target.path, target.contents);
       } catch (createError) {
         if ((createError as NodeJS.ErrnoException).code !== "EEXIST") throw createError;
         await writeExistingFileNoFollow(target.path, target.contents);
       }
     }
   }
-  return run;
+}
+
+async function readExistingFileNoFollow(file: string) {
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const target = await handle.stat();
+    if (!target.isFile()) throw new Error(`flow.run_location.invalid_artifact_path: ${file} is not a regular file`);
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+async function createFileNoFollow(file: string, contents: string) {
+  const handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try {
+    await handle.writeFile(contents, "utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 function inferResolvedRunContext(runId: string, dir: string) {

@@ -17,6 +17,7 @@ import {
   evaluateRun,
   startRun
 } from "../../dist/index.js";
+import { repairRunReports } from "../../dist/runtime/flow-run-store.js";
 import { cliPath, execFile } from "./helpers/cli.mjs";
 
 const initialDefinition = {
@@ -161,6 +162,12 @@ test("AC5: an interrupted ahead-report publication is repaired from the canonica
   assert.match(reportResult.stdout, /report:/);
   assert.deepEqual(await readFile(reportJsonPath), prior[1], "canonical load repairs ahead JSON");
   assert.deepEqual(await readFile(reportMarkdownPath), prior[2], "canonical load repairs ahead Markdown");
+
+  const stale = await loadRun(runId, cwd);
+  await amendRunDefinition(runId, { cwd, request: request(stale, next, "request:definition-amendment-after-crash"), definition: next });
+  await repairRunReports(stale);
+  const latestReport = JSON.parse(await readFile(reportJsonPath, "utf8"));
+  assert.equal(latestReport.effective_definition.version, next.version, "repair reloads under the mutation ticket instead of publishing a stale caller snapshot");
 });
 
 test("AC3: accepted history and same-head concurrency reject before a losing write", async () => {

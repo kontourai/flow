@@ -597,11 +597,11 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
-    const run = await loadRun(runId, cwd);
+    let run = await loadRun(runId, cwd);
     const diagnostics = run.diagnostics;
+    run = await repairRunReports(run);
     const report = reportJson(run.definition, run.state, run.manifest);
     const markdown = renderMarkdownReport(run.definition, run.state, run.manifest);
-    await repairRunReports(run);
     if (format === "summary") {
       console.log(`${report.status} ${report.summary}`);
       console.log(`report: ${runReportPath(run.dir, cwd)}`);

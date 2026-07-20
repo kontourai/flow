@@ -12,7 +12,6 @@ import {
 import { projectedNextAction } from "../definition/flow-definition.js";
 import { reportJson } from "../reports/flow-reports.js";
 import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
-import { repairRunReports } from "../runtime/flow-run-store.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -700,7 +699,6 @@ export async function projectFlowRunFromFiles(
 ): Promise<FlowConsoleProjection> {
   const cwd = options.cwd ?? process.cwd();
   const run = await loadRun(runId, cwd);
-  await repairRunReports(run);
   return projectFlowRunFromResolvedRun(run, options);
 }
 
