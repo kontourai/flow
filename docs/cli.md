@@ -29,9 +29,9 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
   "error_count": 6,
   "diagnostics": [
     {
-      "code": "definition.expectation.claim.required",
+      "code": "definition.expectation.bundle_claim.required",
       "severity": "error",
-      "path": "$.gates.verify-gate.expects[0].claim",
+      "path": "$.gates.verify-gate.expects[0].bundle_claim",
       "message": "trust.bundle expectations must include bundle_claim"
     }
   ]
@@ -205,8 +205,7 @@ responsibilities.
 
 ```sh
 flow attach-evidence <run-id> --gate <gate> --file <file>
-  [--kind <kind>] [--status failed] [--supersede <evidence-id> ...]
-  [--trust-artifact] [--claim-type <type>] [--claim-subject <subject>] [--claim-status <status>]
+  [--kind <kind>] [--bundle] [--status failed] [--supersede <evidence-id> ...]
   [--producer <id>] [--authority-trace <trace>]
   [--route-reason <reason>] [--expectation-id <id> ...]
   [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>]
@@ -217,10 +216,12 @@ flow attach-evidence <run-id> --gate <gate> --file <file>
 Copies the file into the run's `evidence/` directory and records it in the manifest.
 
 - `--kind` is one of the [documented evidence kinds](evidence.md#evidence-kinds); unknown kinds are stored as `custom` with the original name preserved.
-- `--trust-artifact` parses the file as a Surface-shaped trust report/snapshot and projects its first claim into the matching fields; the `--claim-*`, `--producer`, and `--authority-trace` flags override the parsed projection.
+- `--bundle` (or `--kind trust.bundle`) parses the file as a Hachure TrustBundle, validates it against the Hachure schema, and stores the bundle plus its derived trust report on the evidence entry. See [Trust artifacts](evidence.md#trust-artifacts).
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).
 - `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
+
+`--help` also lists `--trust-artifact`, `--claim-type`, `--claim-subject`, and `--claim-status`. These flags are parsed but currently have no effect on attached evidence — use `--bundle` (or `--kind trust.bundle`) with a Hachure TrustBundle file instead.
 
 ## flow capture
 

@@ -53,7 +53,7 @@ The sample definition models the first-wedge agentic development path — `plan 
           "claimType": "builder.acceptance",
           "subjectType": "flow-step",
           "subjectId": "builder.plan",
-          "accepted_statuses": ["verified"]
+          "accepted_statuses": ["verified", "assumed"]
         }
       }
     ]
@@ -98,17 +98,33 @@ The plan gate expects a `builder.acceptance` claim. Create a small trust bundle 
 ```sh
 cat > acceptance-bundle.json <<'EOF'
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "source": "team/reviewer",
   "claims": [
     {
       "id": "claim.builder.acceptance",
       "subjectType": "flow-step",
       "subjectId": "builder.plan",
-      "claimType": "builder.acceptance"
+      "facet": "builder.acceptance",
+      "claimType": "builder.acceptance",
+      "fieldOrBehavior": "acceptanceCriteria",
+      "value": "acceptance criteria reviewed and confirmed",
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "updatedAt": "2026-06-10T00:00:00.000Z"
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "evidence.builder.acceptance",
+      "claimId": "claim.builder.acceptance",
+      "evidenceType": "human_attestation",
+      "method": "attestation",
+      "sourceRef": "team:reviewer",
+      "excerptOrSummary": "Acceptance criteria reviewed and confirmed.",
+      "observedAt": "2026-06-10T00:00:00.000Z",
+      "collectedBy": "team/reviewer"
+    }
+  ],
   "policies": [],
   "events": [
     {
@@ -116,7 +132,10 @@ cat > acceptance-bundle.json <<'EOF'
       "claimId": "claim.builder.acceptance",
       "status": "verified",
       "actor": "team/reviewer",
-      "createdAt": "2026-06-10T00:00:00.000Z"
+      "method": "attestation",
+      "evidenceIds": ["evidence.builder.acceptance"],
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "verifiedAt": "2026-06-10T00:00:00.000Z"
     }
   ]
 }

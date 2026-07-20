@@ -63,7 +63,7 @@ function usage() {
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
   flow resume <run-id> [--cwd <path>]
   flow list [--cwd <path>]
-  flow ready-steps [<run-id>] [--format json] [--cwd <path>]
+  flow ready-steps <run-id> [--format json] [--cwd <path>]
 `;
 }
 

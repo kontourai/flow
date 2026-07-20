@@ -104,6 +104,8 @@ Agentic development workflows: plan, implementation, verification, publish, rele
 
 ## v0.1 product shape
 
+"v0.1" here names a product-shape wave — the first scope Flow commits to shipping — not the npm package version (see the `version` field in `package.json` or the [CHANGELOG](../CHANGELOG.md) for the current release).
+
 The first publishable version is a local npm package:
 
 - JSON Schemas for Flow Definitions, Flow Runs, gate evidence, reports, transition validation, release readiness, and version release reports
