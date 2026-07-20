@@ -14,8 +14,10 @@
 }
 ```
 
-- `trusted_producers` maps claim types to producer ids that are allowed to satisfy them, e.g. `{ "quality.tests": ["ci/main"] }`. When a claim type has trusted producers configured, evidence from other producers is reported as `untrusted_producer`.
-- `gate_overrides` carries project-level gate adjustments applied during evaluation.
+- `trusted_producers` maps claim types to producer ids and authority traces that may satisfy them, e.g. `{ "quality.tests": { "producers": ["ci/main"], "authority_traces": ["github:main"] } }`. When a claim type is pinned, evidence that matches neither an allowed producer nor an allowed authority trace cannot satisfy the expectation and receives `untrusted_producer` or `authority_gap` diagnostics.
+- `gate_overrides` carries project-level gate adjustments applied during evaluation. An expectation override's `trusted_producers` or `authority_traces` replaces the claim-type mapping for that expectation, including an explicit empty array that clears the corresponding mapping.
+
+Producer policy is evaluated from the same config snapshot as the gate transition while Flow holds the run mutation lock. Library consumers should call `evaluateRun`; they do not need to pre-filter evidence or duplicate config enforcement.
 
 Two authored shapes are accepted: the flat v0.1 shape above, and the Resource Contract shape (`apiVersion`, `kind: "FlowProjectConfig"`, `metadata`, `spec`) shown in [`examples/flow-project-config-resource-contract.json`](../examples/flow-project-config-resource-contract.json). Resource-shaped files map `spec` to the same flat runtime config, and merge reports plus the applied `.flow/config.json` stay flat — existing tools that read `trusted_producers` and `gate_overrides` never need to migrate.
 

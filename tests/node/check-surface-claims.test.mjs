@@ -55,6 +55,114 @@ test("trust.bundle pass fixtures evaluate to gate pass with matched expectations
   }
 });
 
+test("trust.bundle producer pins reject disallowed and unattributed evidence", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const config = {
+    ...defaultFlowConfig(),
+    trusted_producers: {
+      "quality.tests": { producers: ["ci/main"] }
+    }
+  };
+
+  for (const producer of ["station/command", undefined]) {
+    const state = initialState(definition, `producer-${producer ?? "missing"}`);
+    state.current_step = "verify";
+    const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+    manifest.evidence[0].producer = producer;
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", config);
+
+    assert.equal(outcome.status, "route-back");
+    assert.deepEqual(outcome.missing, ["tests-passed"]);
+    assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
+  }
+});
+
+test("trust.bundle producer pins accept the configured producer or authority trace", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const config = {
+    ...defaultFlowConfig(),
+    trusted_producers: {
+      "quality.tests": {
+        producers: ["ci/main"],
+        authority_traces: ["github:main"]
+      }
+    }
+  };
+
+  for (const identity of [
+    { producer: "ci/main" },
+    { producer: "station/command", authority_trace: "github:main" }
+  ]) {
+    const state = initialState(definition, `trusted-${identity.producer}`);
+    state.current_step = "verify";
+    const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+    Object.assign(manifest.evidence[0], identity);
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", config);
+
+    assert.equal(outcome.status, "pass");
+    assert.equal(outcome.matched_expectations[0].evidence_id, "ev.pass-trust-report");
+  }
+});
+
+test("trust.bundle producer pins retain rejected evidence diagnostics when trusted evidence passes", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const config = {
+    ...defaultFlowConfig(),
+    trusted_producers: {
+      "quality.tests": { producers: ["ci/main"] }
+    }
+  };
+
+  for (const order of ["untrusted-first", "trusted-first"]) {
+    const state = initialState(definition, `mixed-producers-${order}`);
+    state.current_step = "verify";
+    const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+    const untrusted = structuredClone(manifest.evidence[0]);
+    untrusted.id = `ev.untrusted-${order}`;
+    untrusted.producer = "station/command";
+    const trusted = structuredClone(manifest.evidence[0]);
+    trusted.id = `ev.trusted-${order}`;
+    trusted.producer = "ci/main";
+    manifest.evidence = order === "untrusted-first"
+      ? [untrusted, trusted]
+      : [trusted, untrusted];
+
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", config);
+    assert.equal(outcome.status, "pass");
+    assert.equal(outcome.matched_expectations[0].evidence_id, trusted.id);
+    assert.deepEqual(outcome.diagnostics.claim_evaluation, [{
+      expectation_id: "tests-passed",
+      evidence_id: untrusted.id,
+      reason: "untrusted_producer"
+    }]);
+  }
+});
+
+test("expectation-level producer overrides take precedence over claim-type mappings", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const state = initialState(definition, "producer-override");
+  state.current_step = "verify";
+  const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  manifest.evidence[0].producer = "station/command";
+  const config = {
+    ...defaultFlowConfig(),
+    trusted_producers: {
+      "quality.tests": { producers: ["station/command"] }
+    },
+    gate_overrides: {
+      "verify-gate": {
+        expectations: {
+          "tests-passed": { trusted_producers: ["ci/main"] }
+        }
+      }
+    }
+  };
+
+  const outcome = evaluateGate(definition, state, manifest, "verify-gate", config);
+  assert.equal(outcome.status, "route-back");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
+});
+
 test("trust.bundle missing evidence routes back with missing_evidence reason", async () => {
   const definition = await surfaceClaimFixture("flow-definition.json");
   const state = initialState(definition, "fixture-fail-missing");

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+* Enforce project-config trusted producer and authority-trace pins inside the canonical, mutation-locked gate evaluator.
+
 ### ⚠ BREAKING CHANGES
 
 * New Flow Run writes now use `.kontourai/flow/runs/<run-id>/`, and `flow init --demo` writes disposable evidence under `.kontourai/flow/demo/`. The public `runDir()` helper now returns the canonical run path; this is a semver-major API change. `flowRoot()` and `flowConfigPath()` continue to identify durable authored `.flow/` state, and `flowRuntimeRoot()` identifies the generated runtime root.
