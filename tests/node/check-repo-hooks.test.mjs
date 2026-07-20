@@ -113,15 +113,18 @@ test("terminating the build-lease wrapper terminates its child process group bef
     'setInterval(() => {}, 1000)',
   ].join(";");
   const wrapper = spawn(process.execPath, [fileURLToPath(buildLeaseWrapperPath), process.execPath, "-e", childScript], {
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
   });
+  let wrapperStderr = "";
+  wrapper.stderr.setEncoding("utf8");
+  wrapper.stderr.on("data", (chunk) => { wrapperStderr += chunk; });
 
   try {
     await waitForFile(ready);
     const childPid = Number(await readFile(childPidFile, "utf8"));
     wrapper.kill("SIGTERM");
     const result = await waitForExit(wrapper);
-    assert.equal(result.code, 143);
+    assert.equal(result.code, 143, wrapperStderr);
     await waitForProcessExit(childPid);
 
     const startedAt = Date.now();
