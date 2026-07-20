@@ -5,6 +5,12 @@ export {
 export type {
   ConfigMergeReport,
   FlowConfig,
+  FlowDefinitionAmendmentDiagnostic,
+  FlowDefinitionAmendmentDiagnosticCode,
+  FlowDefinitionAmendmentEvent,
+  FlowDefinitionAmendmentRequest,
+  FlowDefinitionAmendmentResult,
+  FlowDefinitionIdentity,
   FlowDefinition,
   FlowDiagnostic,
   FlowEvidenceEntry,
@@ -172,7 +178,18 @@ export type {
   TrustAttachmentReducerWrite
 } from "./runtime/trust-attachment-reducer.js";
 export {
+  FlowDefinitionAmendmentError,
+  assertDefinitionCompatibility,
+  assertExpectedDefinitionIdentity,
+  definitionDigest,
+  definitionIdentity,
+  effectiveDefinitionIdentity,
+  resolveEffectiveDefinition,
+  validateDefinitionAmendmentRequest
+} from "./runtime/flow-run-definition-amendment.js";
+export {
   acceptException,
+  amendRunDefinition,
   authorizeRetry,
   attachEvidence,
   cancelRun,

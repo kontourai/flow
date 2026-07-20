@@ -40,6 +40,25 @@ Validates a Flow Definition — flat v0.1 shape or Resource Contract shape. `--j
 
 Exits `1` when the definition is invalid, so it slots directly into CI.
 
+## flow amend-definition
+
+```sh
+flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
+```
+
+Applies one authorized compatible successor to an active run. The request must
+contain `expected_run_head`, `expected_definition` (`id`, opaque `version`, and
+digest), `successor_digest`, reason, and provider-neutral authority. Obtain the
+heads from `flow status <run-id> --format json` or the library, authenticate the
+authority in the consumer, and create the request before invoking the command.
+The command prints prior and effective identities.
+
+It never edits `definition.json`, evidence, or the manifest. A stale head,
+reused request reference, malformed successor, incompatible history, paused or
+terminal run exits nonzero without canonical mutation. `flow report` and
+Console read canonical state and repair disposable report files; no automatic
+migration or rollback exists.
+
 ## flow kit
 
 Agent-blind kit operations: fetch, validate, place, and report structure — without interpreting what a skill or adapter means. These commands know nothing about extension asset class semantics; that is [flow-agents'](https://kontourai.github.io/flow-agents/) responsibility. See [ADR 0008](adr/0008-kit-operation-boundary.md) for the boundary decision.

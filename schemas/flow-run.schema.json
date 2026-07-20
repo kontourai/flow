@@ -35,6 +35,16 @@
       "type": "string",
       "description": "Flow Definition version captured in definition.json when the run started."
     },
+    "definition_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the normalized effective Flow Definition. Omitted by legacy runs until an explicit amendment."
+    },
+    "definition_amendments": {
+      "type": "array",
+      "description": "Append-only self-contained audit ledger of authorized compatible definition successors.",
+      "items": { "$ref": "#/$defs/definition_amendment" }
+    },
     "subject": {
       "type": "string",
       "description": "Human or tool-facing process subject for the run."
@@ -105,6 +115,42 @@
     }
   },
   "$defs": {
+    "definition_identity": {
+      "type": "object",
+      "required": ["id", "version", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "definition_successor": {
+      "type": "object",
+      "required": ["id", "version", "steps", "gates"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "next"], "additionalProperties": true, "properties": { "id": { "type": "string", "minLength": 1 }, "next": { "type": ["string", "null"] }, "needs": { "type": "array", "items": { "type": "string" } } } } },
+        "gates": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "object" } }
+      }
+    },
+    "definition_amendment": {
+      "type": "object",
+      "required": ["type", "prior_definition", "successor_definition", "prior_run_head", "successor", "authority", "reason", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "definition_amended" },
+        "prior_definition": { "$ref": "#/$defs/definition_identity" },
+        "successor_definition": { "$ref": "#/$defs/definition_identity" },
+        "prior_run_head": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "successor": { "$ref": "#/$defs/definition_successor" },
+        "authority": { "$ref": "#/$defs/lifecycle_authority" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
     "lifecycle_authority": {
       "type": "object",
       "required": ["kind", "actor", "request_ref", "requested_at"],

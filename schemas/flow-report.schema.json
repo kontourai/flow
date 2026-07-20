@@ -11,6 +11,26 @@
     "run_id": { "type": "string" },
     "definition_id": { "type": "string" },
     "definition_version": { "type": "string" },
+    "effective_definition": {
+      "type": "object",
+      "required": ["id", "version", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "start_definition": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "version": { "type": "string" } }
+    },
+    "definition_amendments": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
     "subject": { "type": "string" },
     "status": {
       "type": "string",

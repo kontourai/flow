@@ -5,6 +5,7 @@ import {
   acceptException,
   applyFlowConfigMerge,
   attachEvidence,
+  amendRunDefinition,
   authorizeRetry,
   cancelRun,
   ensureFlowLayout,
@@ -52,6 +53,7 @@ function usage() {
   flow resume-run <run-id> --request <request-json> [--cwd <path>]
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
+  flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
   flow attach-evidence <run-id> --gate <gate> --file <file> [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
@@ -261,6 +263,26 @@ async function readRetryAuthorizationRequest(flags: CliFlags, cwd: string) {
   }
 }
 
+async function readDefinitionAmendmentRequest(flags: CliFlags, cwd: string) {
+  const requestPath = requireArg(flags.request, "flow amend-definition requires --request <request-json>");
+  try {
+    return JSON.parse(await readFile(path.resolve(cwd, requestPath), "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.definition_amendment.request.invalid: unable to read amendment request ${requestPath}: ${detail}`);
+  }
+}
+
+async function readSuccessorDefinition(flags: CliFlags, cwd: string) {
+  const definitionPath = requireArg(flags.definition, "flow amend-definition requires --definition <successor-json>");
+  try {
+    return JSON.parse(await readFile(path.resolve(cwd, definitionPath), "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`flow.definition_amendment.request.invalid: unable to read successor definition ${definitionPath}: ${detail}`);
+  }
+}
+
 function validationPayload(definitionPath, result) {
   return {
     valid: result.valid,
@@ -461,6 +483,20 @@ async function main() {
     console.log(`target: ${result.state.current_step}`);
     console.log(`epoch: ${result.transition.retry_epoch}`);
     console.log(`request: ${result.transition.authority.request_ref}`);
+    return;
+  }
+
+  if (command === "amend-definition") {
+    const runId = requireArg(args[0], "flow amend-definition requires a run id");
+    const [request, definition] = await Promise.all([
+      readDefinitionAmendmentRequest(flags, cwd),
+      readSuccessorDefinition(flags, cwd)
+    ]);
+    const result = await amendRunDefinition(runId, { cwd, request, definition });
+    console.log(`definition amended: ${runId}`);
+    console.log(`prior: ${result.prior_definition.id} v${result.prior_definition.version} ${result.prior_definition.digest}`);
+    console.log(`effective: ${result.effective_definition.id} v${result.effective_definition.version} ${result.effective_definition.digest}`);
+    console.log(`request: ${result.event.authority.request_ref}`);
     return;
   }
 

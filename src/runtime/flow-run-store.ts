@@ -24,7 +24,7 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -74,6 +74,17 @@ export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerD
     buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord
   }
 };
+import {
+  FlowDefinitionAmendmentError,
+  amendmentRequestReplayExists,
+  assertDefinitionCompatibility,
+  assertExpectedDefinitionIdentity,
+  definitionDigest,
+  definitionIdentity,
+  effectiveDefinitionIdentity,
+  resolveEffectiveDefinition,
+  validateDefinitionAmendmentRequest
+} from "./flow-run-definition-amendment.js";
 
 type RunLocationDiagnostic = {
   code: string;
@@ -210,7 +221,8 @@ async function inspectRunCandidate(runId: string, cwd: string): Promise<RunCandi
   if (stateResult.reason) return { dir, status: "incomplete", reason: stateResult.reason };
   try {
     validateRunStateSchema(stateResult.value);
-    validateRunStateIdentity(definition, stateResult.value, runId);
+    const effectiveDefinition = resolveEffectiveDefinition(definition, stateResult.value);
+    validateRunStateIdentity(effectiveDefinition, stateResult.value, runId);
   } catch (error) {
     return {
       dir,
@@ -406,6 +418,8 @@ export function validateEvidenceManifestIdentity(manifest, definition, state) {
   const checks = [
     ["run_id", state.run_id],
     ["definition_id", definition.id],
+    // Evidence remains bound to the immutable start snapshot. An amendment
+    // changes only state.json and never rebinds copied evidence.
     ["definition_version", definition.version]
   ];
   for (const [field, expected] of checks) {
@@ -425,7 +439,8 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
   const definition = validateDefinition(rawDefinition);
   const runId = options.runId ?? `run.${Date.now()}`;
   const dir = await allocateNewRunLocation(runId, cwd);
-  const state = initialState(definition, runId, options.params ?? {});
+  const state = initialState(definition, runId, options.params ?? {}) as FlowRunState;
+  state.definition_digest = definitionDigest(definition);
   const manifest = initialEvidenceManifest(definition, state);
   await ensureDirectoryPathWithoutSymlinks(
     cwd,
@@ -441,18 +456,19 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
 async function readRunAtLocation(runId: string, location: RunLocation, cwd: string) {
   const { dir } = location;
   const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
-  const definition = validateDefinition(rawDefinition);
+  const startDefinition = validateDefinition(rawDefinition);
   const parsedState = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
   validateRunStateSchema(parsedState);
   const state = normalizeRunStateLifecycle(parsedState);
+  const definition = resolveEffectiveDefinition(startDefinition, state);
   validateRunStateIdentity(definition, state, runId);
   validateRetryAuthorizationHistory(definition, state);
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
-    ? validateEvidenceManifestIdentity(await readJson(manifestPath), definition, state)
-    : initialEvidenceManifest(definition, state);
-  const run = { dir, definition, state, manifest, config, diagnostics: location.diagnostics };
+    ? validateEvidenceManifestIdentity(await readJson(manifestPath), startDefinition, state)
+    : initialEvidenceManifest(startDefinition, state);
+  const run = { dir, definition, startDefinition, state, manifest, config, diagnostics: location.diagnostics };
   resolvedRunContexts.set(run, { cwd: path.resolve(cwd) });
   return run;
 }
@@ -502,7 +518,7 @@ async function saveRun(run) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
-  validateEvidenceManifestIdentity(run.manifest, run.definition, run.state);
+  validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH),
@@ -529,7 +545,7 @@ async function writeExistingFileNoFollow(file: string, contents: string) {
 async function saveLifecycleState(run) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
-  validateEvidenceManifestIdentity(run.manifest, run.definition, run.state);
+  validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
   const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
@@ -926,6 +942,7 @@ async function saveRetryAuthorizationState(run: any) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
+  validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
   const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
@@ -956,6 +973,144 @@ async function saveRetryAuthorizationState(run: any) {
   } finally {
     await Promise.all(staged.map((entry) => rm(entry.temp, { force: true }).catch(() => undefined)));
   }
+}
+
+type DefinitionAmendmentPreflight = {
+  run: Awaited<ReturnType<typeof loadRun>>;
+  prior: ReturnType<typeof effectiveDefinitionIdentity>;
+  successor: any;
+};
+
+function invokeAmendmentFault(options: MutableRecord, stage: string) {
+  const hook = options.faultInjection;
+  if (hook === undefined) return;
+  if (typeof hook !== "function") {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.request.invalid", "$.faultInjection", "faultInjection must be a synchronous function");
+  }
+  const result = hook(stage);
+  if (result && typeof result.then === "function") {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.request.invalid", "$.faultInjection", "faultInjection must not return a thenable");
+  }
+}
+
+/** State is the only canonical amendment commit. Reports are repairable projections. */
+async function saveDefinitionAmendmentState(run: any, options: MutableRecord) {
+  validateRunStateSchema(run.state);
+  validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateRetryAuthorizationHistory(run.definition, run.state);
+  validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
+  const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
+  const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
+  const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
+  const suffix = `.definition-amendment-${randomUUID()}.tmp`;
+  const staged = [
+    { target: reportJsonPath, temp: `${reportJsonPath}${suffix}`, contents: `${JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2)}\n`, stage: "report_json" },
+    { target: reportMarkdownPath, temp: `${reportMarkdownPath}${suffix}`, contents: renderMarkdownReport(run.definition, run.state, run.manifest), stage: "report_markdown" },
+    { target: statePath, temp: `${statePath}${suffix}`, contents: `${JSON.stringify(run.state, null, 2)}\n`, stage: "state" }
+  ];
+  const priorReports = await Promise.all([reportJsonPath, reportMarkdownPath].map(async (target) => ({ target, contents: await readFile(target, "utf8") })));
+  let stateCommitted = false;
+  try {
+    for (const entry of staged) {
+      invokeAmendmentFault(options, `before_stage_${entry.stage}`);
+      await writeFile(entry.temp, entry.contents, { flag: "wx", mode: 0o600 });
+    }
+    for (const entry of staged) {
+      invokeAmendmentFault(options, `before_rename_${entry.stage}`);
+      await rename(entry.temp, entry.target);
+      if (entry.stage === "state") stateCommitted = true;
+    }
+  } catch (error) {
+    if (!stateCommitted) await Promise.all(priorReports.map((entry) => writeExistingFileNoFollow(entry.target, entry.contents)));
+    throw error;
+  } finally {
+    await Promise.all(staged.map((entry) => rm(entry.temp, { force: true }).catch(() => undefined)));
+  }
+}
+
+async function preflightDefinitionAmendment(
+  runId: string,
+  cwd: string,
+  request: FlowDefinitionAmendmentRequest,
+  suppliedSuccessor: unknown
+): Promise<DefinitionAmendmentPreflight> {
+  const run = await loadRun(runId, cwd);
+  if (amendmentRequestReplayExists(run.state, request)) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.replay.conflict", "$.authority.request_ref", "request_ref was already consumed by a definition amendment");
+  }
+  if (["canceled", "completed", "failed", "accepted_by_exception"].includes(run.state.status)) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.run_terminal", "$.status", `runs with status ${run.state.status} cannot amend their definition`);
+  }
+  if (run.state.status === "paused") {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.run_paused", "$.status", "paused runs cannot amend their definition");
+  }
+  if (run.state.status !== "active") {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.status", "definition amendment requires an active run");
+  }
+  const prior = effectiveDefinitionIdentity(run.startDefinition ?? run.definition, run.state);
+  if (flowRunHead(run.state) !== request.expected_run_head) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.run_head.stale", "$.expected_run_head", "expected_run_head does not match the current run state");
+  }
+  assertExpectedDefinitionIdentity(run.startDefinition ?? run.definition, run.state, request.expected_definition);
+  const successor = validateDefinition(suppliedSuccessor);
+  const successorDigest = definitionDigest(successor);
+  if (successorDigest !== request.successor_digest) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.request.invalid", "$.successor_digest", "successor_digest does not match the normalized supplied successor");
+  }
+  if (successor.id !== prior.id || successor.version === prior.version || successorDigest === prior.digest) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.successor", "successor must retain id and use a new version and digest");
+  }
+  const amendments = run.state.definition_amendments ?? [];
+  if (amendments.some((event: FlowDefinitionAmendmentEvent) => event.successor_definition?.version === successor.version || event.successor_definition?.digest === successorDigest)) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.successor", "successor version or digest was already used in this run");
+  }
+  assertDefinitionCompatibility(run.definition, successor, run.state);
+  return { run, prior, successor };
+}
+
+/**
+ * Append one complete compatible successor to state.json. The caller supplies
+ * externally authenticated authority; Flow validates only its neutral shape.
+ */
+export async function amendRunDefinition(runId: string, options: MutableRecord = {}): Promise<FlowDefinitionAmendmentResult & MutableRecord> {
+  if (Object.hasOwn(options, "at")) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.request.invalid", "$.at", "amendment timestamps are runtime-derived and cannot be supplied by callers");
+  }
+  const requestValue = options.request ?? Object.fromEntries(Object.entries(options).filter(([key]) => !["cwd", "definition", "successor", "faultInjection"].includes(key)));
+  const request = validateDefinitionAmendmentRequest(requestValue);
+  const suppliedSuccessor = options.definition ?? options.successor;
+  if (suppliedSuccessor === undefined) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.request.invalid", "$.definition", "a complete successor definition is required");
+  }
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
+  return withRunMutationLock(runId, cwd, async () => {
+    const { run, prior, successor } = await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
+    const successorIdentity = definitionIdentity(successor);
+    const at = new Date().toISOString();
+    const event: FlowDefinitionAmendmentEvent = {
+      type: "definition_amended",
+      prior_definition: prior,
+      successor_definition: successorIdentity,
+      prior_run_head: request.expected_run_head,
+      successor,
+      authority: request.authority,
+      reason: request.reason,
+      at
+    };
+    run.definition = successor;
+    run.state = {
+      ...run.state,
+      definition_id: successor.id,
+      definition_version: successor.version,
+      definition_digest: successorIdentity.digest,
+      definition_amendments: [...(run.state.definition_amendments ?? []), event],
+      next_action: nextActionForStep(successor, run.state.current_step),
+      updated_at: at
+    };
+    await saveDefinitionAmendmentState(run, options);
+    return { ...run, event, idempotent: false, prior_definition: prior, effective_definition: successorIdentity };
+  });
 }
 
 type RetryAuthorizationPreflight =

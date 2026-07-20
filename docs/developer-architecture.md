@@ -18,10 +18,23 @@ Flow owns these primitives:
 - Gates and gate evidence: typed expectations, attached files, and copied evidence manifests.
 - Accepted exceptions: explicit authority-bearing overrides that allow a gate to pass.
 - Flow Reports: deterministic JSON and Markdown explanation of run state, evidence, gaps, route-back outcomes, exceptions, and next action.
+- Definition amendments: exact-head, provider-neutral corrections that retain the immutable start snapshot and append complete compatible successors to state.
 - Continuation state: enough local state for `flow resume` and downstream agents to continue without chat memory.
 - Console projection: a read-only, deterministic local read model derived from Flow-owned run files.
 
 Flow does not run agents, dispatch work, replace CI, own repo governance, own Surface trust semantics, or call hosted services as part of v0.1 gate evaluation.
+
+## Definition amendment boundary
+
+The run's `definition.json` and evidence manifest identify the immutable start
+snapshot. `state.json` may contain an append-only `definition_amendments` ledger
+whose final complete successor is the effective definition. Flow resolves and
+revalidates that ledger on every load, exposes its digest identity, and writes
+only state as the final canonical commit; reports are derived and repairable.
+Compatibility is persisted-history based, not Builder-specific. Flow validates
+neutral authority shape while consumers authenticate actors and bind their
+capabilities to the effective identity. It does not automatically migrate,
+backfill legacy digests, downgrade, or integrate Flow Agents envelopes.
 
 ## Flow Definition To Run Lifecycle
 
