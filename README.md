@@ -64,8 +64,53 @@ npx flow start .flow/definitions/agent-dev-flow.json \
   --run-id dev-1847 --params subject=feature-search-filters
 
 # Attach evidence to the current gate, then evaluate
+cat > acceptance-bundle.json <<'JSON'
+{
+  "schemaVersion": 5,
+  "source": "team/reviewer",
+  "claims": [
+    {
+      "id": "claim.builder.acceptance",
+      "subjectType": "flow-step",
+      "subjectId": "builder.plan",
+      "facet": "builder.acceptance",
+      "claimType": "builder.acceptance",
+      "fieldOrBehavior": "acceptanceCriteria",
+      "value": "acceptance criteria reviewed and confirmed",
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "updatedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.builder.acceptance",
+      "claimId": "claim.builder.acceptance",
+      "evidenceType": "human_attestation",
+      "method": "attestation",
+      "sourceRef": "team:reviewer",
+      "excerptOrSummary": "Acceptance criteria reviewed and confirmed.",
+      "observedAt": "2026-06-10T00:00:00.000Z",
+      "collectedBy": "team/reviewer"
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.builder.acceptance.verified",
+      "claimId": "claim.builder.acceptance",
+      "status": "verified",
+      "actor": "team/reviewer",
+      "method": "attestation",
+      "evidenceIds": ["evidence.builder.acceptance"],
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "verifiedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ]
+}
+JSON
+
 npx flow attach-evidence dev-1847 --gate plan-gate \
-  --file ./acceptance-claim.json --trust-artifact
+  --file ./acceptance-bundle.json --kind trust.bundle
 npx flow evaluate dev-1847
 
 # See where the run stands — from any session, any time
@@ -87,7 +132,7 @@ Flow is the process-transparency layer of the Kontour product line: *Kontour sho
 | **[Surface](https://kontourai.io/surface)** | Portable trust state: claims, evidence, policies, trust snapshots |
 | **Flow** | Process transparency: steps, gates, transitions, runs, exceptions, reports |
 | **[Veritas](https://kontourai.io/veritas)** | Code/change transparency: repo standards, merge readiness |
-| **[Flow Agents](https://kontourai.github.io/flow-agents/)** | Agent-facing distribution: kits, runtime adapters, hooks |
+| **[Flow Agents](https://kontourai.io/flow-agents)** | Agent-facing distribution: kits, runtime adapters, hooks |
 
 Flow stands alone — you need none of the other products to use it. When they are present, Veritas can supply repo-readiness evidence to Flow gates, and Flow Agents can enforce Flow gates from inside Claude Code, Codex, Kiro, or GitHub Actions.
 
@@ -117,13 +162,21 @@ Real teams use Flow for agentic development gates, regulated release decisions, 
 ```text
 flow init                          scaffold .flow/ with config and a sample definition
 flow validate-definition <path>    validate a Flow Definition, with --json diagnostics
+flow kit validate <kit-dir>        validate a Flow Kit container manifest
+flow kit install <source>          fetch and place a Flow Kit
+flow kit inspect <kit-dir>         report a kit's structural (K0) view
 flow start <definition>            start a run from a definition
 flow status <run-id>               summary, json, or markdown run status
+flow pause <run-id>                pause a run, recording the prior status
+flow resume-run <run-id>           restore a paused run to active
+flow cancel <run-id>               terminally cancel a run
+flow authorize-retry <run-id>      authorize a retry past an exhausted route-back
 flow attach-evidence <run-id>      copy an evidence file onto a gate
 flow capture <run-id>              run a command and attach its captured receipt
 flow evaluate <run-id>             evaluate gates and advance, block, or route back
 flow accept-exception <run-id>     pass a gate by explicit, attributed exception
 flow resume <run-id>               print continuation state for the next agent
+flow ready-steps <run-id>          print the steps ready to start next
 flow report <run-id>               regenerated run report in summary, markdown, or json
 flow list                          list local runs
 flow console --run <run-id>        loopback-only local console for a run

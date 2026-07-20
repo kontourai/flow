@@ -85,17 +85,33 @@ Flow consumes a neutral bundle shape:
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
   "source": "ci/main",
   "claims": [
     {
       "id": "claim.quality.tests.verify",
       "subjectType": "flow-step",
       "subjectId": "builder.verify",
-      "claimType": "quality.tests"
+      "facet": "quality.developer-evidence",
+      "claimType": "quality.tests",
+      "fieldOrBehavior": "testSuite",
+      "value": "all tests passed",
+      "createdAt": "2026-06-15T00:00:00.000Z",
+      "updatedAt": "2026-06-15T00:00:00.000Z"
     }
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "id": "evidence.quality.tests.output",
+      "claimId": "claim.quality.tests.verify",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "ci:run-1847",
+      "excerptOrSummary": "All test suites passed.",
+      "observedAt": "2026-06-15T00:00:00.000Z",
+      "collectedBy": "ci/main"
+    }
+  ],
   "policies": [],
   "events": [
     {
@@ -103,7 +119,10 @@ Flow consumes a neutral bundle shape:
       "claimId": "claim.quality.tests.verify",
       "status": "verified",
       "actor": "ci/main",
-      "createdAt": "2026-06-15T00:00:00.000Z"
+      "method": "npm test",
+      "evidenceIds": ["evidence.quality.tests.output"],
+      "createdAt": "2026-06-15T00:00:00.000Z",
+      "verifiedAt": "2026-06-15T00:00:00.000Z"
     }
   ]
 }

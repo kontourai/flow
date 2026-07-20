@@ -12,7 +12,7 @@ Flow is small on purpose: it records the required path, the evidence each gate e
 
 ```sh
 flow start .flow/definitions/agent-dev-flow.json --run-id feat-2104 --params subject=checkout-retry
-flow attach-evidence feat-2104 --gate plan-gate --file ./acceptance-claim.json --trust-artifact
+flow attach-evidence feat-2104 --gate plan-gate --file ./acceptance-bundle.json --kind trust.bundle
 flow evaluate feat-2104
 ```
 

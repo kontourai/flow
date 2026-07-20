@@ -1228,6 +1228,80 @@ test("CLI attaches trust.bundle evidence and reports claim diagnostics", async (
   assert.match(rejectedMarkdown, /Claim diagnostics: tests-passed\/ev\.[0-9]+\.[0-9]+:rejected/);
 });
 
+test("CLI attach-evidence --trust-artifact is a working deprecated alias for --kind trust.bundle", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-trust-artifact-"));
+  const cli = cliPath;
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, `${JSON.stringify(routeBackDefinition(), null, 2)}\n`);
+
+  const verifiedBundle = {
+    schemaVersion: 5,
+    source: "ci/main",
+    claims: [{
+      id: "claim.quality.tests.verify",
+      subjectType: "flow-step",
+      subjectId: "builder.verify",
+      facet: "quality.developer-evidence",
+      claimType: "quality.tests",
+      fieldOrBehavior: "testSuite",
+      value: "all tests passed",
+      createdAt: "2026-05-26T00:00:00.000Z",
+      updatedAt: "2026-05-26T00:00:00.000Z"
+    }],
+    evidence: [{
+      id: "evidence.quality.tests.output",
+      claimId: "claim.quality.tests.verify",
+      evidenceType: "test_output",
+      method: "validation",
+      sourceRef: "ci:run-1",
+      excerptOrSummary: "All tests passed.",
+      observedAt: "2026-05-26T00:00:00.000Z",
+      collectedBy: "ci/main"
+    }],
+    policies: [],
+    events: [{
+      id: "event.quality.tests.verified",
+      claimId: "claim.quality.tests.verify",
+      status: "verified",
+      actor: "ci/main",
+      method: "npm test",
+      evidenceIds: ["evidence.quality.tests.output"],
+      createdAt: "2026-05-26T00:00:00.000Z",
+      verifiedAt: "2026-05-26T00:00:00.000Z"
+    }]
+  };
+  await writeFile(path.join(cwd, "verified-bundle.json"), `${JSON.stringify(verifiedBundle, null, 2)}\n`);
+  await execFile(process.execPath, [cli, "start", "definition.json", "--run-id", "cli-trust-artifact", "--params", "subject=cli-trust"], { cwd });
+
+  const attach = await execFile(process.execPath, [
+    cli,
+    "attach-evidence",
+    "cli-trust-artifact",
+    "--gate",
+    "verify-gate",
+    "--file",
+    "verified-bundle.json",
+    "--trust-artifact"
+  ], { cwd });
+  // the deprecation notice must land on stderr only, never stdout, so it
+  // cannot corrupt stdout consumers (e.g. --format json callers)
+  assert.match(attach.stderr, /--trust-artifact is deprecated; use --kind trust\.bundle/);
+  assert.doesNotMatch(attach.stdout, /deprecated/);
+  assert.match(attach.stdout, /kind: trust\.bundle/);
+
+  const runPath = path.join(cwd, ".kontourai", "flow", "runs", "cli-trust-artifact");
+  const manifest = JSON.parse(await readFile(path.join(runPath, FLOW_RUN_EVIDENCE_MANIFEST_PATH), "utf8"));
+  assert.equal(manifest.evidence[0].kind, "trust.bundle");
+  assert.equal(manifest.evidence[0].requested_kind, "trust.bundle");
+  assert.ok(manifest.evidence[0].bundle_report, "trust-artifact alias must derive and store a bundle_report like --bundle does");
+
+  await execFile(process.execPath, [cli, "evaluate", "cli-trust-artifact", "--gate", "verify-gate"], { cwd });
+  const passReport = JSON.parse((await execFile(process.execPath, [cli, "report", "cli-trust-artifact", "--format", "json"], { cwd })).stdout);
+  const passGate = passReport.gate_summaries.find((item) => item.gate_id === "verify-gate");
+  assert.equal(passGate.status, "pass");
+  assert.equal(passGate.matched_expectations[0].expectation_id, "tests-passed");
+});
+
 test("CLI validates arbitrary Flow Definition files with JSON diagnostics", async () => {
   const cli = cliPath;
   const repoCwd = repoRootPath;

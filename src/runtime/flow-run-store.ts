@@ -1122,7 +1122,10 @@ async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Pr
   const kind = normalizeEvidenceKind(options.kind);
   const requestedKind = options.kind ?? "file";
   let normalizedBundle: ReturnType<typeof normalizeTrustBundle> | null = null;
-  if (options.bundle || options.kind === "trust.bundle") {
+  // `--trust-artifact` is a deprecated alias for the trust.bundle path: it
+  // was documented and parsed but never wired up here, so it silently did
+  // nothing. Treat it the same as `--bundle` / `--kind trust.bundle`.
+  if (options.bundle || options.kind === "trust.bundle" || options.trustArtifact) {
     let raw: unknown;
     try {
       raw = JSON.parse(sourceBytes.toString("utf8"));

@@ -19,7 +19,7 @@ This file is the footnote for people developing the product itself.
 npm install
 ```
 
-Node >= 18 is required.
+Node >= 22 is required.
 
 ## Verification
 

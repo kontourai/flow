@@ -26,8 +26,8 @@ const { runId, state } = await startRun(".flow/definitions/agent-dev-flow.json",
 
 await attachEvidence("dev-1847", {
   gate: "plan-gate",
-  file: "./acceptance-claim.json",
-  trustArtifact: true
+  file: "./acceptance-bundle.json",
+  kind: "trust.bundle"
 });
 
 const result = await evaluateRun("dev-1847");

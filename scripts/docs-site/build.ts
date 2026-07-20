@@ -321,8 +321,55 @@ continuation: resume from implement, not chat memory</code></pre>
 npx flow init
 npx flow start .flow/definitions/agent-dev-flow.json \\
   --run-id dev-1847 --params subject=feature-search-filters
+
+# Attach evidence to the current gate, then evaluate
+cat > acceptance-bundle.json &lt;&lt;'JSON'
+{
+  "schemaVersion": 5,
+  "source": "team/reviewer",
+  "claims": [
+    {
+      "id": "claim.builder.acceptance",
+      "subjectType": "flow-step",
+      "subjectId": "builder.plan",
+      "facet": "builder.acceptance",
+      "claimType": "builder.acceptance",
+      "fieldOrBehavior": "acceptanceCriteria",
+      "value": "acceptance criteria reviewed and confirmed",
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "updatedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence.builder.acceptance",
+      "claimId": "claim.builder.acceptance",
+      "evidenceType": "human_attestation",
+      "method": "attestation",
+      "sourceRef": "team:reviewer",
+      "excerptOrSummary": "Acceptance criteria reviewed and confirmed.",
+      "observedAt": "2026-06-10T00:00:00.000Z",
+      "collectedBy": "team/reviewer"
+    }
+  ],
+  "policies": [],
+  "events": [
+    {
+      "id": "event.builder.acceptance.verified",
+      "claimId": "claim.builder.acceptance",
+      "status": "verified",
+      "actor": "team/reviewer",
+      "method": "attestation",
+      "evidenceIds": ["evidence.builder.acceptance"],
+      "createdAt": "2026-06-10T00:00:00.000Z",
+      "verifiedAt": "2026-06-10T00:00:00.000Z"
+    }
+  ]
+}
+JSON
+
 npx flow attach-evidence dev-1847 --gate plan-gate \\
-  --file ./acceptance-claim.json --trust-artifact
+  --file ./acceptance-bundle.json --kind trust.bundle
 npx flow evaluate dev-1847
 npx flow resume dev-1847</code></pre>
   <p><a class="button primary" href="getting-started.html">Walk through it step by step</a></p>
