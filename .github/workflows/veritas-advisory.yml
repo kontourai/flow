@@ -21,6 +21,8 @@ jobs:
       - name: Install repository dependencies
         if: ${{ hashFiles('package-lock.json') != '' }}
         run: npm ci
+      - name: Install browser evidence dependency
+        run: npx playwright install --with-deps chromium
       - name: Produce advisory Veritas readiness
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
