@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/trust-attachment-reducer.schema.json",
+  "title": "Flow Trust Attachment Reducer Result",
+  "description": "The separately versioned, side-effect-free trust attachment reducer result. A coordinator supplies all time, identifiers, source metadata, and versioned Hachure/Surface dependencies, then owns writes described by write.artifacts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["identity", "evidence", "next_manifest", "next_state", "evaluation", "result", "report", "write"],
+  "properties": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "version", "dependency_versions", "hash"],
+      "properties": {
+        "artifact_id": { "const": "kontourai.flow.trust-attachment-reducer" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "dependency_versions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hachure", "surface"],
+          "properties": { "hachure": { "type": "string" }, "surface": { "type": "string" } }
+        },
+        "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "evidence": { "type": "object" },
+    "next_manifest": { "type": "object" },
+    "next_state": { "type": "object" },
+    "evaluation": { "type": "object" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "evaluation", "state"],
+      "properties": { "evidence": { "type": "object" }, "evaluation": { "type": "object" }, "state": { "type": "object" } }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["json", "markdown"],
+      "properties": { "json": { "type": "object" }, "markdown": { "type": "string" } }
+    },
+    "write": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "artifacts"],
+      "properties": {
+        "intent": { "const": "replace" },
+        "artifacts": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "value"],
+            "properties": {
+              "path": { "enum": ["evidence/manifest.json", "state.json", "report.json", "report.md"] },
+              "value": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

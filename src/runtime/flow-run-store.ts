@@ -59,6 +59,21 @@ import {
   validateRetryAuthorizationRequest
 } from "./flow-run-retry-authorization.js";
 import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
+import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type TrustAttachmentReducerDependencies } from "./trust-attachment-reducer.js";
+
+/**
+ * Flow's adapter for the exact locked dependency APIs. The pure reducer accepts
+ * this as data so a coordinator can pin its own artifact and dependencies.
+ */
+export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerDependencies = {
+  hachure: { package: "hachure", version: "0.15.0", validate: validateTrustBundleSchema },
+  surface: {
+    package: "@kontourai/surface",
+    version: "2.12.0",
+    validate: (bundle) => validateTrustBundle(bundle) as MutableRecord,
+    buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord
+  }
+};
 
 type RunLocationDiagnostic = {
   code: string;
@@ -1077,31 +1092,7 @@ export async function sha256File(file) {
  * derived TrustReport. Throws on invalid bundle.
  */
 export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report: any } {
-  if (!isObject(raw)) throw new Error("trust bundle must be a JSON object");
-  const surfaceBundle = surfaceTimestampValidationView(raw);
-
-  // JSON Schema validation via Hachure
-  const schemaResult = validateTrustBundleSchema(surfaceBundle);
-  if (!schemaResult.valid) {
-    throw new Error(`trust bundle does not conform to Hachure schema: ${schemaResult.errors.slice(0, 3).join("; ")}`);
-  }
-
-  // Surface structural validation + status derivation
-  let bundle: any;
-  try {
-    bundle = validateTrustBundle(surfaceBundle);
-  } catch (err: any) {
-    throw new Error(`trust bundle validation failed: ${err?.message ?? String(err)}`);
-  }
-
-  let bundle_report: any;
-  try {
-    bundle_report = buildTrustReport(bundle);
-  } catch (err: any) {
-    throw new Error(`trust bundle status derivation failed: ${err?.message ?? String(err)}`);
-  }
-
-  return { bundle: raw, bundle_report };
+  return normalizeTrustAttachmentBundle(raw, new Date().toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES);
 }
 
 async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
@@ -1174,22 +1165,10 @@ async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Pr
   if (options.classifier) entry.classifier = options.classifier;
   if (options.diagnostics) entry.diagnostics = options.diagnostics;
   if (options.analytics) entry.analytics = options.analytics;
-  const supersedeIds: string[] = Array.isArray(options.supersede)
-    ? options.supersede
-    : options.supersede
-      ? [options.supersede]
-      : [];
-  for (const supersededId of supersedeIds) {
-    const superseded = run.manifest.evidence.find((existing) => existing.id === supersededId);
-    if (!superseded) throw new Error(`cannot supersede unknown evidence: ${supersededId}`);
-    if (superseded.gate_id !== options.gate) {
-      throw new Error(`cannot supersede evidence ${supersededId}: it belongs to gate ${superseded.gate_id}, not ${options.gate}`);
-    }
-    superseded.superseded_by = id;
-  }
-  run.manifest.evidence.push(entry);
+  const attachmentPlan = reduceTrustAttachmentManifest(run.manifest, entry, options.supersede);
+  run.manifest = attachmentPlan.next_manifest;
   await saveRun(run);
-  return entry;
+  return attachmentPlan.evidence;
 }
 
 export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
