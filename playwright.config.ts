@@ -1,13 +1,29 @@
 import { defineConfig, devices } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 
-const browserTestRoot = process.env.FLOW_CONSOLE_TEST_ROOT ?? mkdtempSync(path.join(tmpdir(), "kontourai-flow-browser-"));
+const markerName = ".flow-browser-owner.json";
+const inheritedRoot = process.env.FLOW_CONSOLE_TEST_ROOT;
+const inheritedToken = process.env.FLOW_CONSOLE_TEST_OWNER_TOKEN;
+const browserTestRoot = inheritedRoot ?? mkdtempSync(path.join(tmpdir(), "kontourai-flow-browser-"));
+const browserTestOwnerToken = inheritedToken ?? randomUUID();
+if (inheritedRoot || inheritedToken) assertOwnedBrowserRoot(browserTestRoot, browserTestOwnerToken);
+else writeFileSync(path.join(browserTestRoot, markerName), `${JSON.stringify({ token: browserTestOwnerToken })}\n`, { flag: "wx", mode: 0o600 });
 const browserTestPort = Number(process.env.FLOW_CONSOLE_TEST_PORT ?? randomInt(20_000, 60_000));
 process.env.FLOW_CONSOLE_TEST_ROOT = browserTestRoot;
 process.env.FLOW_CONSOLE_TEST_PORT = String(browserTestPort);
+process.env.FLOW_CONSOLE_TEST_OWNER_TOKEN = browserTestOwnerToken;
+
+function assertOwnedBrowserRoot(root: string, token: string): void {
+  if (path.dirname(root) !== path.resolve(tmpdir()) || !path.basename(root).startsWith("kontourai-flow-browser-")) throw new Error("browser test root is not a dedicated Flow temp directory");
+  const rootStat = lstatSync(root);
+  const marker = path.join(root, markerName);
+  const markerStat = lstatSync(marker);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || !markerStat.isFile() || markerStat.isSymbolicLink()) throw new Error("browser test root ownership marker is unsafe");
+  if (JSON.parse(readFileSync(marker, "utf8")).token !== token) throw new Error("browser test root ownership marker does not match");
+}
 
 export default defineConfig({
   testDir: "./tests/browser",
@@ -27,6 +43,7 @@ export default defineConfig({
       ...process.env,
       FLOW_CONSOLE_TEST_PORT: String(browserTestPort),
       FLOW_CONSOLE_TEST_ROOT: browserTestRoot,
+      FLOW_CONSOLE_TEST_OWNER_TOKEN: browserTestOwnerToken,
     },
     reuseExistingServer: false,
     timeout: 120_000,

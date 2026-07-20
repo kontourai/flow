@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { access, constants, readFile, stat } from "node:fs/promises";
+import { access, constants, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const hookPath = new URL("../../.githooks/pre-push", import.meta.url);
@@ -53,15 +57,38 @@ test("console smoke output uses the Flow product namespace", async () => {
   assert.doesNotMatch(`${consoleSmoke}\n${browserServer}`, /rm\(fixtureRunDir/);
 });
 
+test("browser server rejects and preserves an unowned caller-supplied root", async () => {
+  const unownedRoot = await mkdtemp(path.join(tmpdir(), "flow-browser-unowned-"));
+  const sentinel = path.join(unownedRoot, "keep.txt");
+  await writeFile(sentinel, "preserve\n");
+  try {
+    const result = spawnSync(process.execPath, [fileURLToPath(browserServerPath)], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FLOW_CONSOLE_TEST_ROOT: unownedRoot,
+        FLOW_CONSOLE_TEST_OWNER_TOKEN: "untrusted-caller",
+        FLOW_CONSOLE_TEST_PORT: "4184",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /not a dedicated Flow temp directory/);
+    assert.equal(await readFile(sentinel, "utf8"), "preserve\n");
+  } finally {
+    await rm(unownedRoot, { recursive: true, force: true });
+  }
+});
+
 test("repo hook package scripts stay wired", async () => {
   const packageJson = JSON.parse(await text(packagePath));
 
   assert.equal(packageJson.scripts["setup:repo-hooks"], "node scripts/setup-repo-hooks.mjs");
   assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
-  assert.equal(packageJson.scripts["check:repo-hooks"], "node --test tests/node/check-repo-hooks.test.mjs");
+  assert.equal(packageJson.scripts["check:repo-hooks"], "node scripts/with-build-lease.mjs npm run check:repo-hooks:locked");
   assert.equal(packageJson.scripts["test:node"], "node --test tests/node/*.test.mjs");
   assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
-  assert.match(packageJson.scripts.test, /tests\/node\/\*\.test\.mjs/);
+  assert.equal(packageJson.scripts.test, "node scripts/with-build-lease.mjs npm run test:locked");
+  assert.match(packageJson.scripts["test:locked"], /tests\/node\/\*\.test\.mjs/);
   assert.doesNotMatch(packageJson.scripts.test, /scripts\/check-(schemas|repo-hooks|console-projection|package-contents)\.mjs/);
 });
 
