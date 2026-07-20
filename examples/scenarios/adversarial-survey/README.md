@@ -1,5 +1,14 @@
 # Adversarial Review With Survey-Shaped Evidence
 
+> **Known issue (2026-07-20):** this walkthrough does not currently complete on flow 3.5.0.
+> The commands below originally used `--trust-artifact`, which is now a no-op (use
+> `--kind trust.bundle`), but even with the corrected flag the shipped `*.trust.json`
+> fixtures no longer satisfy the definition's `bundle_claim` expectations
+> (`accepted_statuses: ["verified"]`) under the current trust-attachment semantics —
+> `flow evaluate` reports the producer-output expectation `missing` and the run blocks.
+> The fixtures and transcript need regeneration against current semantics before this
+> scenario is runnable again.
+
 This scenario runs the [adversarial route-back pattern](../../../docs/gates-and-route-back.md#pattern-adversarial-review-with-a-defect-budget) end to end with evidence shaped the way [Kontour Survey](https://kontourai.io/survey) produces it: Surface-shaped trust artifacts whose producer and authority traces point back at a Survey review session and its per-round records.
 
 The artifacts here are authored fixtures in the neutral shape Flow consumes. Survey owns the review reasoning and the per-round [adversarial-pass records](https://kontourai.github.io/survey/adversarial-and-learning.html); Flow evaluates only the artifact fields, the Flow Definition, and persisted transitions.
@@ -22,10 +31,10 @@ flow start examples/adversarial-pass-flow.json --run-id adv-204 \
 
 S=examples/scenarios/adversarial-survey
 flow attach-evidence adv-204 --gate adversarial-review-gate \
-  --file $S/producer-output.trust.json --trust-artifact --cwd /tmp/adv-demo
+  --file $S/producer-output.trust.json --kind trust.bundle --cwd /tmp/adv-demo
 flow attach-evidence adv-204 --gate adversarial-review-gate \
   --file $S/review-round-1-completeness-defect.trust.json \
-  --trust-artifact --status failed --route-reason completeness_defect --cwd /tmp/adv-demo
+  --kind trust.bundle --status failed --route-reason completeness_defect --cwd /tmp/adv-demo
 
 flow evaluate adv-204 --gate adversarial-review-gate --cwd /tmp/adv-demo
 ```
@@ -42,7 +51,7 @@ After regenerating, round 2 **supersedes** the failed round-1 evidence (note the
 
 ```sh
 flow attach-evidence adv-204 --gate adversarial-review-gate \
-  --file $S/review-round-2-trusted.trust.json --trust-artifact \
+  --file $S/review-round-2-trusted.trust.json --kind trust.bundle \
   --supersede <round-1-evidence-id> --cwd /tmp/adv-demo
 flow evaluate adv-204 --gate adversarial-review-gate --cwd /tmp/adv-demo
 ```
@@ -56,7 +65,7 @@ The superseded entry stays in the manifest for audit — reports still show roun
 
 ```sh
 flow attach-evidence adv-204 --gate resolve-gate \
-  --file $S/resolution.trust.json --trust-artifact --cwd /tmp/adv-demo
+  --file $S/resolution.trust.json --kind trust.bundle --cwd /tmp/adv-demo
 flow evaluate adv-204 --cwd /tmp/adv-demo
 ```
 
