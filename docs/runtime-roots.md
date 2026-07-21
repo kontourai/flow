@@ -61,4 +61,14 @@ If verification fails, stop new-version writers, remove only the unaccepted cano
 
 The durable source fixture under `examples/scenarios/console-projection/runtime-fixture/` is copied into `.kontourai/flow/runs/` by tests and smoke scripts. It is not a second runtime root.
 
+## Definition amendments
+
+`definition.json` is permanently the run's start snapshot. An authorized
+compatible amendment writes its complete successor only into the append-only
+ledger inside `state.json`; it never rewrites the start definition, evidence
+manifest, or copied evidence. Reports are derived outputs and may be repaired
+from canonical state after an interrupted projection write. There is no
+automatic legacy migration, digest backfill, downgrade, or rollback: submit a
+fresh compatible amendment with a new exact head instead.
+
 Downstream read-only consumers must adopt the same hard cut. The Kontour Console bridge update is tracked in `kontourai/console#141`; it must not introduce a legacy fallback.

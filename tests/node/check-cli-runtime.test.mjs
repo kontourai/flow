@@ -26,6 +26,7 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.match(help.stdout, /flow pause <run-id> --request <request-json>/);
   assert.match(help.stdout, /flow resume-run <run-id> --request <request-json>/);
   assert.match(help.stdout, /flow cancel <run-id> --request <request-json>/);
+  assert.match(help.stdout, /flow amend-definition <run-id> --definition <successor-json> --request <request-json>/);
   assert.match(help.stdout, /flow capture <run-id> --gate <gate> --kind command .* -- <cmd\.\.\.>/);
 
   const valid = await execFile(process.execPath, [cli, "validate-definition", "examples/agent-dev-flow.json", "--json"], {
@@ -41,6 +42,8 @@ test("emitted package CLI and library entrypoints smoke test", async () => {
   assert.equal(typeof runtime.pauseRun, "function");
   assert.equal(typeof runtime.resumeRun, "function");
   assert.equal(typeof runtime.cancelRun, "function");
+  assert.equal(typeof runtime.amendRunDefinition, "function");
+  assert.equal(typeof runtime.definitionDigest, "function");
 });
 
 test("CLI capture attaches command receipts with exit-derived status and renders reports", async () => {

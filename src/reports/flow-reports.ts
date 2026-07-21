@@ -14,8 +14,23 @@ import {
 import { expectationsForGate } from "../gates/flow-gates.js";
 import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "../shared/flow-utils.js";
 import { flowRunHead } from "../runtime/flow-run-retry-authorization.js";
+import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
 
 export function reportJson(definition: any, state: any, manifest: any) {
+  const effective_definition = definitionIdentity(definition);
+  const firstAmendment = state.definition_amendments?.[0];
+  const start_definition = firstAmendment?.prior_definition ?? {
+    id: manifest.definition_id ?? definition.id,
+    version: manifest.definition_version ?? definition.version
+  };
+  const definition_amendments = (state.definition_amendments ?? []).map((event) => ({
+    prior_definition: event.prior_definition,
+    successor_definition: event.successor_definition,
+    prior_run_head: event.prior_run_head,
+    authority: event.authority,
+    reason: event.reason,
+    at: event.at
+  }));
   const lifecycle = (state.lifecycle ?? []).map((event) => ({
     action: event.action,
     from_status: event.from_status,
@@ -79,6 +94,8 @@ export function reportJson(definition: any, state: any, manifest: any) {
     run_id: state.run_id,
     definition_id: definition.id,
     definition_version: definition.version,
+    ...(state.definition_digest !== undefined || definition_amendments.length ? { effective_definition, start_definition } : {}),
+    ...(definition_amendments.length ? { definition_amendments } : {}),
     subject: state.subject,
     status: state.status,
     summary: `${definition.id} / ${state.subject}`,
@@ -140,6 +157,18 @@ export function renderMarkdownReport(definition, state, manifest) {
     "## Lifecycle",
     ""
   ];
+  if (report.effective_definition) {
+    lines.splice(4, 0,
+      `- Start definition snapshot: ${markdownText(report.start_definition.id)} v${markdownText(report.start_definition.version)}`,
+      `- Effective definition: ${markdownText(report.effective_definition.id)} v${markdownText(report.effective_definition.version)} (${markdownText(report.effective_definition.digest)})`
+    );
+  }
+  if (report.definition_amendments?.length) {
+    lines.push(`- Definition amendments: ${report.definition_amendments.length}`);
+    for (const amendment of report.definition_amendments) {
+      lines.push(`  - ${markdownText(amendment.prior_definition.version)} -> ${markdownText(amendment.successor_definition.version)} by ${markdownText(amendment.authority.actor)} (${markdownText(amendment.authority.request_ref)})`);
+    }
+  }
   if (report.lifecycle.length) {
     for (const event of report.lifecycle) {
       lines.push(`- ${markdownText(event.action)}: ${markdownText(event.from_status)} -> ${markdownText(event.to_status)} at ${markdownText(event.at)}`);

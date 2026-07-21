@@ -7,7 +7,9 @@ import {
   startRun,
   attachEvidence,
   evaluateRun,
+  flowRunHead,
   loadRun,
+  validateRunStateConsistency,
   validateDefinitionWithDiagnostics,
   validateRunTransition
 } from "@kontourai/flow";
@@ -27,7 +29,8 @@ const { runId, state } = await startRun(".flow/definitions/agent-dev-flow.json",
 await attachEvidence("dev-1847", {
   gate: "plan-gate",
   file: "./acceptance-bundle.json",
-  kind: "trust.bundle"
+  kind: "trust.bundle",
+  expectedRunHead: flowRunHead(state)
 });
 
 const result = await evaluateRun("dev-1847");
@@ -37,6 +40,28 @@ const run = await loadRun("dev-1847"); // { dir, definition, state, manifest, co
 ```
 
 These functions read and write the same `.kontourai/flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`. They do not fall back to `.flow/runs/`; migrate generated state from older versions before loading it.
+
+`expectedRunHead` is an optional optimistic-concurrency guard for evidence
+attachment. Flow validates its shape before acquiring the run mutation ticket,
+then reloads canonical state and compares the head while holding the same
+per-run mutation lock that commits evidence. A stale or malformed head rejects
+before evidence bytes or manifests are written. This lets a consumer bind a
+definition-sensitive capability to the exact state it authorized without
+reimplementing Flow's lock or amendment semantics. The CLI exposes the same
+contract as `flow attach-evidence --expected-run-head <sha256>`.
+
+### Pure canonical state validation
+
+`validateRunStateConsistency(startDefinition, state, { runId })` is the pure,
+non-mutating validation path used by `loadRun`. It validates the shipped run
+schema and lifecycle, replays the complete definition-amendment ledger, checks
+the effective definition and optional run id, and proves semantic retry and
+route-back history. It returns normalized `{ startDefinition, definition,
+state }` and performs no file reads, report repair, locking, or writes.
+
+Consumers that securely read canonical bytes themselves can use this public
+root export instead of importing private `dist/` modules or copying only part
+of Flow's validation semantics.
 
 ### Pure trust attachment reducer
 
@@ -55,6 +80,39 @@ is Flow's adapter for those locked package versions. Pin the published package
 integrity plus `trustAttachmentReducerIdentity()` when a privileged coordinator
 needs a stable reducer contract. The identity hash binds the reducer API version
 and dependency versions, while package integrity binds the artifact bytes.
+
+### Authorized definition amendment
+
+`amendRunDefinition` changes the effective definition for an active run without
+replacing that run. Read the exact state and effective identity first, have the
+consumer authenticate its authority, then submit a complete successor and
+request. `definition.json` and evidence remain immutable start artifacts.
+
+```ts
+import { amendRunDefinition, definitionDigest, effectiveDefinitionIdentity, flowRunHead, loadRun } from "@kontourai/flow";
+
+const run = await loadRun("dev-1847");
+const successor = { ...run.definition, version: "corrected-opaque-version" };
+await amendRunDefinition("dev-1847", {
+  definition: successor,
+  request: {
+    reason: "Authorized route correction.",
+    expected_run_head: flowRunHead(run.state),
+    expected_definition: effectiveDefinitionIdentity(run.startDefinition, run.state),
+    successor_digest: definitionDigest(successor),
+    authority: { kind: "operator_request", actor: "operator:42", request_ref: "request:42", requested_at: "2026-07-20T05:00:00.000Z" }
+  }
+});
+```
+
+The request is exact-head and non-idempotent: stale heads or a reused
+`request_ref` reject without mutation. Flow validates the neutral authority
+record but does not authenticate the actor. Each audit event retains the exact
+pre-amendment state without nesting the ledger; Flow reconstructs the ledger
+prefix and replays compatibility against the history that existed when that
+successor was admitted, not against history created by the successor later.
+The repository decision record
+`docs/decisions/definition-amendment.md` carries the durable rationale.
 
 Use `listRunsWithDiagnostics(cwd)` when corrupt or incomplete canonical entries must be surfaced alongside valid run summaries. `listRuns(cwd)` preserves the original summaries-only return shape.
 

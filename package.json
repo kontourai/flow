@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "description": "Process transparency for agentic work.",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -40,10 +40,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/sync-ui-assets.mjs && tsc && tsc -p tsconfig.console-ui.json && node scripts/copy-console-ui.mjs",
-    "test": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser",
-    "test:node": "node --test tests/node/*.test.mjs",
-    "test:browser": "playwright test",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/with-build-lease.mjs npm run test:locked",
+    "test:locked": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser:locked",
+    "test:node": "node scripts/with-build-lease.mjs npm run test:node:locked",
+    "test:node:locked": "node --test tests/node/*.test.mjs",
+    "test:browser": "node scripts/with-build-lease.mjs npm run test:browser:locked",
+    "test:browser:locked": "playwright test",
     "typecheck": "tsc --noEmit",
     "check:types:contracts": "tsc -p tsconfig.types.json --noEmit",
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
@@ -54,15 +57,26 @@
     "freeze:adrs": "node scripts/freeze-adrs.mjs",
     "sync:ui": "node scripts/sync-ui-assets.mjs",
     "check:ui-assets": "node scripts/sync-ui-assets.mjs --check",
-    "check:console-smoke": "npm run build && node scripts/check-console-smoke.mjs",
-    "check:schemas": "npm run build && npm run test:node",
-    "check:console-projection": "npm run build && node --test tests/node/check-console-projection.test.mjs",
-    "check:package-contents": "npm run build && node --test tests/node/check-package-contents.test.mjs",
-    "check:repo-hooks": "node --test tests/node/check-repo-hooks.test.mjs",
+    "check:console-smoke": "node scripts/with-build-lease.mjs npm run check:console-smoke:locked",
+    "check:console-smoke:locked": "npm run build && node scripts/check-console-smoke.mjs",
+    "check:schemas": "node scripts/with-build-lease.mjs npm run check:schemas:locked",
+    "check:schemas:locked": "npm run build && npm run test:node:locked",
+    "check:console-projection": "node scripts/with-build-lease.mjs npm run check:console-projection:locked",
+    "check:console-projection:locked": "npm run build && node --test tests/node/check-console-projection.test.mjs",
+    "check:package-contents": "node scripts/with-build-lease.mjs npm run check:package-contents:locked",
+    "check:package-contents:locked": "npm run build && node --test tests/node/check-package-contents.test.mjs",
+    "check:repo-hooks": "node scripts/with-build-lease.mjs npm run check:repo-hooks:locked",
+    "check:repo-hooks:locked": "node --test tests/node/check-repo-hooks.test.mjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.mjs",
     "validate:repo-hooks": "node scripts/validate-repo-hooks.mjs",
     "prepack": "npm run typecheck && npm test"
   },
+  "trust-reconcile-manifest": [
+    {
+      "id": "active-definition-amendment-focused",
+      "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs"
+    }
+  ],
   "keywords": [
     "agents",
     "ai-agents",

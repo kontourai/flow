@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-definition-amendment-request.schema.json",
+  "title": "Flow Definition Amendment Request",
+  "description": "Provider-neutral exact-head authorization. Consumers authenticate authority before calling Flow.",
+  "type": "object",
+  "required": ["reason", "expected_run_head", "expected_definition", "successor_digest", "authority"],
+  "additionalProperties": false,
+  "properties": {
+    "reason": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
+    "expected_run_head": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "expected_definition": { "$ref": "flow-run.schema.json#/$defs/definition_identity" },
+    "successor_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "authority": { "$ref": "flow-run.schema.json#/$defs/lifecycle_authority" }
+  }
+}

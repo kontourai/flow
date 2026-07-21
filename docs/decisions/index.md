@@ -10,6 +10,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 
 | Topic | Status | Decision |
 | --- | --- | --- |
+| [definition-amendment](./definition-amendment.md) | current | Definition Amendment |
 | [gate-expectation](./gate-expectation.md) | needs-decision | Gate Expectation |
 | [kit](./kit.md) | needs-decision | Kit |
 | [process-transparency](./process-transparency.md) | needs-decision | Process Transparency |
