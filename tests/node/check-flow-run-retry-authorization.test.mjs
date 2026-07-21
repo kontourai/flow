@@ -370,13 +370,13 @@ test("Date.parse-compatible non-RFC3339 authority timestamps fail without writes
   }
 });
 
-test("same-epoch repeated exhaustion and discriminator hiding fail pristine preflight", async () => {
+test("divergent repeated exhaustion and discriminator hiding fail pristine preflight", async () => {
   const repeated = await exhaustedRun("retry-pristine-repeated-exhaustion");
   const repeatedRequest = await rewriteRetryState(repeated, (state) => {
     const firstExhaustion = state.transitions.at(-1);
-    state.transitions.push({ ...firstExhaustion, attempt: 5, at: "2026-07-19T15:05:00.000Z" });
+    state.transitions.push({ ...firstExhaustion, attempt: 5, recovery_step: "recover", at: "2026-07-19T15:05:00.000Z" });
   });
-  await assertPristineRetryRejection(repeated, repeatedRequest, /flow\.retry_authorization\.block\.invalid/);
+  await assertPristineRetryRejection(repeated, repeatedRequest, /flow\.retry_authorization\.history\.invalid|flow\.retry_authorization\.block\.invalid/);
 
   const hidden = await exhaustedRun("retry-pristine-hidden-predecessor");
   const hiddenRequest = await rewriteRetryState(hidden, (state) => {
@@ -423,6 +423,67 @@ test("same-epoch repeated exhaustion and discriminator hiding fail pristine pref
     };
   });
   await assertPristineRetryRejection(ambiguous, ambiguousRequest, /state\.json is invalid|flow\.retry_authorization\.history\.invalid/);
+});
+
+test("a contiguous canonical exhausted suffix authorizes one epoch-two recovery without rewriting history", async () => {
+  const fixture = await exhaustedRun("retry-contiguous-exhausted-suffix");
+  const statePath = path.join(fixture.started.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  const firstExhaustion = state.transitions.at(-1);
+  state.transitions.push(
+    { ...firstExhaustion, attempt: 5, at: "2026-07-19T15:05:00.000Z" },
+    { ...firstExhaustion, attempt: 6, at: "2026-07-19T15:06:00.000Z" }
+  );
+  state.updated_at = "2026-07-19T15:06:00.000Z";
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const loaded = await flow.loadRun(fixture.started.runId, fixture.cwd);
+  const history = structuredClone(loaded.state.transitions);
+  const result = await flow.authorizeRetry(fixture.started.runId, {
+    cwd: fixture.cwd,
+    request: {
+      ...fixture.request,
+      blocked_transition_ref: flow.flowTransitionRef(history.at(-1)),
+      expected_run_head: flow.flowRunHead(loaded.state)
+    }
+  });
+
+  assert.deepEqual(result.state.transitions.slice(0, -1), history);
+  assert.equal(result.transition.prior_retry_epoch, 1);
+  assert.equal(result.transition.retry_epoch, 2);
+  const next = flow.routeBackDecision(result.state, flow.findGate(fixture.definition, "verify-gate"), "implementation_defect");
+  assert.equal(next.attempt, 1);
+  assert.equal(next.max_attempts, 3);
+});
+
+test("interleaved or cross-loop terminal histories cannot authorize recovery", async () => {
+  const interleaved = await exhaustedRun("retry-interleaved-exhausted-suffix");
+  const interleavedRequest = await rewriteRetryState(interleaved, (state) => {
+    const exhausted = state.transitions.at(-1);
+    state.transitions.push(
+      { from_step: "verify", to_step: "verify", status: "allowed", reason: "unrelated transition", at: "2026-07-19T15:04:30.000Z" },
+      { ...exhausted, attempt: 5, at: "2026-07-19T15:05:00.000Z" }
+    );
+  });
+  await assertPristineRetryRejection(interleaved, interleavedRequest, /flow\.retry_authorization\.block\.invalid/);
+
+  const crossLoop = await exhaustedRun("retry-cross-loop-exhaustion");
+  await rewriteRetryDefinition(crossLoop, (definition) => {
+    definition.gates["plan-gate"] = {
+      step: "plan", expects: [], on_route_back: { default: "plan" },
+      route_back_policy: { max_attempts: 3, on_exceeded: "block" }
+    };
+  });
+  const crossLoopRequest = await rewriteRetryState(crossLoop, (state) => {
+    state.current_step = "plan";
+    state.gate_outcomes = [{ gate_id: "plan-gate", status: "block", summary: "budget exhausted", evidence_refs: [], route_reason: "default", selected_route: "plan", attempt: 4, max_attempts: 3, limit_exceeded: true }];
+    state.transitions.push(...[1, 2, 3, 4].map((attempt) => ({
+      type: "route_back", from_step: "plan", to_step: "plan", status: "blocked", reason: "default",
+      route_reason: "default", selected_route: "plan", attempt, max_attempts: 3,
+      limit_exceeded: attempt === 4, gate_id: "plan-gate", at: `2026-07-19T15:1${attempt}:00.000Z`
+    })));
+  });
+  await assertPristineRetryRejection(crossLoop, crossLoopRequest, /flow\.retry_authorization\.history\.invalid|flow\.retry_authorization\.block\.invalid/);
 });
 
 test("canonical unrelated unbounded and recovery-policy route-backs do not deny retry", async () => {
@@ -864,7 +925,7 @@ test("persisted retry authorizations are relationally validated against the exha
   const repeatedState = JSON.parse(await readFile(repeatedStatePath, "utf8"));
   const authorization = repeatedState.transitions.at(-1);
   const firstExhaustion = repeatedState.transitions.at(-2);
-  const secondExhaustion = { ...firstExhaustion, attempt: 5, at: "2026-07-19T15:04:30.000Z" };
+  const secondExhaustion = { ...firstExhaustion, attempt: 5, recovery_step: "recover", at: "2026-07-19T15:04:30.000Z" };
   repeatedState.transitions.splice(-1, 0, secondExhaustion);
   authorization.blocked_transition_ref = flow.flowTransitionRef(secondExhaustion);
   await writeFile(repeatedStatePath, `${JSON.stringify(repeatedState, null, 2)}\n`);
