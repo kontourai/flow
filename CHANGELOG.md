@@ -10,6 +10,14 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.6.1](https://github.com/kontourai/flow/compare/v3.6.0...v3.6.1) (2026-07-21)
+
+
+### Fixes
+
+* release exhausted-run immutability ([52d9977](https://github.com/kontourai/flow/commit/52d997722099c18e277f87b564d0135972ff2595))
+* release exhausted-run immutability ([#163](https://github.com/kontourai/flow/issues/163)) ([278579b](https://github.com/kontourai/flow/commit/278579bb9e9ac1747494ae67fe48fb16d5bfced9))
+
 ## [3.6.0](https://github.com/kontourai/flow/compare/v3.5.0...v3.6.0) (2026-07-20)
 
 
