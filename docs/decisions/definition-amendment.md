@@ -5,6 +5,8 @@ decided: 2026-07-20
 evidence:
   - kind: issue
     ref: https://github.com/kontourai/flow/issues/146
+  - kind: issue
+    ref: https://github.com/kontourai/flow/issues/165
 ---
 # Definition Amendment
 
@@ -35,6 +37,13 @@ proof. Persisted steps, gates, transitions, accepted expectation contracts and
 matched evidence identities, route-back/retry accounting, and current cursor
 must still be valid under the successor. History-free current/future behavior
 can change, such as adding a new route-back reason for the current gate.
+An outcome in the current projection or an accepted exception still drives
+runtime behavior, so its complete gate contract remains immutable. An outcome
+retained only in audit history instead preserves its gate-step identity and
+referenced expectation contracts, while persisted route-back and retry
+transitions are semantically replayed against the successor. This distinction
+allows a re-entered current gate to gain a new, previously unconsumed route
+without retroactively changing an earlier outcome.
 The audit event stores the exact prior state without its amendment ledger. On
 load, Flow reconstructs the preceding ledger prefix, verifies `prior_run_head`,
 and replays compatibility against that boundary. Successor-created history

@@ -120,6 +120,47 @@ test("AC1 AC4 AC5: compatible amendment preserves immutable artifacts and projec
   assert.equal(twiceAmended.state.definition_amendments.length, 2, "each compatibility proof replays against its own exact prior state");
 });
 
+test("AC1 AC2: additive current-gate route remains compatible after a prior gate outcome", async () => {
+  const { cwd, runId, before: started } = await fixture("current-gate-history");
+  const statePath = path.join(started.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.gate_outcome_history = [{
+    gate_id: "execute-gate",
+    status: "pass",
+    summary: "Earlier execution visit passed before re-entry.",
+    evidence_refs: [],
+    optional_missing: [],
+    matched_expectations: []
+  }];
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const before = await loadRun(runId, cwd);
+  const next = successor();
+  await amendRunDefinition(runId, {
+    cwd,
+    request: request(before, next, "request:add-current-gate-route-after-history"),
+    definition: next
+  });
+
+  const amended = await loadRun(runId, cwd);
+  assert.equal(amended.state.definition_amendments.length, 1);
+  assert.deepEqual(amended.state.gate_outcome_history[0], state.gate_outcome_history[0], "prior outcome remains byte-equivalent");
+  const failedEvidence = path.join(cwd, "current-gate-plan-gap.txt");
+  await writeFile(failedEvidence, "The re-entered execution visit exposed a planning gap.\n");
+  await attachEvidence(runId, {
+    cwd,
+    gate: "execute-gate",
+    file: failedEvidence,
+    status: "failed",
+    route_reason: "plan_gap",
+    expectedRunHead: flowRunHead(amended.state)
+  });
+  const evaluated = await evaluateRun(runId, { cwd, gate: "execute-gate" });
+  assert.equal(evaluated.state.current_step, "plan");
+  assert.equal(evaluated.state.transitions.at(-1).route_reason, "plan_gap");
+  assert.equal(evaluated.state.transitions.at(-1).attempt, 1);
+});
+
 test("AC3 AC5: replay, stale heads, and pre-state faults reject without canonical mutation", async () => {
   const { cwd, runId, before } = await fixture("reject");
   const next = successor();
@@ -210,11 +251,11 @@ test("AC3: accepted history and same-head concurrency reject before a losing wri
   const started = await startRun(definitionPath, { cwd, runId: "history-run" });
   const statePath = path.join(started.dir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
-  state.gate_outcomes = [{
+  state.gate_outcomes = [];
+  state.gate_outcome_history = [{
     gate_id: "execute-gate", status: "pass", summary: "scope accepted", evidence_refs: ["ev.scope"],
     matched_expectations: [{ expectation_id: "scope-accepted", evidence_id: "ev.scope" }]
   }];
-  state.gate_outcome_history = structuredClone(state.gate_outcomes);
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
   const before = await loadRun(started.runId, cwd);
   const removed = structuredClone(definition);
@@ -223,7 +264,7 @@ test("AC3: accepted history and same-head concurrency reject before a losing wri
   const bytes = await readFile(statePath);
   await assert.rejects(
     amendRunDefinition(started.runId, { cwd, request: request(before, removed, "request:remove-accepted"), definition: removed }),
-    /successor (?:changes|reinterprets) accepted expectation|successor reinterprets persisted gate/
+    /successor changes accepted expectation scope-accepted/
   );
   assert.deepEqual(await readFile(statePath), bytes);
 

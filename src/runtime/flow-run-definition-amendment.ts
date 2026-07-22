@@ -153,10 +153,12 @@ export function assertDefinitionCompatibility(prior: any, successor: any, state:
   if (prior.id !== successor.id) fail("flow.definition_amendment.compatibility.invalid", `${path}.id`, "successor must retain the definition id");
   if (prior.version === successor.version) fail("flow.definition_amendment.compatibility.invalid", `${path}.version`, "successor must use a different opaque version");
   const successorSteps = new Map((successor.steps as any[]).map((step: any) => [step.id, step]));
-  const gateIds = new Set<string>();
+  const historicalGateIds = new Set<string>();
+  const projectedGateIds = new Set<string>((state?.gate_outcomes ?? []).map((outcome: any) => outcome?.gate_id).filter(Boolean));
+  const exceptionGateIds = new Set<string>((state?.exceptions ?? []).map((exception: any) => exception?.gate_id).filter(Boolean));
   const stepIds = new Set<string>([state?.current_step]);
   for (const item of [...(state?.gate_outcomes ?? []), ...(state?.gate_outcome_history ?? []), ...(state?.transitions ?? []), ...(state?.exceptions ?? [])]) {
-    if (item?.gate_id) gateIds.add(item.gate_id);
+    if (item?.gate_id) historicalGateIds.add(item.gate_id);
     if (item?.from_step) stepIds.add(item.from_step);
     if (item?.to_step) stepIds.add(item.to_step);
     if (item?.selected_route) stepIds.add(item.selected_route);
@@ -167,10 +169,18 @@ export function assertDefinitionCompatibility(prior: any, successor: any, state:
     const oldStep = (prior.steps as any[]).find((step: any) => step.id === stepId);
     if (oldStep && !same(oldStep, successorSteps.get(stepId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets persisted step ${stepId}`);
   }
-  for (const gateId of gateIds) {
+  for (const gateId of historicalGateIds) {
     const oldGate = findGate(prior, gateId); const nextGate = findGate(successor, gateId);
     if (!oldGate || !nextGate) fail("flow.definition_amendment.compatibility.invalid", path, `successor removes persisted gate ${gateId}`);
-    if (!same(oldGate, nextGate)) fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets persisted gate ${gateId}`);
+    if (oldGate.step !== nextGate.step) fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets persisted gate ${gateId} step`);
+    // Current projections and accepted exceptions still drive runtime behavior,
+    // so their complete gate contract is immutable. Audit-only history is
+    // instead protected by its referenced expectations plus semantic replay of
+    // route-back/retry transitions below. That permits a new, unconsumed route
+    // reason on a re-entered current gate without changing an earlier outcome.
+    if ((projectedGateIds.has(gateId) || exceptionGateIds.has(gateId)) && !same(oldGate, nextGate)) {
+      fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets projected gate ${gateId}`);
+    }
   }
   for (const outcome of [...(state?.gate_outcomes ?? []), ...(state?.gate_outcome_history ?? [])]) {
     for (const match of outcome?.matched_expectations ?? []) {
