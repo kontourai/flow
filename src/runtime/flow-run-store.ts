@@ -24,7 +24,7 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -1334,80 +1334,11 @@ async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Pr
     throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
   }
   assertRunMutationLifecycleEligible("attach_evidence", run);
-  const source = path.resolve(options.cwd ?? process.cwd(), options.file);
-  const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
-  let sourceBytes: Buffer;
-  try {
-    const sourceStat = await sourceHandle.stat();
-    if (!sourceStat.isFile()) throw new Error(`evidence source must be a regular file: ${source}`);
-    sourceBytes = await sourceHandle.readFile();
-  } finally {
-    await sourceHandle.close();
-  }
-  const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
-  if (options.expectedSha256 !== undefined) {
-    if (typeof options.expectedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedSha256)) {
-      throw new Error("expectedSha256 must be a SHA-256 hex digest");
-    }
-    if (options.expectedSha256.toLowerCase() !== sourceSha256) {
-      throw new Error("evidence source digest does not match expectedSha256");
-    }
-  }
-  const gate = findGate(run.definition, options.gate);
-  if (!gate) throw new Error(`unknown gate: ${options.gate}`);
-  const kind = normalizeEvidenceKind(options.kind);
-  const requestedKind = options.kind ?? "file";
-  let normalizedBundle: ReturnType<typeof normalizeTrustBundle> | null = null;
-  // `--trust-artifact` is a deprecated alias for the trust.bundle path: it
-  // was documented and parsed but never wired up here, so it silently did
-  // nothing. Treat it the same as `--bundle` / `--kind trust.bundle`.
-  if (options.bundle || options.kind === "trust.bundle" || options.trustArtifact) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(sourceBytes.toString("utf8"));
-    } catch (error) {
-      throw new Error(`trust bundle JSON parsing failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    normalizedBundle = normalizeTrustBundle(raw);
-  }
-  const id = `ev.${Date.now()}.${run.manifest.evidence.length + 1}`;
-  const ext = path.extname(source);
-  const storedName = `${id}${ext}`;
-  const storedPath = await assertSafeRunArtifactWritePath(run.dir, path.join(FLOW_RUN_EVIDENCE_DIR, storedName));
-  await writeFile(storedPath, sourceBytes, { flag: "wx" });
-  const entry: FlowEvidenceEntry = {
-    id,
-    gate_id: options.gate,
-    kind,
-    requested_kind: requestedKind,
-    status: options.status ?? "passed",
-    original_path: options.file,
-    stored_path: path.join(FLOW_RUN_EVIDENCE_DIR, storedName),
-    sha256: sourceSha256,
-    attached_at: new Date().toISOString()
-  };
-
-  // trust.bundle path: read the file as a Hachure TrustBundle, validate,
-  // derive statuses via Surface buildTrustReport, store bundle + report.
-  if (normalizedBundle) {
-    const { bundle, bundle_report } = normalizedBundle;
-    entry.kind = "trust.bundle";
-    entry.requested_kind = "trust.bundle";
-    entry.bundle = bundle;
-    entry.bundle_report = bundle_report;
-  }
-
-  if (options.producer) entry.producer = options.producer;
-  if (options.authorityTrace) entry.authority_trace = options.authorityTrace;
-  if (options.route_reason) entry.route_reason = options.route_reason;
-  if (options.expectation_ids) entry.expectation_ids = options.expectation_ids;
-  if (options.classifier) entry.classifier = options.classifier;
-  if (options.diagnostics) entry.diagnostics = options.diagnostics;
-  if (options.analytics) entry.analytics = options.analytics;
-  const attachmentPlan = reduceTrustAttachmentManifest(run.manifest, entry, options.supersede);
-  run.manifest = attachmentPlan.next_manifest;
+  const prepared = await prepareEvidenceAttachment(run, options, { normalizeBundle: normalizeTrustBundle, attachedAt: () => new Date() });
+  await writeFile(prepared.storedPath, prepared.sourceBytes, { flag: "wx" });
+  run.manifest = prepared.nextManifest;
   await saveRun(run);
-  return attachmentPlan.evidence;
+  return prepared.evidence;
 }
 
 function isExhaustedBlockedRun(run: Awaited<ReturnType<typeof loadRun>>) {
@@ -1442,6 +1373,195 @@ export function attachEvidence(runId: string, options: MutableRecord): Promise<F
   }
   return preflightRunMutationLifecycle(runId, cwd, "attach_evidence")
     .then(() => withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd, expectedRunHead })));
+}
+
+type PreparedEvidenceAttachment = {
+  evidence: FlowEvidenceEntry;
+  nextManifest: MutableRecord;
+  sourceBytes: Buffer;
+  storedPath: string;
+};
+
+type EvidencePreparation = {
+  normalizeBundle: (raw: unknown) => { bundle: any; bundle_report: any };
+  attachedAt: () => Date;
+};
+
+function continuationNow(value: unknown) {
+  if (value !== undefined && (typeof value !== "string" || !isNonEmptyString(value) || !Number.isFinite(Date.parse(value)))) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: now must be a date-time when provided");
+  }
+  const now = value === undefined ? new Date() : new Date(value as string);
+  return now;
+}
+
+function pausedGateContinuationRequest(options: FlowPausedGateContinuationOptions) {
+  if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+    throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
+  }
+  if (!isNonEmptyString(options.gate)) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: gate must be a non-empty string");
+  }
+  if (!isObject(options.evidence) || !isNonEmptyString(options.evidence.file)) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: evidence.file must be a non-empty string");
+  }
+  if (typeof options.resumeOnPass !== "boolean") {
+    throw new Error("flow.paused_gate_continuation.request.invalid: resumeOnPass must be a boolean");
+  }
+  if (options.resumeOnPass && !options.resume) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: resume is required when resumeOnPass is true");
+  }
+  if (!options.resumeOnPass && options.resume !== undefined) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: resume is only allowed when resumeOnPass is true");
+  }
+  const now = continuationNow(options.now);
+  const resumeOptions = options.resumeOnPass && options.resume!.at === undefined
+    ? { ...options.resume!, at: now.toISOString() }
+    : options.resume;
+  const resume = options.resumeOnPass
+    ? { request: validateLifecycleRequest("resume", { reason: resumeOptions!.reason, authority: resumeOptions!.authority }), at: lifecycleTimestamp(resumeOptions!, "resume") }
+    : undefined;
+  if (resume && Date.parse(resume.at) > now.getTime()) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
+  }
+  return {
+    cwd: path.resolve(options.cwd ?? process.cwd()),
+    expectedRunHead: options.expectedRunHead.toLowerCase(),
+    gate: options.gate,
+    evidence: options.evidence,
+    resumeOnPass: options.resumeOnPass,
+    resume,
+    now
+  };
+}
+
+async function readEvidenceSource(options: MutableRecord) {
+  const source = path.resolve(options.cwd ?? process.cwd(), options.file);
+  const sourceHandle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let sourceBytes: Buffer;
+  try {
+    const sourceStat = await sourceHandle.stat();
+    if (!sourceStat.isFile()) throw new Error(`evidence source must be a regular file: ${source}`);
+    sourceBytes = await sourceHandle.readFile();
+  } finally {
+    await sourceHandle.close();
+  }
+  const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+  if (options.expectedSha256 !== undefined) {
+    if (typeof options.expectedSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedSha256)) {
+      throw new Error("expectedSha256 must be a SHA-256 hex digest");
+    }
+    if (options.expectedSha256.toLowerCase() !== sourceSha256) {
+      throw new Error("evidence source digest does not match expectedSha256");
+    }
+  }
+  return { source, sourceBytes, sourceSha256 };
+}
+
+function normalizedEvidenceBundle(sourceBytes: Buffer, options: MutableRecord, preparation: EvidencePreparation) {
+  if (!(options.bundle || options.kind === "trust.bundle" || options.trustArtifact)) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(sourceBytes.toString("utf8"));
+  } catch (error) {
+    throw new Error(`trust bundle JSON parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return preparation.normalizeBundle(raw);
+}
+
+async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: MutableRecord, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
+  if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
+  const { source, sourceBytes, sourceSha256 } = await readEvidenceSource(options);
+  const kind = normalizeEvidenceKind(options.kind);
+  const requestedKind = options.kind ?? "file";
+  const normalizedBundle = normalizedEvidenceBundle(sourceBytes, options, preparation);
+  const id = `ev.${Date.now()}.${run.manifest.evidence.length + 1}`;
+  const storedName = `${id}${path.extname(source)}`;
+  const storedPath = await assertSafeRunArtifactWritePath(run.dir, path.join(FLOW_RUN_EVIDENCE_DIR, storedName));
+  const evidence: FlowEvidenceEntry = {
+    id,
+    gate_id: options.gate,
+    kind,
+    requested_kind: requestedKind,
+    status: options.status ?? "passed",
+    original_path: options.file,
+    stored_path: path.join(FLOW_RUN_EVIDENCE_DIR, storedName),
+    sha256: sourceSha256,
+    attached_at: preparation.attachedAt().toISOString()
+  };
+  if (normalizedBundle) {
+    evidence.kind = "trust.bundle";
+    evidence.requested_kind = "trust.bundle";
+    evidence.bundle = normalizedBundle.bundle;
+    evidence.bundle_report = normalizedBundle.bundle_report;
+  }
+  if (options.producer) evidence.producer = options.producer;
+  if (options.authorityTrace) evidence.authority_trace = options.authorityTrace;
+  if (options.route_reason) evidence.route_reason = options.route_reason;
+  if (options.expectation_ids) evidence.expectation_ids = options.expectation_ids;
+  if (options.classifier) evidence.classifier = options.classifier;
+  if (options.diagnostics) evidence.diagnostics = options.diagnostics;
+  if (options.analytics) evidence.analytics = options.analytics;
+  const attachmentPlan = reduceTrustAttachmentManifest(run.manifest, evidence, options.supersede);
+  return { evidence: attachmentPlan.evidence, nextManifest: attachmentPlan.next_manifest, sourceBytes, storedPath };
+}
+
+function assertPausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, request: ReturnType<typeof pausedGateContinuationRequest>) {
+  if (flowRunHead(run.state) !== request.expectedRunHead) throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
+  assertLifecycleEligible("resume", run.state.status);
+  const gate = findGate(run.definition, request.gate);
+  if (!gate || gate.step !== run.state.current_step) throw new Error(`flow.paused_gate_continuation.gate.invalid: ${request.gate} is not the persisted current open gate`);
+}
+
+function resumedContinuationState(state: FlowRunState, request: ReturnType<typeof pausedGateContinuationRequest>) {
+  const nextState = structuredClone(state) as FlowRunState;
+  const prior = priorResumableStatus(nextState);
+  if (!request.resumeOnPass) return { nextState: { ...nextState, status: prior }, event: undefined };
+  const event: FlowLifecycleEvent = { action: "resume", from_status: "paused", to_status: prior, prior_status: prior, reason: request.resume!.request.reason, authority: request.resume!.request.authority, at: request.resume!.at };
+  return { nextState: { ...nextState, status: prior, lifecycle: [...(nextState.lifecycle ?? []), event], updated_at: event.at }, event };
+}
+
+function staleContinuationOutcome(gate: string, rechecks: MutableRecord[]) {
+  return { gate_id: gate, status: "block", summary: "upstream passed gate evidence became stale", evidence_refs: [], diagnostics: { code: "flow.paused_gate_continuation.upstream_stale", freshness_rechecks: rechecks } } as GateOutcome;
+}
+
+function blockingFreshnessRechecks(definition: any, currentStep: string, rechecks: MutableRecord[]) {
+  return rechecks.filter((recheck) => {
+    const gate = findGate(definition, recheck.gate_id);
+    return gate && (gate.step === currentStep || descendantsOf(definition, gate.step).includes(currentStep));
+  });
+}
+
+function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, state: FlowRunState, manifest: MutableRecord, request: ReturnType<typeof pausedGateContinuationRequest>) {
+  const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config);
+  const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now.toISOString());
+  if (validation.status === "invalid") throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
+  outcome.transition_validation = validation;
+  applyEvaluation(run.definition, state, outcome, request.now.toISOString());
+  return outcome;
+}
+
+/** Atomically continue a paused current gate; every non-commit result is dry. */
+export async function continuePausedGate(runId: string, options: FlowPausedGateContinuationOptions): Promise<FlowPausedGateContinuationResult> {
+  const request = pausedGateContinuationRequest(options);
+  return withRunMutationLock(runId, request.cwd, async () => {
+    const run = await loadRun(runId, request.cwd);
+    assertPausedContinuation(run, request);
+    const prepared = await prepareEvidenceAttachment(run, { ...request.evidence, cwd: request.cwd, gate: request.gate }, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
+    const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
+    const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
+    if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };
+    const { nextState, event } = resumedContinuationState(run.state, request);
+    if (request.resumeOnPass) validateRunStateConsistency(run.startDefinition, nextState, { runId });
+    const outcome = evaluatePausedContinuation(run, nextState, manifest, request);
+    if (outcome.status !== "pass" || !request.resumeOnPass) return { committed: false, outcomes: [outcome], run };
+    const committedRun = { ...run, state: nextState, manifest };
+    validateRunStateConsistency(run.startDefinition, nextState, { runId });
+    validateEvidenceManifestIdentity(manifest, run.startDefinition, nextState);
+    await writeFile(prepared.storedPath, prepared.sourceBytes, { flag: "wx" });
+    await saveRun(committedRun);
+    return { committed: true, evidence: prepared.evidence, outcomes: [outcome], run: committedRun, event };
+  });
 }
 
 /**
