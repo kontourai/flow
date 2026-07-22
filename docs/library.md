@@ -6,6 +6,7 @@
 import {
   startRun,
   attachEvidence,
+  continuePausedGate,
   evaluateRun,
   flowRunHead,
   loadRun,
@@ -49,6 +50,41 @@ before evidence bytes or manifests are written. This lets a consumer bind a
 definition-sensitive capability to the exact state it authorized without
 reimplementing Flow's lock or amendment semantics. The CLI exposes the same
 contract as `flow attach-evidence --expected-run-head <sha256>`.
+
+### Atomic paused-gate continuation
+
+`continuePausedGate()` holds Flow's existing per-run mutation ticket while it
+checks a required `expectedRunHead`, accepts evidence for the persisted current
+gate, and evaluates it. It commits only a passing outcome. `resumeOnPass` is
+an explicit caller choice; a requested resume also carries the normal
+provider-neutral lifecycle reason and authority record. Flow records that
+ordinary resume before evaluating the gate, then preserves the `active` or
+`completed` status derived by the gate evaluation. `resumeOnPass: false` is a
+dry evaluation mode: even a passing outcome writes nothing.
+
+```ts
+const paused = await loadRun("dev-1847");
+const result = await continuePausedGate("dev-1847", {
+  cwd: process.cwd(),
+  gate: "verify-gate",
+  expectedRunHead: flowRunHead(paused.state),
+  evidence: { file: "./review.json", kind: "trust.bundle" },
+  resumeOnPass: true,
+  resume: {
+    reason: "The authenticated operator requested continuation after review.",
+    authority: {
+      kind: "operator_request", actor: "operator:alex",
+      request_ref: "review-request:418", requested_at: "2026-07-22T12:00:00.000Z"
+    }
+  }
+});
+```
+
+On a non-pass — or when `resumeOnPass` is false — `result.committed` is `false`
+and Flow returns the computed outcome without writing evidence, manifests,
+state, or reports. Durable
+rejected or held review records remain with their evidence producer. Existing
+`attachEvidence`, `evaluateRun`, and `resumeRun` behavior is unchanged.
 
 ### Pure canonical state validation
 

@@ -20,6 +20,22 @@ Unknown kinds are accepted as `custom` and stored with the originally requested 
 
 Every attached file is **copied** into `.kontourai/flow/runs/<run-id>/evidence/` and indexed in `evidence/manifest.json` (shape: `schemas/gate-evidence.schema.json`). The run directory stays self-contained: links don't rot, and later edits to the original file don't silently change the record. Runtime commands do not attach to `.flow/runs/`.
 
+For a paused run whose current gate must be evaluated and optionally continued
+as one concurrency-safe operation, use the library's `continuePausedGate()`
+instead of composing attachment, evaluation, and lifecycle calls. It requires
+the exact current run head and accepts evidence only for the persisted current
+gate. A non-passing result is deliberately dry: Flow returns the evaluated
+outcome but leaves its evidence directory, manifest, state, and reports
+unchanged. Durable rejected, held, expired, cancelled, or incomplete review
+records remain inspectable in their evidence-producing system; Flow does not
+claim to have attached them. A passing result commits the copied evidence and
+gate transition, then resumes only when the caller explicitly requests it with
+a provider-neutral lifecycle authority record. Without that requested resume,
+even a passing result is dry. A filesystem interruption after evidence staging
+uses Flow's established local `saveRun` persistence model and may leave derived
+artifacts stale; crash-transactional persistence is tracked separately in
+Flow #171. See [Library](library.md).
+
 For command output, `flow capture` is an optional convenience over preparing a
 file yourself:
 

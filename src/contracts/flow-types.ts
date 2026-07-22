@@ -146,6 +146,43 @@ export interface FlowLifecycleRequest {
   authority: FlowLifecycleAuthority;
 }
 
+/**
+ * One evidence attachment evaluated against the persisted open gate of a
+ * paused run. The attachment fields use the same neutral vocabulary as
+ * attachEvidence; `gate` and `cwd` belong to the enclosing operation.
+ */
+export interface FlowPausedGateContinuationEvidence extends MutableRecord {
+  file: string;
+  kind?: string;
+}
+
+/**
+ * Atomically evaluate new evidence at a paused run's current gate.
+ * `expectedRunHead` binds the request to the exact persisted state. A resume
+ * remains an authority-bearing lifecycle action and is requested explicitly.
+ */
+export interface FlowPausedGateContinuationOptions extends MutableRecord {
+  cwd?: string;
+  gate: string;
+  expectedRunHead: string;
+  evidence: FlowPausedGateContinuationEvidence;
+  resumeOnPass: boolean;
+  resume?: FlowLifecycleRequest & { at?: string };
+  now?: string;
+}
+
+/**
+ * A non-committed result exposes the evaluated outcome but never represents an
+ * attachment: `run` remains the persisted run and `evidence` is absent.
+ */
+export interface FlowPausedGateContinuationResult extends MutableRecord {
+  committed: boolean;
+  evidence?: FlowEvidenceEntry;
+  outcomes: GateOutcome[];
+  run: MutableRecord;
+  event?: FlowLifecycleEvent;
+}
+
 /** A provider-neutral decision to begin one more bounded route-back epoch. */
 export interface FlowRetryAuthorizationRequest {
   reason: string;

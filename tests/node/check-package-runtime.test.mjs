@@ -63,6 +63,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "canonicalJson",
     "changeManagementFixtureAdapter",
     "continuationLine",
+    "continuePausedGate",
     "createConsoleSink",
     "createDiagnostic",
     "defaultFlowConfig",

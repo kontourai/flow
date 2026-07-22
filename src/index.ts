@@ -3,6 +3,9 @@ export {
   FLOW_SCHEMA_VERSION
 } from "./contracts/flow-types.js";
 export type {
+  FlowPausedGateContinuationEvidence,
+  FlowPausedGateContinuationOptions,
+  FlowPausedGateContinuationResult,
   ConfigMergeReport,
   FlowConfig,
   FlowDefinitionAmendmentDiagnostic,
@@ -193,6 +196,7 @@ export {
   authorizeRetry,
   attachEvidence,
   cancelRun,
+  continuePausedGate,
   ensureFlowLayout,
   evaluateRun,
   flowReadme,
