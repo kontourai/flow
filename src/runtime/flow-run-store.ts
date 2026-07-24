@@ -742,6 +742,7 @@ const MUTATION_LOCK_ROOT_PROTOCOL = "flow.run-mutation.ticket-root.v1";
 const MUTATION_LOCK_ROOT_TOKEN = "ticket-runtime-root-v1";
 const MUTATION_LOCK_ROOT_HOST = "flow-ticket-runtime.invalid";
 const MUTATION_LOCK_ROOT_CREATED_AT = "1970-01-01T00:00:00.000Z";
+const MUTATION_TICKET_NAME = /^ticket-[0-9]{13}-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
 
 async function readMutationLockOwner(file: string): Promise<MutationLockOwner> {
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -945,7 +946,21 @@ async function publishMutationTicket(lockRoot: string, owner: MutationLockOwner)
   return { ticketName, ticketPath };
 }
 
-async function quarantineAndRemoveMutationTicket(lockRoot: string, ticketPath: string, token: string) {
+function canonicalMutationTicketToken(lockRoot: string, ticketPath: string, expectedToken?: string) {
+  const canonicalRoot = path.resolve(lockRoot);
+  const canonicalTicket = path.resolve(ticketPath);
+  if (path.dirname(canonicalTicket) !== canonicalRoot) {
+    throw mutationLockRootInvalid(lockRoot, "ticket cleanup target must be a direct child of the lock root");
+  }
+  const match = MUTATION_TICKET_NAME.exec(path.basename(canonicalTicket));
+  if (!match || (expectedToken !== undefined && match[1] !== expectedToken)) {
+    throw mutationLockRootInvalid(lockRoot, "ticket basename does not match its canonical owner token");
+  }
+  return match[1];
+}
+
+async function quarantineAndRemoveMutationTicket(lockRoot: string, ticketPath: string, expectedToken?: string) {
+  const token = canonicalMutationTicketToken(lockRoot, ticketPath, expectedToken);
   const releasedPath = path.join(lockRoot, `released-${token}`);
   try {
     await rename(ticketPath, releasedPath);
@@ -975,6 +990,7 @@ async function scanLiveMutationTickets(lockRoot: string) {
       if (!ticketStat) continue;
       throw runLocationError("flow.run_mutation.lock.owner_unreadable", `ticket has no readable owner: ${ticketPath}`);
     }
+    canonicalMutationTicketToken(lockRoot, ticketPath, owner.token);
     if (mutationLockOwnerIsStale(owner)) {
       await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token);
     } else {
