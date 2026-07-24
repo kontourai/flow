@@ -19,6 +19,7 @@ Flow separates durable authored project state from generated runtime state.
     ├── definition.json
     ├── state.json
     ├── evidence/manifest.json
+    ├── recovery-fence.json
     ├── report.md
     └── report.json
 ```
@@ -37,8 +38,26 @@ Do not ignore `.flow/`. Current runtime commands read authored config and defini
 - `flowConfigPath(cwd)` returns `<cwd>/.flow/config.json`.
 - `flowRuntimeRoot(cwd)` returns `<cwd>/.kontourai/flow`, the generated runtime root.
 - `runDir(runId, cwd)` returns `<cwd>/.kontourai/flow/runs/<run-id>`.
+- `flowRunRecoveryFencePath(runId, cwd)` returns the stable supported-recovery
+  fence at `<run-dir>/recovery-fence.json`.
 
 The `runDir()` change is semver-major. There is no public or internal dual-root resolver and no runtime legacy support.
+
+## Supported recovery coordination
+
+An external recovery coordinator closes a run by atomically writing the
+provider-neutral v1 recovery fence with `status: "active"`, then waits for
+Flow's native per-run mutation ticket before touching canonical artifacts. It
+releases that ticket with the exact active generation still in place after
+recovery work. It then calls the active-generation-bound finalization API,
+which obtains a new native ticket and publishes `status: "open"` before release.
+The generic writer is active-only. Flow generates a canonical UUID v4
+generation and durably publishes every update with file and parent-directory
+`fsync`. Supported Flow reads require the same exact bytes, generation, and
+run-directory device/inode before and after the complete read. Supported
+mutations recheck after acquiring the native ticket.
+`docs/decisions/run-recovery-fence.md` records the exact guarantee and
+exclusions.
 
 ## Upgrade Migration
 

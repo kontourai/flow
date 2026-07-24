@@ -7,10 +7,50 @@ import type {
   FlowExpectation,
   FlowGate,
   FlowIngestRequest,
+  FlowRunRecoveryFence,
+  FlowRunRecoveryFenceFinalizeRequest,
+  FlowRunRecoveryFenceWrite,
+  FlowRunRecoveryFenceSnapshot,
   FlowRunState,
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
+
+const activeRecoveryFenceWrite: FlowRunRecoveryFenceWrite = {
+  protocol: "flow.run-recovery-fence.v1",
+  run_id: "run-1",
+  recovery_id: "recovery-1",
+  status: "active",
+  updated_at: "2026-07-23T12:00:00.000Z"
+};
+const activeRecoveryFence: FlowRunRecoveryFence = {
+  ...activeRecoveryFenceWrite,
+  generation: "8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f"
+};
+const recoveryFenceSnapshot: FlowRunRecoveryFenceSnapshot = {
+  status: "active",
+  fence: activeRecoveryFence,
+  fingerprint: "0".repeat(64),
+  directory: { device: "16777234", inode: "4815162342" }
+};
+const recoveryFenceFinalizeRequest: FlowRunRecoveryFenceFinalizeRequest = {
+  recovery_id: "recovery-1",
+  expected_generation: activeRecoveryFence.generation,
+  updated_at: "2026-07-23T12:01:00.000Z"
+};
+// @ts-expect-error recovery fence states are closed to active/open.
+const unknownRecoveryFence: FlowRunRecoveryFenceWrite = { ...activeRecoveryFenceWrite, status: "future" };
+// @ts-expect-error generic recovery fence writes can only publish active.
+const openRecoveryFenceWrite: FlowRunRecoveryFenceWrite = { ...activeRecoveryFenceWrite, status: "open" };
+
+void [
+  activeRecoveryFenceWrite,
+  activeRecoveryFence,
+  recoveryFenceSnapshot,
+  recoveryFenceFinalizeRequest,
+  unknownRecoveryFence,
+  openRecoveryFenceWrite
+];
 
 // FlowIngestRequest — the hosted-console ingest contract v1 envelope. console
 // imports THIS to validate ingest bodies (dependency arrow console → flow).

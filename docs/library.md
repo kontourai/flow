@@ -42,6 +42,66 @@ const run = await loadRun("dev-1847"); // { dir, definition, state, manifest, co
 
 These functions read and write the same `.kontourai/flow/runs/<run-id>/` files as the CLI, so library and CLI usage interleave freely — an agent harness can attach evidence programmatically while a human inspects with `flow status`. They do not fall back to `.flow/runs/`; migrate generated state from older versions before loading it.
 
+### Run recovery fence
+
+Recovery coordinators can close one fixed canonical run path without adding
+provider behavior to Flow:
+
+```ts
+import {
+  FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
+  finalizeRunRecoveryFence,
+  inspectRunRecoveryFence,
+  withRunRecoveryLock,
+  writeRunRecoveryFence
+} from "@kontourai/flow";
+
+const activeFence = await writeRunRecoveryFence("dev-1847", {
+  protocol: FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
+  run_id: "dev-1847",
+  recovery_id: "recovery-01",
+  status: "active",
+  updated_at: new Date().toISOString()
+}, process.cwd());
+console.log(activeFence.fence.generation); // Flow-generated UUID
+
+await withRunRecoveryLock(
+  "dev-1847",
+  "recovery-01",
+  process.cwd(),
+  async () => {
+    // Verify and publish the coordinator-owned recovery transaction here.
+  }
+);
+
+// After recovery work releases its ticket, reopen through a new native ticket:
+await finalizeRunRecoveryFence("dev-1847", {
+  recovery_id: "recovery-01",
+  expected_generation: activeFence.fence.generation,
+  updated_at: new Date().toISOString()
+}, process.cwd());
+
+console.log(await inspectRunRecoveryFence("dev-1847", process.cwd()));
+```
+
+The caller never supplies `generation`; Flow adds a canonical UUID v4 on every durable
+temp-file `fsync` → rename → parent-directory `fsync` publication. Inspection
+returns the exact-byte fingerprint and fixed run-directory device/inode with
+the persisted six-field fence. `writeRunRecoveryFence()` is active-only.
+`finalizeRunRecoveryFence()` is the sole supported `active` → `open`
+transition: it acquires Flow's native mutation ticket, verifies the exact
+expected active generation again, durably publishes `open`, and only then
+releases the ticket.
+
+Absence and a stable `open` record allow supported access. `active`, malformed,
+or unknown records fail closed. Exact bytes, generation, and directory identity
+must remain stable across a supported read. Flow's CLI, high-level run APIs,
+Console file load/optional repair/projection and artifact paths participate.
+`FileConsoleSink` recomputes the current projection under its mutation ticket.
+Direct filesystem access, generic JSON helpers, pure in-memory
+validation/projection, and rendering to an arbitrary directory do not.
+`docs/decisions/run-recovery-fence.md` defines the boundary.
+
 `expectedRunHead` is an optional optimistic-concurrency guard for evidence
 attachment. Flow validates its shape before acquiring the run mutation ticket,
 then reloads canonical state and compares the head while holding the same

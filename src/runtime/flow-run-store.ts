@@ -41,7 +41,7 @@ import { validateEvaluationTransition } from "../transition/flow-evaluation-tran
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
-import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 import {
@@ -60,6 +60,13 @@ import {
 } from "./flow-run-retry-authorization.js";
 import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
 import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type TrustAttachmentReducerDependencies } from "./trust-attachment-reducer.js";
+import {
+  assertRunRecoveryFenceOpen,
+  inspectRunRecoveryFence,
+  publishOpenRunRecoveryFence,
+  type FlowRunRecoveryFenceFinalizeRequest,
+  withRunRecoveryFenceRead
+} from "./flow-run-recovery-fence.js";
 
 /**
  * Flow's adapter for the exact locked dependency APIs. The pure reducer accepts
@@ -557,7 +564,7 @@ function inferResolvedRunContext(runId: string, dir: string) {
   throw runLocationError("flow.run_location.resolved_dir_invalid", `directory ${dir} is not a canonical Flow run location`);
 }
 
-export async function validateResolvedRunDirectory(runId: string, dir: string, cwd?: string) {
+async function validateResolvedRunDirectoryUnchecked(runId: string, dir: string, cwd?: string) {
   const inferred = inferResolvedRunContext(runId, dir);
   const context = cwd ? { cwd: path.resolve(cwd) } : inferred;
   const expected = runDir(runId, context.cwd);
@@ -574,14 +581,29 @@ export async function validateResolvedRunDirectory(runId: string, dir: string, c
   return { runId, dir: path.resolve(dir), diagnostics: [] } satisfies RunLocation;
 }
 
+export async function validateResolvedRunDirectory(runId: string, dir: string, cwd?: string) {
+  const context = path.resolve(cwd ?? inferResolvedRunContext(runId, dir).cwd);
+  return withRunRecoveryFenceRead(
+    runId,
+    context,
+    () => validateResolvedRunDirectoryUnchecked(runId, dir, context)
+  );
+}
+
 export async function loadRunAtResolvedLocation(runId: string, dir: string, cwd = process.cwd()) {
-  const location = await validateResolvedRunDirectory(runId, dir, cwd);
-  return readRunAtLocation(runId, location, cwd);
+  const context = path.resolve(cwd);
+  return withRunRecoveryFenceRead(runId, context, async () => {
+    const location = await validateResolvedRunDirectoryUnchecked(runId, dir, context);
+    return readRunAtLocation(runId, location, context);
+  });
 }
 
 export async function loadRun(runId, cwd = process.cwd()) {
-  const location = await resolveRunLocation(runId, cwd);
-  return readRunAtLocation(runId, location, cwd);
+  const context = path.resolve(cwd);
+  return withRunRecoveryFenceRead(runId, context, async () => {
+    const location = await resolveRunLocation(runId, context);
+    return readRunAtLocation(runId, location, context);
+  });
 }
 
 async function saveRun(run) {
@@ -701,7 +723,7 @@ export function cancelRun(runId: string, options: MutableRecord = {}) {
   return changeRunLifecycle(runId, "cancel", options);
 }
 
-type RunMutationLockHooks = {
+export type RunMutationLockHooks = {
   afterReleaseQuarantine?: (releasedPath: string) => Promise<void> | void;
 };
 
@@ -984,11 +1006,12 @@ async function releaseMutationTicket(lockRoot: string, ticketPath: string, owner
   }
 }
 
-export async function withRunMutationLock<T>(
+async function withRunMutationLockCheck<T>(
   runId: string,
   cwd: string,
   operation: () => Promise<T>,
-  hooks: RunMutationLockHooks = {}
+  hooks: RunMutationLockHooks,
+  afterAcquire: () => Promise<void>
 ): Promise<T> {
   const location = await resolveRunLocation(runId, cwd);
   const token = randomUUID();
@@ -1000,6 +1023,7 @@ export async function withRunMutationLock<T>(
     const ticket = await publishMutationTicket(lockRoot, owner);
     ticketPath = ticket.ticketPath;
     await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner);
+    await afterAcquire();
     return await operation();
   } catch (error) {
     activeMutationLockTokens.delete(token);
@@ -1008,6 +1032,182 @@ export async function withRunMutationLock<T>(
   } finally {
     if (ticketPath && activeMutationLockTokens.has(token)) await releaseMutationTicket(lockRoot, ticketPath, owner, hooks);
   }
+}
+
+export async function withRunMutationLock<T>(
+  runId: string,
+  cwd: string,
+  operation: () => Promise<T>,
+  hooks: RunMutationLockHooks = {}
+): Promise<T> {
+  return withRunMutationLockCheck(
+    runId,
+    cwd,
+    operation,
+    hooks,
+    () => assertRunRecoveryFenceOpen(runId, cwd).then(() => undefined)
+  );
+}
+
+/**
+ * Recovery-only entry to Flow's native mutation ticket. The coordinator must
+ * close the stable fence first; after acquiring, Flow proves that the exact
+ * same active fence generation still names the expected recovery.
+ */
+export async function withRunRecoveryLock<T>(
+  runId: string,
+  recoveryId: string,
+  cwd: string,
+  operation: () => Promise<T>,
+  hooks: RunMutationLockHooks = {}
+): Promise<T> {
+  const before = await inspectRunRecoveryFence(runId, cwd);
+  if (
+    before.status !== "active" ||
+    before.fence.recovery_id !== recoveryId
+  ) {
+    throw runLocationError(
+      "flow.run_recovery.coordinator_fence_mismatch",
+      `run "${runId}" does not have the expected active recovery fence "${recoveryId}"`
+    );
+  }
+  return withRunMutationLockCheck(runId, cwd, async () => {
+    let result: T | undefined;
+    let operationError: unknown;
+    let operationFailed = false;
+    try {
+      result = await operation();
+    } catch (error) {
+      operationFailed = true;
+      operationError = error;
+    }
+    try {
+      const after = await inspectRunRecoveryFence(runId, cwd);
+      if (
+        after.status !== "active" ||
+        after.fence.recovery_id !== recoveryId ||
+        after.fingerprint !== before.fingerprint ||
+        after.fence.generation !== before.fence.generation ||
+        after.directory.device !== before.directory.device ||
+        after.directory.inode !== before.directory.inode
+      ) {
+        throw runLocationError(
+          "flow.run_recovery.coordinator_fence_mismatch",
+          `active recovery fence "${recoveryId}" changed before the coordinator released the native run lock`
+        );
+      }
+    } catch (error) {
+      if ((error as Error & { code?: string }).code === "flow.run_recovery.coordinator_fence_mismatch") {
+        throw error;
+      }
+      const mismatch = runLocationError(
+        "flow.run_recovery.coordinator_fence_mismatch",
+        `active recovery fence "${recoveryId}" could not be verified before the coordinator released the native run lock`
+      );
+      (mismatch as Error & { cause?: unknown }).cause = error;
+      throw mismatch;
+    }
+    if (operationFailed) throw operationError;
+    return result as T;
+  }, hooks, async () => {
+    const after = await inspectRunRecoveryFence(runId, cwd);
+    if (
+      after.status !== "active" ||
+      after.fence.recovery_id !== recoveryId ||
+      after.fingerprint !== before.fingerprint ||
+      after.fence.generation !== before.fence.generation ||
+      after.directory.device !== before.directory.device ||
+      after.directory.inode !== before.directory.inode
+    ) {
+      throw runLocationError(
+        "flow.run_recovery.coordinator_fence_mismatch",
+        `active recovery fence "${recoveryId}" changed before the coordinator acquired the native run lock`
+      );
+    }
+  });
+}
+
+/**
+ * Sole supported active -> open transition. Flow publishes the new generation
+ * before releasing the same native mutation ticket used by recovery work.
+ */
+export async function finalizeRunRecoveryFence(
+  runId: string,
+  request: FlowRunRecoveryFenceFinalizeRequest,
+  cwd = process.cwd()
+) {
+  const requestKeys = request && typeof request === "object"
+    ? Object.keys(request as unknown as Record<string, unknown>).sort()
+    : [];
+  if (
+    requestKeys.length !== 3 ||
+    requestKeys[0] !== "expected_generation" ||
+    requestKeys[1] !== "recovery_id" ||
+    requestKeys[2] !== "updated_at" ||
+    !isNonEmptyString(request.recovery_id) ||
+    !isNonEmptyString(request.expected_generation) ||
+    !isNonEmptyString(request.updated_at) ||
+    parseRfc3339Timestamp(request.updated_at) === null
+  ) {
+    throw runLocationError(
+      "flow.run_recovery.finalize_malformed",
+      `run "${runId}" recovery finalization request is malformed`
+    );
+  }
+  const before = await inspectRunRecoveryFence(runId, cwd);
+  const matchesExpectedActive = (snapshot: typeof before) =>
+    snapshot.status === "active" &&
+    snapshot.fence.recovery_id === request.recovery_id &&
+    snapshot.fence.generation === request.expected_generation;
+  if (!matchesExpectedActive(before)) {
+    throw runLocationError(
+      "flow.run_recovery.coordinator_fence_mismatch",
+      `run "${runId}" does not have expected active generation "${request.expected_generation}"`
+    );
+  }
+  if (before.status !== "active") {
+    throw runLocationError(
+      "flow.run_recovery.coordinator_fence_mismatch",
+      `run "${runId}" does not have an active recovery fence`
+    );
+  }
+  const activeBefore = before;
+  return withRunMutationLockCheck(runId, cwd, async () => {
+    const opened = await publishOpenRunRecoveryFence(runId, {
+      protocol: activeBefore.fence.protocol,
+      run_id: runId,
+      recovery_id: request.recovery_id,
+      status: "open",
+      updated_at: request.updated_at
+    }, cwd);
+    if (
+      opened.status !== "open" ||
+      opened.fence.recovery_id !== request.recovery_id ||
+      opened.fence.generation === request.expected_generation ||
+      opened.directory.device !== activeBefore.directory.device ||
+      opened.directory.inode !== activeBefore.directory.inode
+    ) {
+      throw runLocationError(
+        "flow.run_recovery.coordinator_fence_mismatch",
+        `run "${runId}" did not publish the expected open recovery fence`
+      );
+    }
+    return opened;
+  }, {}, async () => {
+    const afterAcquire = await inspectRunRecoveryFence(runId, cwd);
+    if (
+      !matchesExpectedActive(afterAcquire) ||
+      afterAcquire.status !== "active" ||
+      afterAcquire.fingerprint !== activeBefore.fingerprint ||
+      afterAcquire.directory.device !== activeBefore.directory.device ||
+      afterAcquire.directory.inode !== activeBefore.directory.inode
+    ) {
+      throw runLocationError(
+        "flow.run_recovery.coordinator_fence_mismatch",
+        `active recovery fence "${request.recovery_id}" changed before finalization acquired the native run lock`
+      );
+    }
+  });
 }
 
 async function saveRetryAuthorizationState(run: any) {
@@ -1789,20 +1989,16 @@ export async function listRunsWithDiagnostics(cwd = process.cwd()) {
   const diagnostics: RunLocationDiagnostic[] = [];
   for (const id of [...ids].sort((left, right) => left.localeCompare(right))) {
     try {
-      const location = await resolveRunLocation(id, cwd);
-      const rawDefinition = await readJson(path.join(location.dir, FLOW_RUN_DEFINITION_FILE));
-      const definition = validateDefinition(rawDefinition);
-      const state = await readJson(path.join(location.dir, FLOW_RUN_STATE_FILE));
-      validateRunStateIdentity(definition, state, id);
+      const run = await loadRun(id, cwd);
       runs.push({
         run_id: id,
-        definition_id: state.definition_id,
-        subject: state.subject,
-        status: state.status,
-        current_step: state.current_step,
-        updated_at: state.updated_at
+        definition_id: run.state.definition_id,
+        subject: run.state.subject,
+        status: run.state.status,
+        current_step: run.state.current_step,
+        updated_at: run.state.updated_at
       });
-      diagnostics.push(...location.diagnostics);
+      diagnostics.push(...run.diagnostics);
     } catch (error) {
       const code = (error as Error & { code?: string }).code;
       diagnostics.push(runLocationDiagnostic(

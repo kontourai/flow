@@ -7,6 +7,7 @@ export const FLOW_RUN_DEFINITION_FILE = "definition.json";
 export const FLOW_RUN_STATE_FILE = "state.json";
 export const FLOW_RUN_REPORT_JSON_FILE = "report.json";
 export const FLOW_RUN_REPORT_MARKDOWN_FILE = "report.md";
+export const FLOW_RUN_RECOVERY_FENCE_FILE = "recovery-fence.json";
 export const FLOW_RUN_EVIDENCE_DIR = "evidence";
 export const FLOW_RUN_EVIDENCE_MANIFEST_FILE = "manifest.json";
 export const FLOW_RUN_EVIDENCE_MANIFEST_PATH = `${FLOW_RUN_EVIDENCE_DIR}/${FLOW_RUN_EVIDENCE_MANIFEST_FILE}`;

@@ -20,6 +20,15 @@ _Avoid_: Runtime script, checklist, agent prompt
 One execution of a Flow Definition for a concrete piece of work. A Flow Run records current step, transition history, gate outcomes, evidence references, exceptions, and next action.
 _Avoid_: Chat session, task board card, repo change
 
+**Run Recovery Fence**:
+A stable, provider-neutral record at a Flow Run's fixed canonical path that
+closes supported reads and mutations while an external recovery coordinator
+repairs that run. Flow validates the fence protocol and state but does not own
+the recovery transaction, backup policy, or coordinator authorization. The
+generic writer only closes; the exact-generation finalizer is the sole reopen
+path and publishes while holding Flow's native mutation ticket.
+_Avoid_: Recovery journal, provider lock, replacement runtime root
+
 **Step**:
 A named process stage that performs or waits for work, such as plan, implement, verify, publish, or prepare. A step does not prove completion by itself; gates and evidence decide advancement.
 _Avoid_: Requirement, task as the only meaning, repo work area

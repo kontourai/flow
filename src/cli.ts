@@ -35,6 +35,7 @@ import { startFlowConsoleServer } from "./console/console-server.js";
 import { validateKitContainerFile } from "./kit/flow-kit-container.js";
 import { kitInstall, kitInspect } from "./kit/kit-operations.js";
 import { COMMAND_CAPTURE_DEFAULT_TIMEOUT_MS, captureCommand } from "./runtime/command-evidence.js";
+import { withRunRecoveryFenceRead } from "./runtime/flow-run-recovery-fence.js";
 
 type CliFlags = Record<string, any>;
 
@@ -598,11 +599,18 @@ async function main() {
   if (command === "report") {
     const runId = requireArg(args[0], "flow report requires a run id");
     const format = flags.format ?? "summary";
-    let run = await loadRun(runId, cwd);
-    const diagnostics = run.diagnostics;
-    run = await repairRunReports(run);
-    const report = reportJson(run.definition, run.state, run.manifest);
-    const markdown = renderMarkdownReport(run.definition, run.state, run.manifest);
+    const projected = await withRunRecoveryFenceRead(runId, cwd, async () => {
+      let run = await loadRun(runId, cwd);
+      const diagnostics = run.diagnostics;
+      run = await repairRunReports(run);
+      return {
+        run,
+        diagnostics,
+        report: reportJson(run.definition, run.state, run.manifest),
+        markdown: renderMarkdownReport(run.definition, run.state, run.manifest)
+      };
+    });
+    const { run, diagnostics, report, markdown } = projected;
     if (format === "summary") {
       console.log(`${report.status} ${report.summary}`);
       console.log(`report: ${runReportPath(run.dir, cwd)}`);

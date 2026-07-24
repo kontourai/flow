@@ -1,6 +1,17 @@
-import { assertSafeRunArtifactWritePath, writeJson } from "../runtime/flow-files.js";
-import { loadRun, loadRunAtResolvedLocation } from "../runtime/flow-run-store.js";
-import type { FlowConsoleProjection } from "./console-projection.js";
+import {
+  FLOW_RUN_RECOVERY_FENCE_FILE,
+  assertSafeRunArtifactWritePath,
+  writeJson
+} from "../runtime/flow-files.js";
+import {
+  loadRun,
+  loadRunAtResolvedLocation,
+  withRunMutationLock
+} from "../runtime/flow-run-store.js";
+import {
+  projectFlowRunFromResolvedRun,
+  type FlowConsoleProjection
+} from "./console-projection.js";
 
 /**
  * ConsoleSink — the seam by which Flow delivers its OWN typed projection
@@ -98,7 +109,13 @@ export class FileConsoleSink implements ConsoleSink {
   constructor(options: FileConsoleSinkOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
     this.fileName = options.fileName ?? "console-projection.json";
-    const reserved = new Set(["definition.json", "state.json", "report.json", "report.md"]);
+    const reserved = new Set([
+      "definition.json",
+      "state.json",
+      "report.json",
+      "report.md",
+      FLOW_RUN_RECOVERY_FENCE_FILE
+    ]);
     if (
       !/^[A-Za-z0-9._-]+\.json$/.test(this.fileName) ||
       reserved.has(this.fileName.toLowerCase())
@@ -108,32 +125,41 @@ export class FileConsoleSink implements ConsoleSink {
   }
 
   async emit(projection: FlowConsoleProjection, context: ConsoleSinkEmitContext = {}): Promise<void> {
-    let run: any;
-    if (context.resolvedRunDir) {
-      try {
-        run = await loadRunAtResolvedLocation(
-          projection.run.run_id,
-          context.resolvedRunDir,
-          this.cwd
-        );
-      } catch (error) {
-        throw new Error(
-          `flow.console_sink.resolved_run_dir_mismatch: ${error instanceof Error ? error.message : String(error)}`
-        );
+    await withRunMutationLock(projection.run.run_id, this.cwd, async () => {
+      let run: any;
+      if (context.resolvedRunDir) {
+        try {
+          run = await loadRunAtResolvedLocation(
+            projection.run.run_id,
+            context.resolvedRunDir,
+            this.cwd
+          );
+        } catch (error) {
+          throw new Error(
+            `flow.console_sink.resolved_run_dir_mismatch: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      } else {
+        run = await loadRun(projection.run.run_id, this.cwd);
       }
-    } else {
-      run = await loadRun(projection.run.run_id, this.cwd);
-    }
-    if (
-      projection.run.definition_id !== run.definition.id ||
-      projection.run.definition_version !== run.definition.version ||
-      projection.definition.id !== run.definition.id ||
-      projection.definition.version !== run.definition.version
-    ) {
-      throw new Error("flow.console_sink.projection_identity_mismatch: projection definition does not match resolved run");
-    }
-    const target = await assertSafeRunArtifactWritePath(run.dir, this.fileName);
-    await writeJson(target, projection);
+      if (
+        projection.run.definition_id !== run.definition.id ||
+        projection.run.definition_version !== run.definition.version ||
+        projection.definition.id !== run.definition.id ||
+        projection.definition.version !== run.definition.version
+      ) {
+        throw new Error("flow.console_sink.projection_identity_mismatch: projection definition does not match resolved run");
+      }
+      // The caller's projection may have been produced before a completed
+      // recovery or an ordinary Flow mutation. Recompute from the exact run
+      // generation held by this native mutation ticket instead of persisting a
+      // stale caller snapshot.
+      const currentProjection = await projectFlowRunFromResolvedRun(run, {
+        cwd: this.cwd
+      });
+      const target = await assertSafeRunArtifactWritePath(run.dir, this.fileName);
+      await writeJson(target, currentProjection);
+    });
   }
 }
 

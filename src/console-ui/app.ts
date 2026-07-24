@@ -262,8 +262,12 @@ const SSE_MAX_BACKOFF_MS = 30_000;
 function startLiveUpdates() {
   let backoff = 1000;
   let es: EventSource | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
 
   function connect() {
+    if (stopped) return;
+    reconnectTimer = null;
     if (es) {
       try { es.close(); } catch { /* ignore */ }
     }
@@ -282,16 +286,36 @@ function startLiveUpdates() {
     });
 
     es.addEventListener("error", () => {
+      if (stopped) return;
       setLiveStatus(false);
       es?.close();
       es = null;
       // Exponential backoff with cap
       const delay = backoff;
       backoff = Math.min(backoff * 2, SSE_MAX_BACKOFF_MS);
-      setTimeout(connect, delay);
+      reconnectTimer = setTimeout(connect, delay);
     });
   }
 
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    try { es?.close(); } catch { /* ignore */ }
+    es = null;
+    setLiveStatus(false);
+  }
+
+  window.addEventListener("pagehide", stop);
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted || !stopped) return;
+    stopped = false;
+    backoff = 1000;
+    connect();
+  });
   connect();
 }
 
