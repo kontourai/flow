@@ -939,10 +939,21 @@ async function publishMutationTicket(lockRoot: string, owner: MutationLockOwner)
     await validateMutationLockRoot(lockRoot);
   } catch (error) {
     await rm(pendingPath, { recursive: true, force: true }).catch(() => undefined);
-    await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token).catch(() => undefined);
     throw error;
   }
   return { ticketName, ticketPath };
+}
+
+async function quarantineAndRemoveMutationTicket(lockRoot: string, ticketPath: string, token: string) {
+  const releasedPath = path.join(lockRoot, `released-${token}`);
+  try {
+    await rename(ticketPath, releasedPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await rm(releasedPath, { recursive: true, force: true });
 }
 
 async function scanLiveMutationTickets(lockRoot: string) {
@@ -965,7 +976,7 @@ async function scanLiveMutationTickets(lockRoot: string) {
       throw runLocationError("flow.run_mutation.lock.owner_unreadable", `ticket has no readable owner: ${ticketPath}`);
     }
     if (mutationLockOwnerIsStale(owner)) {
-      await rm(ticketPath, { recursive: true, force: true });
+      await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token);
     } else {
       live.push({ name: entry.name, path: ticketPath, owner });
     }
@@ -1050,7 +1061,9 @@ async function withRunMutationLockCheck<T>(
     return await operation();
   } catch (error) {
     activeMutationLockTokens.delete(token);
-    if (ticketPath) await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    if (ticketPath) {
+      await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token).catch(() => undefined);
+    }
     throw error;
   } finally {
     if (ticketPath && activeMutationLockTokens.has(token)) await releaseMutationTicket(lockRoot, ticketPath, owner, hooks);
