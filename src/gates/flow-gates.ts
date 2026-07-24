@@ -45,6 +45,33 @@ function findClaimsInReport(report: any, selector: any): any[] {
   });
 }
 
+function evidenceAuthorityTraces(entry: any): string[] {
+  return [
+    entry.authority_trace,
+    ...(Array.isArray(entry.authority_traces) ? entry.authority_traces : [])
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+function evidenceTrustPolicyDiagnostic(
+  entry: any,
+  expectation: any,
+  config: MutableRecord
+): "untrusted_producer" | "authority_gap" | null {
+  const selector = expectation.bundle_claim ?? expectation.claim;
+  const mapping = selector?.claimType
+    ? config.trusted_producers?.[selector.claimType]
+    : undefined;
+  const trustedProducers = expectation.trusted_producers ?? mapping?.producers ?? [];
+  const trustedTraces = expectation.authority_traces ?? mapping?.authority_traces ?? [];
+  if (!trustedProducers.length && !trustedTraces.length) return null;
+
+  if (trustedProducers.includes(entry.producer)) return null;
+  const actualTraces = evidenceAuthorityTraces(entry);
+  if (trustedTraces.some((trace: string) => actualTraces.includes(trace))) return null;
+
+  return trustedProducers.length ? "untrusted_producer" : "authority_gap";
+}
+
 function claimIsCurrentForVisit(bundle: any, claim: any, enteredAt: ParsedRfc3339Timestamp): boolean {
   const bundleClaim = bundle?.claims?.find((candidate: any) => candidate?.id === claim.id);
   if (!bundleClaim) return false;
@@ -123,7 +150,12 @@ function deriveBundleReport(bundle: unknown): { report: any | null; error: strin
   }
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null): string | null {
+function evidenceBundleDiagnostic(
+  entry: any,
+  expectation: any,
+  config: MutableRecord,
+  enteredAt: ParsedRfc3339Timestamp | null = null
+): string | null {
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
   if (entry.status === "failed") return "rejected";
 
@@ -152,7 +184,9 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   }
 
   const accepted = selector.accepted_statuses ?? ["verified"];
-  if (currentClaims.some((claim: any) => accepted.includes(claim.status ?? "unknown"))) return null;
+  if (currentClaims.some((claim: any) => accepted.includes(claim.status ?? "unknown"))) {
+    return evidenceTrustPolicyDiagnostic(entry, expectation, config);
+  }
 
   const claimStatus = currentClaims[0].status ?? "unknown";
   if (!accepted.includes(claimStatus)) {
@@ -164,7 +198,7 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   return null;
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, _config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null) {
+export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null) {
   if (expectation.kind !== "trust.bundle") return false;
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
   if (entry.status === "failed") return false;
@@ -190,14 +224,16 @@ export function evidenceMatchesExpectation(entry: any, expectation: any, _config
   const accepted = selector.accepted_statuses ?? ["verified"];
   return findClaimsInReport(report, selector).some((claim: any) => {
     if (!accepted.includes(claim.status ?? "unknown")) return false;
-    return enteredAt === null || claimIsCurrentForVisit(bundle, claim, enteredAt);
+    if (enteredAt !== null && !claimIsCurrentForVisit(bundle, claim, enteredAt)) return false;
+    return evidenceTrustPolicyDiagnostic(entry, expectation, config) === null;
   });
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, _config: MutableRecord = defaultFlowConfig(), visit: GateVisit) {
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
-    const reason = evidenceVisitDiagnostic(entry, visit) ?? evidenceBundleDiagnostic(entry, expectation, visit.enteredAt);
+    const reason = evidenceVisitDiagnostic(entry, visit)
+      ?? evidenceBundleDiagnostic(entry, expectation, config, visit.enteredAt);
     if (!reason) continue;
     diagnostics.push({
       expectation_id: expectation.id,
@@ -252,6 +288,7 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
   const claimDiagnostics: MutableRecord[] = [];
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
+    claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit));
     const match = visit.revisited && (visit.awaitingReentry || visit.enteredAt === null)
       ? undefined
       : evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config, visit.enteredAt));
@@ -259,10 +296,8 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
       matched.push({ expectation_id: expectation.id, evidence_id: match.id });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit));
     } else {
       missingOptional.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit));
     }
   }
   const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics } : undefined;
