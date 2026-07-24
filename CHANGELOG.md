@@ -10,6 +10,18 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.8.1](https://github.com/kontourai/flow/compare/v3.8.0...v3.8.1) (2026-07-24)
+
+
+### Fixes
+
+* bind queued mutations to recovery completion ([ee69dcc](https://github.com/kontourai/flow/commit/ee69dccab55f614570fd0534d9104e9de1c2ea86))
+* confine mutation ticket cleanup paths ([008f4b2](https://github.com/kontourai/flow/commit/008f4b234381a50d0d16d91d85f87ff219e58a27))
+* observe recovery while mutation waits ([811e188](https://github.com/kontourai/flow/commit/811e1889056b4654f1c4dec1306b7fb3ebf0b1f2))
+* preserve mutations queued before recovery ([ee8411e](https://github.com/kontourai/flow/commit/ee8411ea604399591d2dd6170a73acfbab12dcf2))
+* preserve mutations queued before recovery ([#177](https://github.com/kontourai/flow/issues/177)) ([af0bab4](https://github.com/kontourai/flow/commit/af0bab4d3950a4482d9c000f541476bb610573ce))
+* quarantine mutation tickets before cleanup ([b243b83](https://github.com/kontourai/flow/commit/b243b83cb8dbc845da86419c99f1d139e081b5fb))
+
 ## [3.8.0](https://github.com/kontourai/flow/compare/v3.7.0...v3.8.0) (2026-07-24)
 
 
