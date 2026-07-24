@@ -29,6 +29,9 @@ before the protocol. Malformed records, unknown protocols, and unknown states
 fail closed. Every persisted generation must be a canonical UUID v4.
 `writeRunRecoveryFence()` accepts only `active` records; Flow creates a unique
 generation for every atomic write and rejects a caller-supplied generation.
+Every newly finalized `open` record also names the exact active
+`previous_generation` it succeeded; legacy open records remain readable but
+cannot prove this succession to a queued mutation.
 
 ## Rationale
 
@@ -71,12 +74,14 @@ callback and before ticket release. `finalizeRunRecoveryFence()` is the sole
 supported `active` to `open` transition. It obtains a new native mutation
 ticket, verifies the caller's exact expected active generation, fingerprint,
 and run-directory identity after acquisition, durably publishes a fresh open
-generation while still holding that ticket, and then releases it. A direct
+generation linked to that active predecessor while still holding that ticket,
+and then releases it. A direct
 writer cannot publish `open` in the same process or a different process.
 Ordinary `withRunMutationLock()` calls that begin while a fence is already
 active remain closed. A call that entered while the fence was open but reached
 the native ticket after recovery activated releases and requeues its ticket.
-It proceeds only after the same `recovery_id` publishes an open successor;
+It proceeds only after the same `recovery_id` publishes an open successor that
+names the exact active generation it observed;
 active-generation drift, removal, replacement by another recovery, or timeout
 fails closed.
 

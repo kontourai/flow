@@ -114,6 +114,7 @@ type RunLocation = {
 
 const resolvedRunContexts = new WeakMap<object, { cwd: string }>();
 const activeMutationLockTokens = new Set<string>();
+const RETRY_MUTATION_AFTER_RECOVERY = Symbol("retry-mutation-after-recovery");
 
 function flowRunsRoot(cwd = process.cwd()) {
   return path.join(flowRuntimeRoot(cwd), "runs");
@@ -972,9 +973,16 @@ async function scanLiveMutationTickets(lockRoot: string) {
   return live;
 }
 
-async function awaitMutationTicket(lockRoot: string, ticketName: string, ticketPath: string, owner: MutationLockOwner) {
+async function awaitMutationTicket(
+  lockRoot: string,
+  ticketName: string,
+  ticketPath: string,
+  owner: MutationLockOwner,
+  waitDeadline?: number
+) {
+  const deadline = waitDeadline ?? Date.now() + 5_000;
   await delay(25);
-  for (let attempt = 0; ; attempt += 1) {
+  for (;;) {
     const live = await scanLiveMutationTickets(lockRoot);
     const holding = live.find((entry) => entry.owner.status === "holding");
     const first = [...live].sort((left, right) => left.name.localeCompare(right.name))[0];
@@ -982,7 +990,7 @@ async function awaitMutationTicket(lockRoot: string, ticketName: string, ticketP
       await publishMutationLockOwner(ticketPath, { ...owner, status: "holding" });
       return;
     }
-    if (attempt >= 500) {
+    if (Date.now() >= deadline) {
       throw runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
     }
     await delay(10);
@@ -1011,7 +1019,8 @@ async function withRunMutationLockCheck<T>(
   cwd: string,
   operation: () => Promise<T>,
   hooks: RunMutationLockHooks,
-  afterAcquire: () => Promise<void>
+  afterAcquire: () => Promise<void>,
+  waitDeadline?: number
 ): Promise<T> {
   const location = await resolveRunLocation(runId, cwd);
   const token = randomUUID();
@@ -1022,7 +1031,7 @@ async function withRunMutationLockCheck<T>(
   try {
     const ticket = await publishMutationTicket(lockRoot, owner);
     ticketPath = ticket.ticketPath;
-    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner);
+    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner, waitDeadline);
     await afterAcquire();
     return await operation();
   } catch (error) {
@@ -1073,12 +1082,13 @@ export async function withRunMutationLock<T>(
               );
             }
             awaitedRecovery = observed;
-            await assertRunRecoveryFenceOpen(runId, cwd);
+            throw RETRY_MUTATION_AFTER_RECOVERY;
           }
           const expected = awaitedRecovery;
           if (expected !== null && (
             observed.status !== "open"
             || observed.fence.recovery_id !== expected.fence.recovery_id
+            || observed.fence.previous_generation !== expected.fence.generation
             || observed.directory.device !== expected.directory.device
             || observed.directory.inode !== expected.directory.inode
           )) {
@@ -1087,10 +1097,11 @@ export async function withRunMutationLock<T>(
               `recovery fence for run "${runId}" did not publish the expected open successor`
             );
           }
-        }
+        },
+        awaitedRecovery === null ? undefined : deadline
       );
     } catch (error) {
-      if ((error as { code?: unknown })?.code !== "flow.run_recovery.active") throw error;
+      if (error !== RETRY_MUTATION_AFTER_RECOVERY) throw error;
       if (Date.now() >= deadline) {
         throw runLocationError(
           "flow.run_recovery.wait_timeout",
@@ -1231,6 +1242,7 @@ export async function finalizeRunRecoveryFence(
       run_id: runId,
       recovery_id: request.recovery_id,
       status: "open",
+      previous_generation: request.expected_generation,
       updated_at: request.updated_at
     }, cwd);
     if (

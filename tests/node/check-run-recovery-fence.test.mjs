@@ -100,7 +100,8 @@ test("recovery fence absence and a stable open record allow supported reads", as
     {
       ...fence(run.runId, "open"),
       updated_at: "2026-07-23T12:01:00.000Z",
-      generation: undefined
+      generation: undefined,
+      previous_generation: active.fence.generation
     }
   );
   assert.match(
@@ -290,6 +291,7 @@ test("a mutation queued before fencing requeues until that exact recovery opens"
   let recoveryRan = false;
   await withRunRecoveryLock(run.runId, "recovery-1", cwd, async () => {
     recoveryRan = true;
+    await delay(5_250);
   });
   assert.equal(recoveryRan, true);
   await finalizeRunRecoveryFence(run.runId, {
@@ -297,12 +299,31 @@ test("a mutation queued before fencing requeues until that exact recovery opens"
     expected_generation: active.fence.generation,
     updated_at: "2026-07-23T12:01:00.000Z"
   }, cwd);
+  const opened = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(opened.status, "open");
+  assert.equal(opened.fence.previous_generation, active.fence.generation);
   await second;
   assert.equal(secondRan, true);
   await assert.rejects(
     () => withRunRecoveryLock(run.runId, "wrong-recovery", cwd, async () => undefined),
     /flow\.run_recovery\.coordinator_fence_mismatch/
   );
+});
+
+test("a mutation callback cannot forge the private recovery retry signal", async () => {
+  const { cwd, run } = await fixture("mutation-callback-error");
+  let attempts = 0;
+  const callbackError = Object.assign(new Error("caller recovery error"), {
+    code: "flow.run_recovery.active"
+  });
+  await assert.rejects(
+    () => withRunMutationLock(run.runId, cwd, async () => {
+      attempts += 1;
+      throw callbackError;
+    }),
+    (error) => error === callbackError
+  );
+  assert.equal(attempts, 1);
 });
 
 test("generic writes reject open and recovery lock rejects any active generation changed by its callback", async () => {

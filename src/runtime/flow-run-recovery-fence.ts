@@ -32,6 +32,8 @@ export interface FlowRunRecoveryFence {
   updated_at: string;
   /** Flow-generated identity; callers cannot reuse or choose it. */
   generation: string;
+  /** Active generation finalized by this open successor. Absent only on legacy open records. */
+  previous_generation?: string;
 }
 
 export interface FlowRunRecoveryFenceFinalizeRequest {
@@ -99,8 +101,10 @@ function validateFenceFields(
       `run "${runId}" may publish an open recovery fence only through finalizeRunRecoveryFence`
     );
   }
+  const hasPreviousGeneration = record.status === "open" && Object.hasOwn(record, "previous_generation");
   const expectedKeys = [
     ...(options.persisted ? ["generation"] : []),
+    ...(hasPreviousGeneration ? ["previous_generation"] : []),
     "protocol",
     "recovery_id",
     "run_id",
@@ -125,6 +129,13 @@ function validateFenceFields(
     (!isNonEmptyString(record.generation) || !UUID_V4.test(String(record.generation)))
   ) {
     throw recoveryFenceError("flow.run_recovery.malformed", `recovery fence for run "${runId}" requires a Flow-generated UUID v4 generation`);
+  }
+  if (
+    record.status === "open" &&
+    ((!options.persisted && !hasPreviousGeneration) ||
+      (hasPreviousGeneration && (!isNonEmptyString(record.previous_generation) || !UUID_V4.test(String(record.previous_generation)))))
+  ) {
+    throw recoveryFenceError("flow.run_recovery.malformed", `open recovery fence for run "${runId}" requires a Flow-generated predecessor generation`);
   }
   if (
     !isNonEmptyString(record.updated_at) ||
@@ -292,7 +303,7 @@ export async function writeRunRecoveryFence(
 /** @internal Open publication is called only while flow-run-store holds the native ticket. */
 export async function publishOpenRunRecoveryFence(
   runId: string,
-  fence: Omit<FlowRunRecoveryFence, "generation"> & { status: "open" },
+  fence: Omit<FlowRunRecoveryFence, "generation"> & { status: "open"; previous_generation: string },
   cwd = process.cwd(),
   hooks: RunRecoveryFenceWriteHooks = {}
 ): Promise<FlowRunRecoveryFenceSnapshot> {

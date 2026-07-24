@@ -51,6 +51,8 @@ Flow's native per-run mutation ticket before touching canonical artifacts. It
 releases that ticket with the exact active generation still in place after
 recovery work. It then calls the active-generation-bound finalization API,
 which obtains a new native ticket and publishes `status: "open"` before release.
+The open record names the exact active `previous_generation` it finalized so a
+mutation queued before recovery cannot accept an unrelated same-id successor.
 The generic writer is active-only. Flow generates a canonical UUID v4
 generation and durably publishes every update with file and parent-directory
 `fsync`. Supported Flow reads require the same exact bytes, generation, and
