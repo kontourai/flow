@@ -92,7 +92,9 @@ the persisted fence. Newly finalized open records include the exact active
 mutation invoked while recovery is already active fails closed. A mutation
 that had already queued on Flow's native ticket before the fence became active
 releases and requeues its ticket until that exact recovery publishes `open`,
-then proceeds without losing the caller's operation.
+then proceeds without losing the caller's operation. A waiter still behind an
+older writer at the ordinary contention deadline first binds any active
+recovery; ordinary contention is not otherwise extended.
 `finalizeRunRecoveryFence()` is the sole supported `active` → `open`
 transition: it acquires Flow's native mutation ticket, verifies the exact
 expected active generation again, durably publishes `open` with that predecessor

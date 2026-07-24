@@ -283,6 +283,10 @@ test("a mutation queued before fencing requeues until that exact recovery opens"
     await delay(5);
   }
   const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  // The earlier ordinary holder may remain active beyond the native five-second
+  // contention timeout after fencing. The already-queued mutation must observe
+  // the fence while it waits rather than being discarded before acquisition.
+  await delay(5_250);
   releaseFirst();
   await first;
 

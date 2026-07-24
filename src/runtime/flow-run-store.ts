@@ -978,20 +978,30 @@ async function awaitMutationTicket(
   ticketName: string,
   ticketPath: string,
   owner: MutationLockOwner,
-  waitDeadline?: number
+  recoveryWait?: {
+    refresh: () => Promise<void>;
+    deadline: () => number | null;
+    timeoutError: () => Error;
+  }
 ) {
-  const deadline = waitDeadline ?? Date.now() + 5_000;
+  const ordinaryDeadline = Date.now() + 5_000;
+  const effectiveDeadline = () => recoveryWait?.deadline() ?? ordinaryDeadline;
+  const timeoutError = () => recoveryWait?.timeoutError()
+    ?? runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
   await delay(25);
   for (;;) {
     const live = await scanLiveMutationTickets(lockRoot);
     const holding = live.find((entry) => entry.owner.status === "holding");
     const first = [...live].sort((left, right) => left.name.localeCompare(right.name))[0];
     if ((!holding || holding.owner.token === owner.token) && first?.owner.token === owner.token) {
+      await recoveryWait?.refresh();
+      if (Date.now() >= effectiveDeadline()) throw timeoutError();
       await publishMutationLockOwner(ticketPath, { ...owner, status: "holding" });
       return;
     }
-    if (Date.now() >= deadline) {
-      throw runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
+    if (Date.now() >= effectiveDeadline()) {
+      await recoveryWait?.refresh();
+      if (Date.now() >= effectiveDeadline()) throw timeoutError();
     }
     await delay(10);
   }
@@ -1020,7 +1030,11 @@ async function withRunMutationLockCheck<T>(
   operation: () => Promise<T>,
   hooks: RunMutationLockHooks,
   afterAcquire: () => Promise<void>,
-  waitDeadline?: number
+  recoveryWait?: {
+    refresh: () => Promise<void>;
+    deadline: () => number | null;
+    timeoutError: () => Error;
+  }
 ): Promise<T> {
   const location = await resolveRunLocation(runId, cwd);
   const token = randomUUID();
@@ -1031,7 +1045,7 @@ async function withRunMutationLockCheck<T>(
   try {
     const ticket = await publishMutationTicket(lockRoot, owner);
     ticketPath = ticket.ticketPath;
-    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner, waitDeadline);
+    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner, recoveryWait);
     await afterAcquire();
     return await operation();
   } catch (error) {
@@ -1059,6 +1073,39 @@ export async function withRunMutationLock<T>(
     directory: { device: string; inode: string };
   } | null = null;
   const deadline = Date.now() + 30_000;
+  const refreshRecovery = async () => {
+    const observed = await inspectRunRecoveryFence(runId, cwd);
+    if (observed.status === "active") {
+      const expected = awaitedRecovery;
+      if (expected !== null && (
+        observed.fence.recovery_id !== expected.fence.recovery_id
+        || observed.fence.generation !== expected.fence.generation
+        || observed.directory.device !== expected.directory.device
+        || observed.directory.inode !== expected.directory.inode
+      )) {
+        throw runLocationError(
+          "flow.run_recovery.changed",
+          `active recovery fence for run "${runId}" changed while a queued mutation waited`
+        );
+      }
+      awaitedRecovery = observed;
+      return observed;
+    }
+    const expected = awaitedRecovery;
+    if (expected !== null && (
+      observed.status !== "open"
+      || observed.fence.recovery_id !== expected.fence.recovery_id
+      || observed.fence.previous_generation !== expected.fence.generation
+      || observed.directory.device !== expected.directory.device
+      || observed.directory.inode !== expected.directory.inode
+    )) {
+      throw runLocationError(
+        "flow.run_recovery.changed",
+        `recovery fence for run "${runId}" did not publish the expected open successor`
+      );
+    }
+    return observed;
+  };
   for (;;) {
     try {
       return await withRunMutationLockCheck(
@@ -1067,38 +1114,21 @@ export async function withRunMutationLock<T>(
         operation,
         hooks,
         async () => {
-          const observed = await inspectRunRecoveryFence(runId, cwd);
+          const observed = await refreshRecovery();
           if (observed.status === "active") {
-            const expected = awaitedRecovery;
-            if (expected !== null && (
-              observed.fence.recovery_id !== expected.fence.recovery_id
-              || observed.fence.generation !== expected.fence.generation
-              || observed.directory.device !== expected.directory.device
-              || observed.directory.inode !== expected.directory.inode
-            )) {
-              throw runLocationError(
-                "flow.run_recovery.changed",
-                `active recovery fence for run "${runId}" changed while a queued mutation waited`
-              );
-            }
-            awaitedRecovery = observed;
             throw RETRY_MUTATION_AFTER_RECOVERY;
           }
-          const expected = awaitedRecovery;
-          if (expected !== null && (
-            observed.status !== "open"
-            || observed.fence.recovery_id !== expected.fence.recovery_id
-            || observed.fence.previous_generation !== expected.fence.generation
-            || observed.directory.device !== expected.directory.device
-            || observed.directory.inode !== expected.directory.inode
-          )) {
-            throw runLocationError(
-              "flow.run_recovery.changed",
-              `recovery fence for run "${runId}" did not publish the expected open successor`
-            );
-          }
         },
-        awaitedRecovery === null ? undefined : deadline
+        {
+          refresh: async () => { await refreshRecovery(); },
+          deadline: () => awaitedRecovery === null ? null : deadline,
+          timeoutError: () => awaitedRecovery === null
+            ? runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock")
+            : runLocationError(
+                "flow.run_recovery.wait_timeout",
+                `timed out waiting for the active recovery fence for run "${runId}" to open`
+              )
+        }
       );
     } catch (error) {
       if (error !== RETRY_MUTATION_AFTER_RECOVERY) throw error;

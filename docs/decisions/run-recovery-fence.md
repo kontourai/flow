@@ -80,6 +80,9 @@ writer cannot publish `open` in the same process or a different process.
 Ordinary `withRunMutationLock()` calls that begin while a fence is already
 active remain closed. A call that entered while the fence was open but reached
 the native ticket after recovery activated releases and requeues its ticket.
+If an older writer keeps that call queued through the ordinary contention
+deadline, the waiter inspects and binds the active recovery before timing out;
+only a bound recovery extends the wait to the recovery deadline.
 It proceeds only after the same `recovery_id` publishes an open successor that
 names the exact active generation it observed;
 active-generation drift, removal, replacement by another recovery, or timeout
