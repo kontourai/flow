@@ -1,11 +1,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, watch as fsWatch } from "node:fs";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { constants, existsSync, watch as fsWatch } from "node:fs";
+import { lstat, open, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { projectFlowRunFromResolvedRun, type FlowConsoleProjection } from "./console-projection.js";
-import { loadRun, loadRunAtResolvedLocation, repairRunReports } from "../runtime/flow-run-store.js";
+import {
+  projectFlowRunFromFiles,
+  type FlowConsoleProjection
+} from "./console-projection.js";
+import { loadRunAtResolvedLocation } from "../runtime/flow-run-store.js";
+import { withRunRecoveryFenceRead } from "../runtime/flow-run-recovery-fence.js";
+import { runDir } from "../runtime/flow-files.js";
 
 export interface FlowConsoleServerOptions {
   runId: string;
@@ -13,6 +18,10 @@ export interface FlowConsoleServerOptions {
   host?: string;
   port?: number;
   open?: boolean;
+}
+
+interface ConsoleArtifactReadHooks {
+  afterPathValidation?: () => Promise<void> | void;
 }
 
 export interface FlowConsoleServerHandle {
@@ -63,12 +72,20 @@ function safeRelativePath(value: string) {
   return normalized;
 }
 
-async function safeArtifactPath(runRoot: string, pinnedRunRoot: string, relativePath: string) {
+/** @internal Exported for deterministic descriptor-integrity verification. */
+export async function readConsoleArtifact(
+  runRoot: string,
+  pinnedRunRoot: string,
+  relativePath: string,
+  hooks: ConsoleArtifactReadHooks = {}
+) {
   const safePath = safeRelativePath(relativePath);
   if (!safePath) return null;
   const resolved = path.resolve(runRoot, safePath);
   const root = path.resolve(runRoot);
   if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return null;
+  let expectedLeaf: { dev: number | bigint; ino: number | bigint } | undefined;
+  let handle;
   try {
     let cursor = root;
     const parts = safePath.split(path.sep);
@@ -78,19 +95,30 @@ async function safeArtifactPath(runRoot: string, pinnedRunRoot: string, relative
       if (entry.isSymbolicLink()) return null;
       if (index < parts.length - 1 && !entry.isDirectory()) return null;
       if (index === parts.length - 1 && !entry.isFile()) return null;
+      if (index === parts.length - 1) expectedLeaf = entry;
     }
     const [rootReal, artifactReal] = await Promise.all([realpath(root), realpath(resolved)]);
     if (rootReal !== pinnedRunRoot) return null;
-    return artifactReal.startsWith(`${rootReal}${path.sep}`) ? artifactReal : null;
+    if (!artifactReal.startsWith(`${rootReal}${path.sep}`)) return null;
+    await hooks.afterPathValidation?.();
+    handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const opened = await handle.stat();
+    if (
+      !opened.isFile() ||
+      !expectedLeaf ||
+      String(opened.dev) !== String(expectedLeaf.dev) ||
+      String(opened.ino) !== String(expectedLeaf.ino)
+    ) return null;
+    return await handle.readFile();
   } catch {
     return null;
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 
-async function readProjection(runId: string, cwd: string, resolvedRunDir: string): Promise<FlowConsoleProjection> {
-  const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
-  const repaired = await repairRunReports(run);
-  return projectFlowRunFromResolvedRun(repaired, { cwd });
+async function readProjection(runId: string, cwd: string): Promise<FlowConsoleProjection> {
+  return projectFlowRunFromFiles(runId, { cwd, repairReports: true });
 }
 
 async function serveStatic(urlPath: string, response: ServerResponse) {
@@ -138,9 +166,10 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
   const notify = async () => {
     if (closed) return;
     try {
-      const run = await loadRunAtResolvedLocation(runId, resolvedRunDir, cwd);
-      const repaired = await repairRunReports(run);
-      const projection = await projectFlowRunFromResolvedRun(repaired, { cwd });
+      const projection = await projectFlowRunFromFiles(runId, {
+        cwd,
+        repairReports: true
+      });
       const json = JSON.stringify(projection);
       if (json === lastProjectionJson) return;
       lastProjectionJson = json;
@@ -174,6 +203,10 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
   } catch {
     startPolling();
   }
+  // Keep polling even when fs.watch succeeds. A recovery may atomically
+  // replace the fixed run directory, leaving the original watcher bound to
+  // the retired inode; polling re-resolves the canonical path after reopening.
+  startPolling();
 
   function startPolling() {
     if (pollTimer || closed) return;
@@ -237,8 +270,7 @@ function handleSseRequest(
 function routeRequest(
   options: Required<Pick<FlowConsoleServerOptions, "runId" | "cwd">>,
   watcher: RunWatcher,
-  runRoot: string,
-  pinnedRunRoot: string
+  runRoot: string
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -252,7 +284,7 @@ function routeRequest(
         return;
       }
       if (url.pathname === "/api/projection") {
-        sendJson(response, 200, await readProjection(options.runId, options.cwd, runRoot));
+        sendJson(response, 200, await readProjection(options.runId, options.cwd));
         return;
       }
       if (url.pathname === "/api/stream") {
@@ -261,13 +293,27 @@ function routeRequest(
       }
       if (url.pathname.startsWith("/artifacts/")) {
         const relative = decodeURIComponent(url.pathname.slice("/artifacts/".length));
-        const artifactPath = await safeArtifactPath(runRoot, pinnedRunRoot, relative);
-        if (!artifactPath) {
+        let artifact: Buffer | null;
+        try {
+          artifact = await withRunRecoveryFenceRead(options.runId, options.cwd, async () => {
+            const current = await loadRunAtResolvedLocation(options.runId, runRoot, options.cwd);
+            const currentRunRoot = await realpath(current.dir);
+            return readConsoleArtifact(current.dir, currentRunRoot, relative);
+          });
+        } catch (error) {
+          const code = (error as Error & { code?: string }).code;
+          if (
+            code !== "flow.run_recovery.path_invalid" &&
+            code !== "flow.run_location.resolved_dir_invalid"
+          ) throw error;
+          artifact = null;
+        }
+        if (!artifact) {
           send(response, 404, "artifact not found");
           return;
         }
-        const contentType = MIME_TYPES[path.extname(artifactPath)] ?? "application/octet-stream";
-        send(response, 200, await readFile(artifactPath), contentType);
+        const contentType = MIME_TYPES[path.extname(relative)] ?? "application/octet-stream";
+        send(response, 200, artifact, contentType);
         return;
       }
       await serveStatic(url.pathname, response);
@@ -283,13 +329,12 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("flow console only serves loopback hosts");
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const loaded = await loadRun(options.runId, cwd);
-  const run = await repairRunReports(loaded);
-  const pinnedRunRoot = await realpath(run.dir);
-  await projectFlowRunFromResolvedRun(run, { cwd });
+  await projectFlowRunFromFiles(options.runId, { cwd, repairReports: true });
+  const resolvedRunDir = runDir(options.runId, cwd);
+  await realpath(resolvedRunDir);
 
-  const watcher = createRunWatcher(options.runId, cwd, run.dir);
-  const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher, run.dir, pinnedRunRoot));
+  const watcher = createRunWatcher(options.runId, cwd, resolvedRunDir);
+  const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher, resolvedRunDir));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, host, () => {

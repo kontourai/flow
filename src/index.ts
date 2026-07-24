@@ -66,6 +66,7 @@ export {
   FLOW_RUN_LAYOUT,
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
+  FLOW_RUN_RECOVERY_FENCE_FILE,
   FLOW_RUN_STATE_FILE,
   flowConfigPath,
   flowRuntimeRoot,
@@ -75,6 +76,23 @@ export {
   runDir,
   writeJson
 } from "./runtime/flow-files.js";
+export {
+  FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
+  assertRunRecoveryFenceOpen,
+  flowRunRecoveryFencePath,
+  inspectRunRecoveryFence,
+  withRunRecoveryFenceRead,
+  writeRunRecoveryFence
+} from "./runtime/flow-run-recovery-fence.js";
+export type {
+  FlowRunRecoveryFence,
+  FlowRunRecoveryFenceFinalizeRequest,
+  FlowRunRecoveryFenceWrite,
+  FlowRunRecoveryDirectoryIdentity,
+  FlowRunRecoveryFenceSnapshot,
+  FlowRunRecoveryFenceStatus,
+  RunRecoveryFenceWriteHooks
+} from "./runtime/flow-run-recovery-fence.js";
 export {
   evidenceLabel,
   evidenceMatchesRequirement,
@@ -199,6 +217,7 @@ export {
   continuePausedGate,
   ensureFlowLayout,
   evaluateRun,
+  finalizeRunRecoveryFence,
   flowReadme,
   listRuns,
   listRunsWithDiagnostics,
@@ -212,6 +231,11 @@ export {
   resumeRun,
   validateRunStateConsistency
 } from "./runtime/flow-run-store.js";
+export {
+  withRunMutationLock,
+  withRunRecoveryLock
+} from "./runtime/flow-run-store.js";
+export type { RunMutationLockHooks } from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,
   renderMarkdownReport,

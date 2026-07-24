@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { FLOW_RUN_REPORT_JSON_FILE } from "../runtime/flow-files.js";
 import {
   attachedEvidenceFor,
@@ -12,6 +14,8 @@ import {
 import { projectedNextAction } from "../definition/flow-definition.js";
 import { reportJson } from "../reports/flow-reports.js";
 import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
+import { withRunRecoveryFenceRead } from "../runtime/flow-run-recovery-fence.js";
+import { repairRunReports } from "../runtime/flow-run-store.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -233,6 +237,8 @@ export interface FlowConsoleProjection {
 export interface FlowConsoleProjectionOptions {
   cwd?: string;
   config?: Record<string, unknown>;
+  /** Regenerate disposable reports inside the same generation-bound read. */
+  repairReports?: boolean;
 }
 
 export interface FlowConsoleRunParts {
@@ -697,15 +703,21 @@ export async function projectFlowRunFromFiles(
   runId: string,
   options: FlowConsoleProjectionOptions = {}
 ): Promise<FlowConsoleProjection> {
-  const cwd = options.cwd ?? process.cwd();
-  const run = await loadRun(runId, cwd);
-  return projectFlowRunFromResolvedRun(run, options);
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunRecoveryFenceRead(runId, cwd, async () => {
+    let run = await loadRun(runId, cwd);
+    if (options.repairReports) run = await repairRunReports(run);
+    return projectFlowRunFromResolvedRun(run, options);
+  });
 }
 
 export async function projectFlowRunFromResolvedRun(
   run: FlowConsoleRunParts,
   options: FlowConsoleProjectionOptions = {}
 ): Promise<FlowConsoleProjection> {
-  const report = reportJson(run.definition, run.state, run.manifest ?? { evidence: [] });
-  return projectFlowRun({ ...run, report }, options);
+  const cwd = options.cwd ?? path.dirname(path.dirname(path.dirname(path.dirname(path.resolve(run.dir)))));
+  return withRunRecoveryFenceRead(run.state.run_id, cwd, async () => {
+    const report = reportJson(run.definition, run.state, run.manifest ?? { evidence: [] });
+    return projectFlowRun({ ...run, report }, options);
+  });
 }

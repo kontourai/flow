@@ -7,6 +7,13 @@ if (!browserTestRoot || !path.isAbsolute(browserTestRoot)) throw new Error("FLOW
 const FIXTURE_ROOT = path.join(browserTestRoot, ".kontourai", "flow", "test-projects", "console-projection", ".kontourai", "flow", "runs", "console-projection-fixture");
 const STATE_FILE = path.join(FIXTURE_ROOT, "state.json");
 
+test.afterEach(async ({ page }) => {
+  if (page.isClosed()) return;
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide"));
+  }).catch(() => undefined);
+});
+
 test("renders the Flow console projection with gates, graph, and links", async ({ page }) => {
   const consoleErrors = await loadFlowConsole(page);
 
@@ -203,6 +210,44 @@ test("live indicator shows connected after SSE stream connects", async ({ page }
   await expect(indicator.locator(".live-label")).toContainText("live");
 
   expect(consoleErrors).toEqual([]);
+});
+
+test("live stream closes when the page lifecycle ends", async ({ page }) => {
+  test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
+  await page.addInitScript(() => {
+    const NativeEventSource = window.EventSource;
+    class TrackingEventSource extends NativeEventSource {
+      override close() {
+        (window as typeof window & { __flowEventSourceCloseCount?: number })
+          .__flowEventSourceCloseCount =
+          ((window as typeof window & { __flowEventSourceCloseCount?: number })
+            .__flowEventSourceCloseCount ?? 0) + 1;
+        super.close();
+      }
+    }
+    window.EventSource = TrackingEventSource;
+  });
+  await loadFlowConsole(page);
+  await expect(page.getByTestId("live-indicator"))
+    .toHaveAttribute("data-connected", "true", { timeout: 5000 });
+
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  await expect.poll(() => page.evaluate(
+    () => (window as typeof window & { __flowEventSourceCloseCount?: number })
+      .__flowEventSourceCloseCount ?? 0
+  )).toBe(1);
+
+  await page.evaluate(() => window.dispatchEvent(
+    new PageTransitionEvent("pageshow", { persisted: true })
+  ));
+  await expect(page.getByTestId("live-indicator"))
+    .toHaveAttribute("data-connected", "true", { timeout: 5000 });
+
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  await expect.poll(() => page.evaluate(
+    () => (window as typeof window & { __flowEventSourceCloseCount?: number })
+      .__flowEventSourceCloseCount ?? 0
+  )).toBe(2);
 });
 
 test("live update: mutating run state file updates header status and timeline without reload", async ({ page }) => {

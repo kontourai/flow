@@ -21,7 +21,7 @@ import {
   HostedConsoleSink,
   createConsoleSink
 } from "../../dist/console/console-sink.js";
-import { startRun } from "../../dist/index.js";
+import { projectFlowRunFromFiles, startRun } from "../../dist/index.js";
 
 const definitionPath = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
 
@@ -61,8 +61,8 @@ test("FileConsoleSink writes a projection to an explicitly resolved canonical ru
   assert.equal(sink.kind, "file");
 
   const run = await startRun(definitionPath, { cwd, runId: "sink-run" });
+  const projection = await projectFlowRunFromFiles(run.state.run_id, { cwd });
   await writeFile(path.join(cwd, ".flow"), "malformed opposing root\n");
-  const projection = fakeProjection(run.state.run_id, run.state.definition_id, run.state.definition_version);
   await sink.emit(projection, { resolvedRunDir: run.dir });
 
   const written = JSON.parse(
