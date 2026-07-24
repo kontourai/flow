@@ -1040,13 +1040,66 @@ export async function withRunMutationLock<T>(
   operation: () => Promise<T>,
   hooks: RunMutationLockHooks = {}
 ): Promise<T> {
-  return withRunMutationLockCheck(
-    runId,
-    cwd,
-    operation,
-    hooks,
-    () => assertRunRecoveryFenceOpen(runId, cwd).then(() => undefined)
-  );
+  // A mutation that begins while recovery is already active fails closed.
+  // A mutation that was already queued before the coordinator fenced the run
+  // must not be discarded, though: release its ticket and requeue until that
+  // exact recovery generation publishes its supported open successor.
+  await assertRunRecoveryFenceOpen(runId, cwd);
+  let awaitedRecovery: {
+    fence: { recovery_id: string; generation: string };
+    directory: { device: string; inode: string };
+  } | null = null;
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    try {
+      return await withRunMutationLockCheck(
+        runId,
+        cwd,
+        operation,
+        hooks,
+        async () => {
+          const observed = await inspectRunRecoveryFence(runId, cwd);
+          if (observed.status === "active") {
+            const expected = awaitedRecovery;
+            if (expected !== null && (
+              observed.fence.recovery_id !== expected.fence.recovery_id
+              || observed.fence.generation !== expected.fence.generation
+              || observed.directory.device !== expected.directory.device
+              || observed.directory.inode !== expected.directory.inode
+            )) {
+              throw runLocationError(
+                "flow.run_recovery.changed",
+                `active recovery fence for run "${runId}" changed while a queued mutation waited`
+              );
+            }
+            awaitedRecovery = observed;
+            await assertRunRecoveryFenceOpen(runId, cwd);
+          }
+          const expected = awaitedRecovery;
+          if (expected !== null && (
+            observed.status !== "open"
+            || observed.fence.recovery_id !== expected.fence.recovery_id
+            || observed.directory.device !== expected.directory.device
+            || observed.directory.inode !== expected.directory.inode
+          )) {
+            throw runLocationError(
+              "flow.run_recovery.changed",
+              `recovery fence for run "${runId}" did not publish the expected open successor`
+            );
+          }
+        }
+      );
+    } catch (error) {
+      if ((error as { code?: unknown })?.code !== "flow.run_recovery.active") throw error;
+      if (Date.now() >= deadline) {
+        throw runLocationError(
+          "flow.run_recovery.wait_timeout",
+          `timed out waiting for the active recovery fence for run "${runId}" to open`
+        );
+      }
+      await delay(10);
+    }
+  }
 }
 
 /**

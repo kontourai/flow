@@ -56,6 +56,10 @@ generation and durably publishes every update with file and parent-directory
 `fsync`. Supported Flow reads require the same exact bytes, generation, and
 run-directory device/inode before and after the complete read. Supported
 mutations recheck after acquiring the native ticket.
+Mutations that begin against an already active fence fail closed. Mutations
+already queued before the fence became active release and requeue until that
+exact recovery publishes its open successor, preserving legitimate concurrent
+work without allowing it to interleave with recovery.
 `docs/decisions/run-recovery-fence.md` records the exact guarantee and
 exclusions.
 

@@ -73,7 +73,12 @@ ticket, verifies the caller's exact expected active generation, fingerprint,
 and run-directory identity after acquisition, durably publishes a fresh open
 generation while still holding that ticket, and then releases it. A direct
 writer cannot publish `open` in the same process or a different process.
-Ordinary `withRunMutationLock()` remains closed by an active fence.
+Ordinary `withRunMutationLock()` calls that begin while a fence is already
+active remain closed. A call that entered while the fence was open but reached
+the native ticket after recovery activated releases and requeues its ticket.
+It proceeds only after the same `recovery_id` publishes an open successor;
+active-generation drift, removal, replacement by another recovery, or timeout
+fails closed.
 
 Fence publication writes through an exclusive no-follow temporary descriptor,
 calls `fsync` on the file, renames it over the fixed fence path, then calls

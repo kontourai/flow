@@ -257,7 +257,7 @@ test("supported reads reject a byte-identical replacement of the fixed run direc
   }
 });
 
-test("mutation fencing is rechecked only after acquiring the native run lock", async () => {
+test("a mutation queued before fencing requeues until that exact recovery opens", async () => {
   const { cwd, run } = await fixture("mutation-recheck");
   let releaseFirst;
   const firstHolding = new Promise((resolve) => { releaseFirst = resolve; });
@@ -274,11 +274,17 @@ test("mutation fencing is rechecked only after acquiring the native run lock", a
   const second = withRunMutationLock(run.runId, cwd, async () => {
     secondRan = true;
   });
-  await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  const lockRoot = path.join(run.dir, ".mutation.lock");
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const tickets = await readdir(lockRoot);
+    if (tickets.filter((name) => name.startsWith("ticket-")).length === 2) break;
+    if (attempt === 199) assert.fail("second mutation did not queue before recovery fencing");
+    await delay(5);
+  }
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
   releaseFirst();
   await first;
 
-  await assert.rejects(() => second, /flow\.run_recovery\.active/);
   assert.equal(secondRan, false);
 
   let recoveryRan = false;
@@ -286,6 +292,13 @@ test("mutation fencing is rechecked only after acquiring the native run lock", a
     recoveryRan = true;
   });
   assert.equal(recoveryRan, true);
+  await finalizeRunRecoveryFence(run.runId, {
+    recovery_id: "recovery-1",
+    expected_generation: active.fence.generation,
+    updated_at: "2026-07-23T12:01:00.000Z"
+  }, cwd);
+  await second;
+  assert.equal(secondRan, true);
   await assert.rejects(
     () => withRunRecoveryLock(run.runId, "wrong-recovery", cwd, async () => undefined),
     /flow\.run_recovery\.coordinator_fence_mismatch/

@@ -87,7 +87,11 @@ console.log(await inspectRunRecoveryFence("dev-1847", process.cwd()));
 The caller never supplies `generation`; Flow adds a canonical UUID v4 on every durable
 temp-file `fsync` → rename → parent-directory `fsync` publication. Inspection
 returns the exact-byte fingerprint and fixed run-directory device/inode with
-the persisted six-field fence. `writeRunRecoveryFence()` is active-only.
+the persisted six-field fence. `writeRunRecoveryFence()` is active-only. A
+mutation invoked while recovery is already active fails closed. A mutation
+that had already queued on Flow's native ticket before the fence became active
+releases and requeues its ticket until that exact recovery publishes `open`,
+then proceeds without losing the caller's operation.
 `finalizeRunRecoveryFence()` is the sole supported `active` → `open`
 transition: it acquires Flow's native mutation ticket, verifies the exact
 expected active generation again, durably publishes `open`, and only then
