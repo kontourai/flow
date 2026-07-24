@@ -2,6 +2,7 @@
  * Node test: SSE /api/stream endpoint emits a "projection" event on file change.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import http from "node:http";
@@ -157,13 +158,14 @@ test("console server close drains an in-flight watcher repair before fixture cle
   await cp(fixtureSourceDir, runDir, { recursive: true });
   const server = await startFlowConsoleServer({ runId: fixtureRunId, cwd, host: "127.0.0.1", port: 0 });
   const lockRoot = path.join(runDir, ".mutation.lock");
-  const blocker = path.join(lockRoot, "ticket-0000000000000-close-regression");
+  const blockerToken = randomUUID();
+  const blocker = path.join(lockRoot, `ticket-0000000000000-${blockerToken}`);
   const pendingBlocker = path.join(runDir, ".close-regression-blocker");
 
   try {
     await mkdir(pendingBlocker);
     await writeFile(path.join(pendingBlocker, "owner.json"), `${JSON.stringify({
-      token: "close-regression",
+      token: blockerToken,
       pid: 1,
       host: "close-regression.invalid",
       status: "holding",

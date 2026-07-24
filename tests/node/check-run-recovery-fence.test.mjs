@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import {
   access,
   chmod,
   constants,
   cp,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -100,7 +102,8 @@ test("recovery fence absence and a stable open record allow supported reads", as
     {
       ...fence(run.runId, "open"),
       updated_at: "2026-07-23T12:01:00.000Z",
-      generation: undefined
+      generation: undefined,
+      previous_generation: active.fence.generation
     }
   );
   assert.match(
@@ -257,7 +260,7 @@ test("supported reads reject a byte-identical replacement of the fixed run direc
   }
 });
 
-test("mutation fencing is rechecked only after acquiring the native run lock", async () => {
+test("a mutation queued before fencing requeues until that exact recovery opens", async () => {
   const { cwd, run } = await fixture("mutation-recheck");
   let releaseFirst;
   const firstHolding = new Promise((resolve) => { releaseFirst = resolve; });
@@ -274,22 +277,83 @@ test("mutation fencing is rechecked only after acquiring the native run lock", a
   const second = withRunMutationLock(run.runId, cwd, async () => {
     secondRan = true;
   });
-  await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  const lockRoot = path.join(run.dir, ".mutation.lock");
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const tickets = await readdir(lockRoot);
+    if (tickets.filter((name) => name.startsWith("ticket-")).length === 2) break;
+    if (attempt === 199) assert.fail("second mutation did not queue before recovery fencing");
+    await delay(5);
+  }
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  // The earlier ordinary holder may remain active beyond the native five-second
+  // contention timeout after fencing. The already-queued mutation must observe
+  // the fence while it waits rather than being discarded before acquisition.
+  await delay(5_250);
   releaseFirst();
   await first;
 
-  await assert.rejects(() => second, /flow\.run_recovery\.active/);
   assert.equal(secondRan, false);
 
   let recoveryRan = false;
   await withRunRecoveryLock(run.runId, "recovery-1", cwd, async () => {
     recoveryRan = true;
+    await delay(5_250);
   });
   assert.equal(recoveryRan, true);
+  await finalizeRunRecoveryFence(run.runId, {
+    recovery_id: "recovery-1",
+    expected_generation: active.fence.generation,
+    updated_at: "2026-07-23T12:01:00.000Z"
+  }, cwd);
+  const opened = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(opened.status, "open");
+  assert.equal(opened.fence.previous_generation, active.fence.generation);
+  await second;
+  assert.equal(secondRan, true);
   await assert.rejects(
     () => withRunRecoveryLock(run.runId, "wrong-recovery", cwd, async () => undefined),
     /flow\.run_recovery\.coordinator_fence_mismatch/
   );
+});
+
+test("a mutation callback cannot forge the private recovery retry signal", async () => {
+  const { cwd, run } = await fixture("mutation-callback-error");
+  let attempts = 0;
+  const callbackError = Object.assign(new Error("caller recovery error"), {
+    code: "flow.run_recovery.active"
+  });
+  await assert.rejects(
+    () => withRunMutationLock(run.runId, cwd, async () => {
+      attempts += 1;
+      throw callbackError;
+    }),
+    (error) => error === callbackError
+  );
+  assert.equal(attempts, 1);
+});
+
+test("stale ticket cleanup cannot derive a removal path from persisted owner data", async () => {
+  const { cwd, run } = await fixture("mutation-cleanup-path");
+  await withRunMutationLock(run.runId, cwd, async () => undefined);
+  const lockRoot = path.join(run.dir, ".mutation.lock");
+  const victim = path.join(run.dir, "victim-empty");
+  await mkdir(victim);
+  const token = randomUUID();
+  const ticket = path.join(lockRoot, `ticket-${Date.now().toString().padStart(13, "0")}-${token}`);
+  await mkdir(ticket);
+  await writeFile(path.join(ticket, "owner.json"), `${JSON.stringify({
+    token: ["foreign", "..", "..", "victim-empty"].join(path.sep),
+    pid: 1,
+    host: "foreign.invalid",
+    status: "released",
+    created_at: "2026-07-23T12:00:00.000Z"
+  })}\n`);
+
+  await assert.rejects(
+    () => withRunMutationLock(run.runId, cwd, async () => undefined),
+    /flow\.run_mutation\.lock\.root_invalid/
+  );
+  await assert.doesNotReject(() => access(victim));
 });
 
 test("generic writes reject open and recovery lock rejects any active generation changed by its callback", async () => {

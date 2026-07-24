@@ -51,11 +51,20 @@ Flow's native per-run mutation ticket before touching canonical artifacts. It
 releases that ticket with the exact active generation still in place after
 recovery work. It then calls the active-generation-bound finalization API,
 which obtains a new native ticket and publishes `status: "open"` before release.
+The open record names the exact active `previous_generation` it finalized so a
+mutation queued before recovery cannot accept an unrelated same-id successor.
 The generic writer is active-only. Flow generates a canonical UUID v4
 generation and durably publishes every update with file and parent-directory
 `fsync`. Supported Flow reads require the same exact bytes, generation, and
 run-directory device/inode before and after the complete read. Supported
 mutations recheck after acquiring the native ticket.
+An already-queued mutation also observes an active fence before its ordinary
+ticket deadline, so a preceding writer cannot cause the queued operation to be
+discarded while supported recovery is waiting.
+Mutations that begin against an already active fence fail closed. Mutations
+already queued before the fence became active release and requeue until that
+exact recovery publishes its open successor, preserving legitimate concurrent
+work without allowing it to interleave with recovery.
 `docs/decisions/run-recovery-fence.md` records the exact guarantee and
 exclusions.
 

@@ -114,6 +114,7 @@ type RunLocation = {
 
 const resolvedRunContexts = new WeakMap<object, { cwd: string }>();
 const activeMutationLockTokens = new Set<string>();
+const RETRY_MUTATION_AFTER_RECOVERY = Symbol("retry-mutation-after-recovery");
 
 function flowRunsRoot(cwd = process.cwd()) {
   return path.join(flowRuntimeRoot(cwd), "runs");
@@ -741,6 +742,7 @@ const MUTATION_LOCK_ROOT_PROTOCOL = "flow.run-mutation.ticket-root.v1";
 const MUTATION_LOCK_ROOT_TOKEN = "ticket-runtime-root-v1";
 const MUTATION_LOCK_ROOT_HOST = "flow-ticket-runtime.invalid";
 const MUTATION_LOCK_ROOT_CREATED_AT = "1970-01-01T00:00:00.000Z";
+const MUTATION_TICKET_NAME = /^ticket-[0-9]{13}-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
 
 async function readMutationLockOwner(file: string): Promise<MutationLockOwner> {
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -938,10 +940,35 @@ async function publishMutationTicket(lockRoot: string, owner: MutationLockOwner)
     await validateMutationLockRoot(lockRoot);
   } catch (error) {
     await rm(pendingPath, { recursive: true, force: true }).catch(() => undefined);
-    await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token).catch(() => undefined);
     throw error;
   }
   return { ticketName, ticketPath };
+}
+
+function canonicalMutationTicketToken(lockRoot: string, ticketPath: string, expectedToken?: string) {
+  const canonicalRoot = path.resolve(lockRoot);
+  const canonicalTicket = path.resolve(ticketPath);
+  if (path.dirname(canonicalTicket) !== canonicalRoot) {
+    throw mutationLockRootInvalid(lockRoot, "ticket cleanup target must be a direct child of the lock root");
+  }
+  const match = MUTATION_TICKET_NAME.exec(path.basename(canonicalTicket));
+  if (!match || (expectedToken !== undefined && match[1] !== expectedToken)) {
+    throw mutationLockRootInvalid(lockRoot, "ticket basename does not match its canonical owner token");
+  }
+  return match[1];
+}
+
+async function quarantineAndRemoveMutationTicket(lockRoot: string, ticketPath: string, expectedToken?: string) {
+  const token = canonicalMutationTicketToken(lockRoot, ticketPath, expectedToken);
+  const releasedPath = path.join(lockRoot, `released-${token}`);
+  try {
+    await rename(ticketPath, releasedPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await rm(releasedPath, { recursive: true, force: true });
 }
 
 async function scanLiveMutationTickets(lockRoot: string) {
@@ -963,8 +990,9 @@ async function scanLiveMutationTickets(lockRoot: string) {
       if (!ticketStat) continue;
       throw runLocationError("flow.run_mutation.lock.owner_unreadable", `ticket has no readable owner: ${ticketPath}`);
     }
+    canonicalMutationTicketToken(lockRoot, ticketPath, owner.token);
     if (mutationLockOwnerIsStale(owner)) {
-      await rm(ticketPath, { recursive: true, force: true });
+      await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token);
     } else {
       live.push({ name: entry.name, path: ticketPath, owner });
     }
@@ -972,18 +1000,35 @@ async function scanLiveMutationTickets(lockRoot: string) {
   return live;
 }
 
-async function awaitMutationTicket(lockRoot: string, ticketName: string, ticketPath: string, owner: MutationLockOwner) {
+async function awaitMutationTicket(
+  lockRoot: string,
+  ticketName: string,
+  ticketPath: string,
+  owner: MutationLockOwner,
+  recoveryWait?: {
+    refresh: () => Promise<void>;
+    deadline: () => number | null;
+    timeoutError: () => Error;
+  }
+) {
+  const ordinaryDeadline = Date.now() + 5_000;
+  const effectiveDeadline = () => recoveryWait?.deadline() ?? ordinaryDeadline;
+  const timeoutError = () => recoveryWait?.timeoutError()
+    ?? runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
   await delay(25);
-  for (let attempt = 0; ; attempt += 1) {
+  for (;;) {
     const live = await scanLiveMutationTickets(lockRoot);
     const holding = live.find((entry) => entry.owner.status === "holding");
     const first = [...live].sort((left, right) => left.name.localeCompare(right.name))[0];
     if ((!holding || holding.owner.token === owner.token) && first?.owner.token === owner.token) {
+      await recoveryWait?.refresh();
+      if (Date.now() >= effectiveDeadline()) throw timeoutError();
       await publishMutationLockOwner(ticketPath, { ...owner, status: "holding" });
       return;
     }
-    if (attempt >= 500) {
-      throw runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock");
+    if (Date.now() >= effectiveDeadline()) {
+      await recoveryWait?.refresh();
+      if (Date.now() >= effectiveDeadline()) throw timeoutError();
     }
     await delay(10);
   }
@@ -1011,7 +1056,12 @@ async function withRunMutationLockCheck<T>(
   cwd: string,
   operation: () => Promise<T>,
   hooks: RunMutationLockHooks,
-  afterAcquire: () => Promise<void>
+  afterAcquire: () => Promise<void>,
+  recoveryWait?: {
+    refresh: () => Promise<void>;
+    deadline: () => number | null;
+    timeoutError: () => Error;
+  }
 ): Promise<T> {
   const location = await resolveRunLocation(runId, cwd);
   const token = randomUUID();
@@ -1022,12 +1072,14 @@ async function withRunMutationLockCheck<T>(
   try {
     const ticket = await publishMutationTicket(lockRoot, owner);
     ticketPath = ticket.ticketPath;
-    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner);
+    await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner, recoveryWait);
     await afterAcquire();
     return await operation();
   } catch (error) {
     activeMutationLockTokens.delete(token);
-    if (ticketPath) await rm(ticketPath, { recursive: true, force: true }).catch(() => undefined);
+    if (ticketPath) {
+      await quarantineAndRemoveMutationTicket(lockRoot, ticketPath, owner.token).catch(() => undefined);
+    }
     throw error;
   } finally {
     if (ticketPath && activeMutationLockTokens.has(token)) await releaseMutationTicket(lockRoot, ticketPath, owner, hooks);
@@ -1040,13 +1092,84 @@ export async function withRunMutationLock<T>(
   operation: () => Promise<T>,
   hooks: RunMutationLockHooks = {}
 ): Promise<T> {
-  return withRunMutationLockCheck(
-    runId,
-    cwd,
-    operation,
-    hooks,
-    () => assertRunRecoveryFenceOpen(runId, cwd).then(() => undefined)
-  );
+  // A mutation that begins while recovery is already active fails closed.
+  // A mutation that was already queued before the coordinator fenced the run
+  // must not be discarded, though: release its ticket and requeue until that
+  // exact recovery generation publishes its supported open successor.
+  await assertRunRecoveryFenceOpen(runId, cwd);
+  let awaitedRecovery: {
+    fence: { recovery_id: string; generation: string };
+    directory: { device: string; inode: string };
+  } | null = null;
+  const deadline = Date.now() + 30_000;
+  const refreshRecovery = async () => {
+    const observed = await inspectRunRecoveryFence(runId, cwd);
+    if (observed.status === "active") {
+      const expected = awaitedRecovery;
+      if (expected !== null && (
+        observed.fence.recovery_id !== expected.fence.recovery_id
+        || observed.fence.generation !== expected.fence.generation
+        || observed.directory.device !== expected.directory.device
+        || observed.directory.inode !== expected.directory.inode
+      )) {
+        throw runLocationError(
+          "flow.run_recovery.changed",
+          `active recovery fence for run "${runId}" changed while a queued mutation waited`
+        );
+      }
+      awaitedRecovery = observed;
+      return observed;
+    }
+    const expected = awaitedRecovery;
+    if (expected !== null && (
+      observed.status !== "open"
+      || observed.fence.recovery_id !== expected.fence.recovery_id
+      || observed.fence.previous_generation !== expected.fence.generation
+      || observed.directory.device !== expected.directory.device
+      || observed.directory.inode !== expected.directory.inode
+    )) {
+      throw runLocationError(
+        "flow.run_recovery.changed",
+        `recovery fence for run "${runId}" did not publish the expected open successor`
+      );
+    }
+    return observed;
+  };
+  for (;;) {
+    try {
+      return await withRunMutationLockCheck(
+        runId,
+        cwd,
+        operation,
+        hooks,
+        async () => {
+          const observed = await refreshRecovery();
+          if (observed.status === "active") {
+            throw RETRY_MUTATION_AFTER_RECOVERY;
+          }
+        },
+        {
+          refresh: async () => { await refreshRecovery(); },
+          deadline: () => awaitedRecovery === null ? null : deadline,
+          timeoutError: () => awaitedRecovery === null
+            ? runLocationError("flow.run_mutation.lock.timeout", "timed out waiting for the shared run mutation lock")
+            : runLocationError(
+                "flow.run_recovery.wait_timeout",
+                `timed out waiting for the active recovery fence for run "${runId}" to open`
+              )
+        }
+      );
+    } catch (error) {
+      if (error !== RETRY_MUTATION_AFTER_RECOVERY) throw error;
+      if (Date.now() >= deadline) {
+        throw runLocationError(
+          "flow.run_recovery.wait_timeout",
+          `timed out waiting for the active recovery fence for run "${runId}" to open`
+        );
+      }
+      await delay(10);
+    }
+  }
 }
 
 /**
@@ -1178,6 +1301,7 @@ export async function finalizeRunRecoveryFence(
       run_id: runId,
       recovery_id: request.recovery_id,
       status: "open",
+      previous_generation: request.expected_generation,
       updated_at: request.updated_at
     }, cwd);
     if (
