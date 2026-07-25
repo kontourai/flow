@@ -406,7 +406,10 @@ export function initialState(definition: any, runId: string, params: MutableReco
     lifecycle: [],
     exceptions: [],
     next_action: nextActionForStep(definition, firstStep.id),
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
+    ...(definition.execution?.mode === "multi-cursor" ? {
+      multi_cursor: { schema_version: "1", active_claims: [], blocked_steps: [], claim_history: [] }
+    } : {})
   };
 }
 

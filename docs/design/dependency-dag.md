@@ -8,8 +8,10 @@ was attached. Flow does **not** schedule work, fork goroutines, or own
 concurrency. The single-cursor execution model (`current_step`) is the
 authority for what a run is doing at any moment.
 
-This constraint is load-bearing: agents, humans, and the console can all
-read the same state file and agree on what the run expects next.
+Legacy definitions use that single cursor. Opted-in definitions may persist
+multiple **Flow claims**, but Flow still never schedules work, selects a
+runtime, or dispatches a host action. Agents, humans, and the Console can all
+read the same state file and agree on the required path and coordination state.
 
 ---
 
@@ -53,13 +55,30 @@ records the result on the route-back transition as `invalidated_steps`. The
 target itself is untouched — it becomes `current_step` and re-runs through the
 normal cursor.
 
-### Phase 2 — Concurrent multi-step execution (explicit NON-GOAL for Phase 1)
+### Phase 2 — Durable multi-cursor coordination (implemented)
 
-Concurrent execution across multiple ready steps at the same time requires a
-multi-cursor run-state model, an orchestrator, and a new schema version.
-This is a deliberate future boundary.  The console and bridge can start
-rendering the DAG from `stageStatuses` + `needs`-edges today (Phase 1),
-before a runtime that drives multiple steps in parallel exists.
+Definitions explicitly opt in with
+`execution: { mode: "multi-cursor", claim_contract_version: "1" }` and every
+step declares `mutable_resources`, including `[]` when it is read-only. Flow
+then stores a versioned `multi_cursor` ledger in run state:
+
+- an atomic active-step lease has exact actor, liveness, resource, and definition identities;
+- independent DAG-ready steps may have disjoint leases concurrently;
+- same-step and overlapping-resource admissions reject deterministically;
+- expiry/recovery, release, pause, cancellation, settlement, and route-back are recorded;
+- a fan-in becomes claimable only after every predecessor has a current accepted completion.
+
+Each claim binds a **step-local claim base** rather than `hash(state.json)`.
+The base excludes the mutable claim ledger and `updated_at`, while including
+that step's prerequisite settlements and each route/retry transition that
+affects its prerequisite domain. Inserting or renewing a lease therefore
+cannot invalidate itself; settling a disjoint sibling cannot invalidate it;
+route-back explicitly invalidates only affected target/descendant leases.
+
+Flow's per-run mutation ticket serializes every state transition. Hosts decide
+whether, where, and when to execute a granted claim. Console projection shows
+ready, active, and per-step blocked coordination state with stable claim and
+liveness identities; it is not a scheduler.
 
 ---
 

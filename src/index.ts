@@ -17,6 +17,12 @@ export type {
   FlowDefinitionAmendmentRequest,
   FlowDefinitionAmendmentResult,
   FlowDefinitionIdentity,
+  FlowClaimBase,
+  FlowDurableStepClaim,
+  FlowDurableStepClaimRequest,
+  FlowMultiCursorState,
+  FlowMultiCursorClaimEvent,
+  FlowMultiCursorBlockedStep,
   FlowDefinition,
   FlowDiagnostic,
   FlowEvidenceEntry,
@@ -71,6 +77,19 @@ export {
   projectReadyStepFrontier,
   validateActiveStepClaim
 } from "./claims/flow-step-claims.js";
+export { claimReadySteps } from "./claims/flow-step-claims.js";
+export {
+  buildDurableStepClaim,
+  claimBaseHead,
+  claimableMultiCursorSteps,
+  ensureMultiCursorState,
+  FLOW_DURABLE_CLAIM_DEFAULT_LEASE_SECONDS,
+  FLOW_DURABLE_CLAIM_MAX_LEASE_SECONDS,
+  FLOW_DURABLE_CLAIM_SCHEMA_VERSION,
+  FlowMultiCursorError,
+  validateMultiCursorState,
+  validateDurableStepClaim
+} from "./runtime/flow-multi-cursor.js";
 export {
   assertSafeRunId,
   examplePath,
@@ -229,6 +248,8 @@ export {
   authorizeRetry,
   attachEvidence,
   cancelRun,
+  claimReadyStep,
+  evaluateClaimedStep,
   continuePausedGate,
   ensureFlowLayout,
   evaluateRun,
@@ -244,6 +265,10 @@ export {
   sha256File,
   startRun,
   resumeRun,
+  recoverExpiredStepClaims,
+  releaseStepClaim,
+  renewStepClaim,
+  reopenMultiCursorStep,
   validateRunStateConsistency
 } from "./runtime/flow-run-store.js";
 export {

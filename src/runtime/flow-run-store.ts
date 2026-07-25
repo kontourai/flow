@@ -28,6 +28,7 @@ import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, Flow
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
+  getStep,
   initialState,
   normalizeRunStateLifecycle,
   openGates,
@@ -36,7 +37,19 @@ import {
   invalidateDescendants,
   validateDefinition
 } from "../definition/flow-definition.js";
-import { applyEvaluation, evaluateGate, expectationsForGate } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGate, expectationsForGate, mergeGateOutcome } from "../gates/flow-gates.js";
+import {
+  buildDurableStepClaim,
+  claimableMultiCursorSteps,
+  ensureMultiCursorState,
+  FLOW_DURABLE_CLAIM_DEFAULT_LEASE_SECONDS,
+  FlowMultiCursorError,
+  releaseClaimsForSteps,
+  sameClaimActor,
+  validateMultiCursorState,
+  validateDurableStepClaim
+} from "./flow-multi-cursor.js";
+import type { FlowDurableStepClaimRequest, FlowStepClaimActor } from "../contracts/flow-types.js";
 import { validateEvaluationTransition } from "../transition/flow-evaluation-transition.js";
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
@@ -416,6 +429,7 @@ export function validateRunStateConsistency(
   const definition = resolveEffectiveDefinition(startDefinition, state);
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
+  validateMultiCursorState(definition, state);
   return { startDefinition, definition, state };
 }
 
@@ -613,6 +627,7 @@ async function saveRun(run) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
+  validateMultiCursorState(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
@@ -640,6 +655,7 @@ async function writeExistingFileNoFollow(file: string, contents: string) {
 async function saveLifecycleState(run) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
+  validateMultiCursorState(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
@@ -701,6 +717,19 @@ async function changeRunLifecycle(runId: string, operation: FlowLifecycleAction,
     authority: request.authority,
     at
   };
+  // A paused or canceled run must never retain a live execution lease.  The
+  // host may resume and claim anew, but cannot continue on an old authority.
+  if ((operation === "pause" || operation === "cancel") && run.state.multi_cursor) {
+    const cursor = ensureMultiCursorState(run.state);
+    const released = cursor.active_claims.splice(0);
+    cursor.claim_history.push(...released.map((claim) => ({
+      action: "released" as const,
+      claim_id: claim.claim_id,
+      step_id: claim.step_id,
+      at,
+      reason: `run ${operation}`
+    })));
+  }
   run.state = {
     ...run.state,
     status: toStatus,
@@ -722,6 +751,268 @@ export function resumeRun(runId: string, options: MutableRecord = {}) {
 
 export function cancelRun(runId: string, options: MutableRecord = {}) {
   return changeRunLifecycle(runId, "cancel", options);
+}
+
+function multiCursorNow(options: MutableRecord = {}) {
+  const value = options.now ? new Date(options.now) : new Date();
+  if (!Number.isFinite(value.getTime())) throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be a valid date-time");
+  return value;
+}
+
+function multiCursorActor(value: unknown): FlowStepClaimActor {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new FlowMultiCursorError("flow.multi_cursor.claim.actor.invalid", "actor must be an object");
+  const actor = value as Record<string, unknown>;
+  if (typeof actor.key !== "string") throw new FlowMultiCursorError("flow.multi_cursor.claim.actor.invalid", "actor.key is required");
+  return { key: actor.key, ...(typeof actor.kind === "string" ? { kind: actor.kind } : {}) };
+}
+
+function recordClaimEvent(state: any, event: { action: "claimed" | "renewed" | "released" | "expired" | "settled"; claim_id: string; step_id: string; at: string; reason?: string }) {
+  ensureMultiCursorState(state).claim_history.push(event);
+}
+
+function expireMultiCursorClaims(run: any, now: Date) {
+  const cursor = ensureMultiCursorState(run.state);
+  const expired = cursor.active_claims.filter((claim) => Date.parse(claim.expires_at) <= now.getTime());
+  if (!expired.length) return expired;
+  cursor.active_claims = cursor.active_claims.filter((claim) => Date.parse(claim.expires_at) > now.getTime());
+  cursor.claim_history.push(...expired.map((claim) => ({ action: "expired" as const, claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "liveness lease expired" })));
+  return expired;
+}
+
+/** Remove only semantically superseded leases; malformed persisted claims fail closed. */
+function invalidateStaleMultiCursorClaims(run: any, now: Date) {
+  const cursor = ensureMultiCursorState(run.state);
+  const invalidated: any[] = [];
+  const retained: any[] = [];
+  for (const claim of cursor.active_claims) {
+    try {
+      validateDurableStepClaim(run.definition, run.state, claim, now);
+      retained.push(claim);
+    } catch (error) {
+      if (error instanceof FlowMultiCursorError && error.code === "flow.multi_cursor.claim.stale") {
+        invalidated.push(claim);
+        continue;
+      }
+      throw error;
+    }
+  }
+  if (invalidated.length) {
+    cursor.active_claims = retained;
+    cursor.claim_history.push(...invalidated.map((claim) => ({ action: "invalidated" as const, claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "claim base no longer current" })));
+  }
+  return invalidated;
+}
+
+function multiCursorTerminal(definition: any, state: any) {
+  return definition.steps.every((step: any) => {
+    const gates = Object.entries(definition.gates ?? {}).filter(([, gate]: [string, any]) => gate.step === step.id).map(([gateId]) => gateId);
+    return gates.length
+      ? gates.every((gateId) => state.gate_outcomes.some((outcome: any) => outcome.gate_id === gateId && outcome.status === "pass"))
+      : state.transitions.some((transition: any) => transition.from_step === step.id && transition.status === "allowed");
+  });
+}
+
+function projectMultiCursorCurrentStep(definition: any, state: any) {
+  const cursor = ensureMultiCursorState(state);
+  const ready = claimableMultiCursorSteps(definition, state);
+  const active = cursor.active_claims.map((claim) => claim.step_id).sort();
+  return ready[0] ?? active[0] ?? state.current_step;
+}
+
+/** Atomically claim exactly one Flow-ready multi-cursor step. Hosts schedule work separately. */
+export async function claimReadyStep(runId: string, options: FlowDurableStepClaimRequest & MutableRecord) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    assertLifecycleEligible("persist", run.state.status);
+    const now = multiCursorNow(options);
+    const expired = expireMultiCursorClaims(run, now);
+    const invalidated = invalidateStaleMultiCursorClaims(run, now);
+    // An accepted exception authorizes the next gate evaluation, not a
+    // permanent terminal lifecycle. Claim admission begins an active
+    // multi-cursor epoch before deriving its claim base.
+    if (run.state.status === "accepted_by_exception") run.state.status = "active";
+    const cursor = ensureMultiCursorState(run.state);
+    const existing = cursor.active_claims.find((claim) => claim.claim_id === options.claim_id);
+    if (existing) {
+      const candidate = validateDurableStepClaim(run.definition, run.state, existing, now);
+      const requestedActor = multiCursorActor(options.actor);
+      if (existing.step_id === options.step_id && existing.liveness_id === options.liveness_id && sameClaimActor(existing, requestedActor)) {
+        if (expired.length || invalidated.length) {
+          run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+          run.state.updated_at = now.toISOString();
+          await saveRun(run);
+        }
+        return { ...run, claim: candidate, idempotent: true };
+      }
+      throw new FlowMultiCursorError("flow.multi_cursor.claim.conflict", `claim_id ${options.claim_id} is already in use`);
+    }
+    if (cursor.claim_history.some((event) => event.claim_id === options.claim_id)) {
+      throw new FlowMultiCursorError("flow.multi_cursor.claim.replay", `claim_id ${options.claim_id} was already consumed by this run`);
+    }
+    const claim = buildDurableStepClaim(run.definition, run.state, options, now);
+    const sameStep = cursor.active_claims.find((entry) => entry.step_id === claim.step_id);
+    if (sameStep) throw new FlowMultiCursorError("flow.multi_cursor.claim.conflict", `step ${claim.step_id} is already claimed`);
+    const conflict = cursor.active_claims.find((entry) => entry.mutable_resources.some((resource) => claim.mutable_resources.includes(resource)));
+    if (conflict) throw new FlowMultiCursorError("flow.multi_cursor.claim.resource_conflict", `claim conflicts with ${conflict.claim_id}`);
+    cursor.active_claims.push(claim);
+    cursor.active_claims.sort((left, right) => left.claim_id.localeCompare(right.claim_id));
+    recordClaimEvent(run.state, { action: "claimed", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString() });
+    run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+    run.state.updated_at = now.toISOString();
+    await saveRun(run);
+    return { ...run, claim, idempotent: false };
+  });
+}
+
+/** Renew a lease without changing its semantic claim base or sibling validity. */
+export async function renewStepClaim(runId: string, options: { claim_id: string; liveness_id: string; actor: FlowStepClaimActor; lease_seconds?: number; cwd?: string; now?: string }) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    assertLifecycleEligible("persist", run.state.status);
+    const now = multiCursorNow(options);
+    expireMultiCursorClaims(run, now);
+    invalidateStaleMultiCursorClaims(run, now);
+    const cursor = ensureMultiCursorState(run.state);
+    const claim = cursor.active_claims.find((entry) => entry.claim_id === options.claim_id);
+    if (!claim) throw new FlowMultiCursorError("flow.multi_cursor.claim.missing", `active claim ${options.claim_id} does not exist`);
+    if (now.getTime() < Date.parse(claim.renewed_at)) {
+      throw new FlowMultiCursorError("flow.multi_cursor.claim.time.regression", "renewal time must not precede the persisted renewed_at boundary");
+    }
+    const checked = validateDurableStepClaim(run.definition, run.state, claim, now);
+    if (checked.liveness_id !== options.liveness_id || !sameClaimActor(checked, multiCursorActor(options.actor))) throw new FlowMultiCursorError("flow.multi_cursor.claim.owner_mismatch", "only the exact claim actor and liveness identity may renew a claim");
+    const seconds = options.lease_seconds ?? FLOW_DURABLE_CLAIM_DEFAULT_LEASE_SECONDS;
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) throw new FlowMultiCursorError("flow.multi_cursor.claim.lease.invalid", "lease_seconds must be an integer between 1 and 3600");
+    claim.renewed_at = now.toISOString();
+    claim.expires_at = new Date(now.getTime() + seconds * 1000).toISOString();
+    recordClaimEvent(run.state, { action: "renewed", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString() });
+    run.state.updated_at = now.toISOString();
+    await saveRun(run);
+    return { ...run, claim: structuredClone(claim) };
+  });
+}
+
+/** Release an un-settled claim. The step remains ready for a future actor. */
+export async function releaseStepClaim(runId: string, options: { claim_id: string; liveness_id: string; actor: FlowStepClaimActor; reason?: string; cwd?: string; now?: string }) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    const now = multiCursorNow(options);
+    expireMultiCursorClaims(run, now);
+    invalidateStaleMultiCursorClaims(run, now);
+    const cursor = ensureMultiCursorState(run.state);
+    const index = cursor.active_claims.findIndex((entry) => entry.claim_id === options.claim_id);
+    if (index < 0) throw new FlowMultiCursorError("flow.multi_cursor.claim.missing", `active claim ${options.claim_id} does not exist`);
+    const claim = validateDurableStepClaim(run.definition, run.state, cursor.active_claims[index], now);
+    if (claim.liveness_id !== options.liveness_id || !sameClaimActor(claim, multiCursorActor(options.actor))) throw new FlowMultiCursorError("flow.multi_cursor.claim.owner_mismatch", "only the exact claim actor and liveness identity may release a claim");
+    cursor.active_claims.splice(index, 1);
+    recordClaimEvent(run.state, { action: "released", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), ...(options.reason ? { reason: options.reason } : {}) });
+    run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+    run.state.updated_at = now.toISOString();
+    await saveRun(run);
+    return { ...run, claim };
+  });
+}
+
+/** Recovery is host-neutral: expire abandoned leases and expose their ids for scheduling reconciliation. */
+export async function recoverExpiredStepClaims(runId: string, options: { cwd?: string; now?: string } = {}) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    const now = multiCursorNow(options);
+    const expired = expireMultiCursorClaims(run, now);
+    const invalidated = invalidateStaleMultiCursorClaims(run, now);
+    if (expired.length || invalidated.length) {
+      run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+      run.state.updated_at = now.toISOString();
+      await saveRun(run);
+    }
+    return { ...run, expired: structuredClone(expired), invalidated: structuredClone(invalidated) };
+  });
+}
+
+/** Clear a per-step block after its evidence has been replaced or amended. */
+export async function reopenMultiCursorStep(runId: string, options: { step_id: string; cwd?: string; now?: string }) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    const now = multiCursorNow(options);
+    const cursor = ensureMultiCursorState(run.state);
+    const blocked = cursor.blocked_steps.find((entry) => entry.step_id === options.step_id);
+    if (!blocked) throw new FlowMultiCursorError("flow.multi_cursor.block.missing", `step ${options.step_id} is not blocked`);
+    cursor.blocked_steps = cursor.blocked_steps.filter((entry) => entry.step_id !== options.step_id);
+    if (!claimableMultiCursorSteps(run.definition, run.state).includes(options.step_id)) {
+      throw new FlowMultiCursorError("flow.multi_cursor.block.not_ready", `blocked step ${options.step_id} is not in the canonical ready frontier`);
+    }
+    if (run.state.status === "blocked") run.state.status = "active";
+    run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+    run.state.updated_at = now.toISOString();
+    await saveRun(run);
+    return run;
+  });
+}
+
+/**
+ * Evaluate all gates for one active claimed step and atomically settle its
+ * result. A sibling settlement changes only the sibling's base domain; a
+ * route-back explicitly invalidates every affected active descendant lease.
+ */
+export async function evaluateClaimedStep(runId: string, options: { claim_id: string; liveness_id: string; actor: FlowStepClaimActor; cwd?: string; now?: string }) {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  return withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    assertLifecycleEligible("evaluate", run.state.status);
+    const now = multiCursorNow(options);
+    expireMultiCursorClaims(run, now);
+    invalidateStaleMultiCursorClaims(run, now);
+    const cursor = ensureMultiCursorState(run.state);
+    const index = cursor.active_claims.findIndex((entry) => entry.claim_id === options.claim_id);
+    if (index < 0) throw new FlowMultiCursorError("flow.multi_cursor.claim.missing", `active claim ${options.claim_id} does not exist`);
+    const claim = validateDurableStepClaim(run.definition, run.state, cursor.active_claims[index], now);
+    if (claim.liveness_id !== options.liveness_id || !sameClaimActor(claim, multiCursorActor(options.actor))) throw new FlowMultiCursorError("flow.multi_cursor.claim.owner_mismatch", "only the exact claim actor and liveness identity may settle a claim");
+    const gates = Object.entries(run.definition.gates ?? {}).filter(([, gate]: [string, any]) => gate.step === claim.step_id).map(([gateId]) => gateId).sort();
+    if (!gates.length) throw new FlowMultiCursorError("flow.multi_cursor.gate.required", `claimed step ${claim.step_id} has no gate to evaluate`);
+    const outcomes: GateOutcome[] = [];
+    for (const gateId of gates) {
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config);
+      outcomes.push(outcome);
+      if (outcome.status !== "pass") break;
+    }
+    const terminal = outcomes.at(-1)!;
+    if (terminal.status === "wait") return { ...run, claim, outcomes, settled: false };
+    for (const outcome of outcomes) mergeGateOutcome(run.state, outcome);
+    cursor.active_claims.splice(index, 1);
+    if (terminal.status === "pass" && outcomes.length === gates.length) {
+      const next = getStep(run.definition, claim.step_id)?.next ?? null;
+      run.state.transitions.push({ from_step: claim.step_id, to_step: next, status: "allowed", reason: "required evidence present", at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      cursor.blocked_steps = cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id);
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString() });
+    } else if (terminal.status === "route-back") {
+      const target = terminal.route_back_to;
+      const invalidatedDescendants = invalidateDescendants(run.definition, run.state, target);
+      const invalidated = new Set<string>([target, ...invalidatedDescendants]);
+      releaseClaimsForSteps(run.state, invalidated, now.toISOString(), `route-back from ${claim.step_id}`);
+      cursor.blocked_steps = cursor.blocked_steps.filter((entry) => !invalidated.has(entry.step_id));
+      // Keep the reserved route-back record byte-for-byte derivable from the
+      // preceding transition history. Claim correlation stays in the separate
+      // claim history ledger, not in this proof-carrying transition shape.
+      run.state.transitions.push({ type: "route_back", from_step: claim.step_id, to_step: target, status: "blocked", reason: terminal.reason ?? terminal.route_reason ?? terminal.summary, route_reason: terminal.route_reason, selected_route: terminal.selected_route, recovery_step: terminal.recovery_step, attempt: terminal.attempt, retry_epoch: terminal.retry_epoch, max_attempts: terminal.max_attempts, limit_exceeded: terminal.limit_exceeded, invalidated_steps: invalidatedDescendants.length ? invalidatedDescendants : undefined, evidence_refs: terminal.evidence_refs, expectation_ids: terminal.expectation_ids, classifier: terminal.classifier, diagnostics: terminal.diagnostics, analytics: terminal.analytics, analytics_loop_key: terminal.analytics_loop_key, at: now.toISOString(), gate_id: terminal.gate_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "route-back" });
+      run.state.current_step = target;
+    } else {
+      cursor.blocked_steps = [...cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id), { step_id: claim.step_id, gate_id: terminal.gate_id, at: now.toISOString(), summary: terminal.summary }];
+      run.state.transitions.push({ from_step: claim.step_id, to_step: getStep(run.definition, claim.step_id)?.next ?? null, status: "blocked", reason: terminal.summary, evidence_refs: terminal.evidence_refs, at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "blocked" });
+    }
+    if (multiCursorTerminal(run.definition, run.state)) run.state.status = "completed";
+    else if (cursor.active_claims.length || claimableMultiCursorSteps(run.definition, run.state).length) run.state.status = "active";
+    else if (cursor.blocked_steps.length) run.state.status = "blocked";
+    run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
+    run.state.updated_at = now.toISOString();
+    await saveRun(run);
+    return { ...run, outcomes, settled: true };
+  });
 }
 
 export type RunMutationLockHooks = {
@@ -1394,6 +1685,7 @@ async function saveDefinitionAmendmentState(run: any, options: MutableRecord) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
+  validateMultiCursorState(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
@@ -1442,6 +1734,9 @@ async function preflightDefinitionAmendment(
   }
   if (run.state.status !== "active") {
     throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.status", "definition amendment requires an active run");
+  }
+  if ((run.state.multi_cursor?.active_claims ?? []).length > 0) {
+    throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.multi_cursor.active_claims", "definition amendment requires every active multi-cursor claim to be released or settled first");
   }
   const prior = effectiveDefinitionIdentity(run.startDefinition ?? run.definition, run.state);
   if (flowRunHead(run.state) !== request.expected_run_head) {
