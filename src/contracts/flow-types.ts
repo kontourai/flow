@@ -319,6 +319,61 @@ export interface FlowRunState extends MutableRecord {
   exceptions: MutableRecord[];
   next_action: string;
   updated_at: string;
+  /** Durable, opt-in multi-cursor coordination state.  Legacy runs omit it. */
+  multi_cursor?: FlowMultiCursorState;
+}
+
+/** A claim's state binding deliberately excludes the claim ledger itself. */
+export interface FlowClaimBase {
+  schema_version: "1";
+  step_id: string;
+  head: string;
+}
+
+/** Persisted lease; it is Flow state, never a host execution instruction. */
+export interface FlowDurableStepClaim {
+  schema_version: "1";
+  claim_id: string;
+  liveness_id: string;
+  run_id: string;
+  definition: FlowDefinitionIdentity;
+  claim_base: FlowClaimBase;
+  step_id: string;
+  actor: FlowStepClaimActor;
+  mutable_resources: string[];
+  issued_at: string;
+  renewed_at: string;
+  expires_at: string;
+}
+
+export interface FlowMultiCursorClaimEvent extends MutableRecord {
+  action: "claimed" | "renewed" | "released" | "expired" | "settled" | "invalidated";
+  claim_id: string;
+  step_id: string;
+  at: string;
+  reason?: string;
+}
+
+export interface FlowMultiCursorBlockedStep extends MutableRecord {
+  step_id: string;
+  gate_id: string;
+  at: string;
+  summary: string;
+}
+
+export interface FlowMultiCursorState {
+  schema_version: "1";
+  active_claims: FlowDurableStepClaim[];
+  blocked_steps: FlowMultiCursorBlockedStep[];
+  claim_history: FlowMultiCursorClaimEvent[];
+}
+
+export interface FlowDurableStepClaimRequest {
+  claim_id: string;
+  liveness_id: string;
+  step_id: string;
+  actor: FlowStepClaimActor;
+  lease_seconds?: number;
 }
 
 /** Provider-neutral actor identity supplied by the host that owns authentication. */

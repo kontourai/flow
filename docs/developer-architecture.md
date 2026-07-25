@@ -131,7 +131,37 @@ downstream join ready. The rerouted prerequisite must record a later allowed
 completion before the join is claimable. Route-back also changes the run head,
 so a previously built sibling claim fails closed until a host derives a fresh
 frontier. The full #174 slice will own durable claim lifecycle, atomic
-claim/release, sibling settlement, liveness recovery, and console projection.
+claim/release, sibling settlement, liveness recovery, and Console projection.
+
+## Durable Multi-Cursor Runs
+
+The pure claim API remains available as a preflight projection. An opted-in
+run now initializes `state.multi_cursor` with active claims, per-step blocks,
+and an append-only claim history. `claimReadyStep()` acquires Flow's native
+per-run mutation ticket, derives the strict ready frontier, rejects a duplicate
+step or overlapping declared resource, and records a bounded lease.
+`renewStepClaim()`, `releaseStepClaim()`, and `recoverExpiredStepClaims()` use
+the same ticket and exact actor plus liveness identity. None dispatches host
+work.
+
+Persisted claims use a versioned **claim base**: SHA-256 of a canonical,
+step-local semantic projection of run/definition identity, run status,
+prerequisite outcomes, and route/retry transitions affecting that step. It
+intentionally excludes `multi_cursor` and `updated_at`. This avoids the
+impossible representation where a claim includes the hash of state that
+includes the claim. A sibling's lease renewal is non-invalidating; a sibling
+settlement is non-invalidating when it lies outside the other step's
+prerequisite domain. Route-back invalidates claims only for its target and
+descendants, while an affected base change rejects a stale replay.
+
+`evaluateClaimedStep()` evaluates the claimed step's Flow-owned gates and
+atomically records pass, block, or route-back. A pass settles that lease and
+opens a fan-in only after all prerequisites pass. A block is retained per step,
+so unrelated ready or active branches may continue; a host reopens it only
+after replacing or amending evidence. Pause and cancellation release every
+active lease. Completion requires every authored step to have a current
+accepted completion. The Console projection exposes this coordination ledger
+as descriptive state with no execution-provider fields.
 
 ## Route-Back Loop Protection
 

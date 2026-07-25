@@ -16,6 +16,7 @@ import { reportJson } from "../reports/flow-reports.js";
 import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
 import { withRunRecoveryFenceRead } from "../runtime/flow-run-recovery-fence.js";
 import { repairRunReports } from "../runtime/flow-run-store.js";
+import { claimableMultiCursorSteps } from "../runtime/flow-multi-cursor.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -45,6 +46,24 @@ export interface FlowConsoleRunIdentity {
   current_step: string | null;
   updated_at: string | null;
   params: Record<string, unknown>;
+}
+
+/** Read-only coordination view; execution placement remains host-owned. */
+export interface FlowConsoleMultiCursorProjection {
+  schema_version: string;
+  ready_steps: string[];
+  blocked_steps: Array<{ step_id: string; gate_id: string; at: string; summary: string }>;
+  active_claims: Array<{
+    claim_id: string;
+    liveness_id: string;
+    step_id: string;
+    actor: Record<string, unknown>;
+    mutable_resources: string[];
+    claim_base_head: string;
+    issued_at: string;
+    renewed_at: string;
+    expires_at: string;
+  }>;
 }
 
 export interface FlowConsoleDefinitionProjection {
@@ -220,6 +239,7 @@ export interface FlowConsoleProjection {
   definition: FlowConsoleDefinitionProjection;
   steps: FlowConsoleStepProjection[];
   current_step: string | null;
+  multi_cursor?: FlowConsoleMultiCursorProjection;
   open_gates: string[];
   gates: FlowConsoleGateProjection[];
   expectations: FlowConsoleExpectationProjection[];
@@ -614,6 +634,25 @@ function projectRunIdentity(definition, state): FlowConsoleRunIdentity {
   };
 }
 
+function projectMultiCursor(definition, state): FlowConsoleMultiCursorProjection | undefined {
+  const cursor = state.multi_cursor;
+  if (!cursor) return undefined;
+  // Console consumes the same route-back-aware frontier as claim admission.
+  // This is a read projection only; hosts still decide execution placement.
+  const ready = [...claimableMultiCursorSteps(definition, state)].sort();
+  return {
+    schema_version: cursor.schema_version,
+    ready_steps: ready,
+    blocked_steps: stableArray(cursor.blocked_steps).map((entry) => stableClone(entry)),
+    active_claims: stableArray(cursor.active_claims).map((claim) => ({
+      claim_id: claim.claim_id, liveness_id: claim.liveness_id, step_id: claim.step_id,
+      actor: stableObject(claim.actor), mutable_resources: stableArray(claim.mutable_resources),
+      claim_base_head: claim.claim_base?.head ?? "", issued_at: claim.issued_at,
+      renewed_at: claim.renewed_at, expires_at: claim.expires_at
+    })).sort((left, right) => left.claim_id.localeCompare(right.claim_id))
+  };
+}
+
 function projectDefinition(definition, state, manifest): FlowConsoleDefinitionProjection {
   const firstAmendment = state.definition_amendments?.[0];
   const effective = definitionIdentity(definition);
@@ -684,6 +723,7 @@ export function projectFlowRun(
     definition: projectDefinition(definition, state, manifest),
     steps: projectSteps(definition, gateIds),
     current_step: state.current_step ?? null,
+    ...(state.multi_cursor ? { multi_cursor: projectMultiCursor(definition, state) } : {}),
     open_gates: openGates(definition, state).map((gate) => gate.id).sort((left, right) => left.localeCompare(right)),
     gates,
     expectations: projectAllExpectations(gates),

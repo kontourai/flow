@@ -166,7 +166,7 @@ Consumers that securely read canonical bytes themselves can use this public
 root export instead of importing private `dist/` modules or copying only part
 of Flow's validation semantics.
 
-### Multi-cursor resource claims (pure prerequisite)
+### Multi-cursor resource claims
 
 Definitions that a host may execute with more than one active cursor opt in
 explicitly. Every step then declares the bounded mutable-resource set it may
@@ -211,12 +211,59 @@ const claim = buildActiveStepClaim(definition, state, {
 const admission = validateActiveStepClaim(definition, state, claim, activeClaims);
 ```
 
-These functions are pure: they do not persist a claim, acquire a host lock,
-dispatch work, infer actor authority, or treat observed writes as scheduling
-authority. Hosts own liveness, durable claim mutation, and execution. Existing
-definitions that omit `execution` remain legacy single-cursor definitions and
-are readable and serial; they are deliberately rejected by the multi-cursor
-claim API until migrated explicitly.
+These preflight functions are pure: they do not persist a claim, acquire a
+host lock, dispatch work, infer actor authority, or treat observed writes as
+scheduling authority. They remain useful to hosts that want to inspect a
+candidate before requesting Flow admission.
+
+For a durable run, use Flow's atomic lease APIs. They persist a versioned
+step-local claim base (not `hash(state.json)`), so the claim ledger and
+renewal timestamps cannot self-invalidate a lease. The base includes only the
+claimed step's prerequisite settlements and route/retry history; a disjoint
+sibling may settle without invalidating the other claim.
+
+```ts
+import {
+  claimReadyStep,
+  evaluateClaimedStep,
+  recoverExpiredStepClaims,
+  releaseStepClaim,
+  renewStepClaim
+} from "@kontourai/flow";
+
+const claim = await claimReadyStep("dev-1847", {
+  cwd: process.cwd(),
+  claim_id: "claim-render-1",
+  liveness_id: "lease-worker-7",
+  step_id: "render",
+  actor: { key: "worker-7", kind: "host" },
+  lease_seconds: 300
+});
+
+await renewStepClaim("dev-1847", {
+  cwd: process.cwd(), claim_id: claim.claim.claim_id,
+  liveness_id: claim.claim.liveness_id, actor: { key: "worker-7", kind: "host" }
+});
+
+// Evidence is attached through the normal Flow API. This evaluates only the
+// active claimed step and atomically settles pass, block, or route-back.
+await evaluateClaimedStep("dev-1847", {
+  cwd: process.cwd(), claim_id: claim.claim.claim_id,
+  liveness_id: claim.claim.liveness_id, actor: { key: "worker-7", kind: "host" }
+});
+await recoverExpiredStepClaims("dev-1847", { cwd: process.cwd() });
+await releaseStepClaim("dev-1847", {
+  cwd: process.cwd(), claim_id: claim.claim.claim_id,
+  liveness_id: claim.claim.liveness_id, actor: { key: "worker-7", kind: "host" },
+  reason: "host did not start execution"
+});
+```
+
+These APIs serialize their state changes with Flow's per-run ticket but still
+do not dispatch work. Hosts own placement, authentication, and execution.
+Existing definitions that omit `execution` remain legacy single-cursor
+definitions and are readable and serial; they are rejected by multi-cursor
+claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 

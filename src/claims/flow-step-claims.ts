@@ -97,7 +97,12 @@ function validateStateBinding(identity: FlowDefinitionIdentity, state: unknown, 
   return true;
 }
 
-function claimReadySteps(definition: unknown, state: any): string[] {
+/**
+ * The stricter multi-cursor frontier.  Unlike the legacy DAG projection this
+ * also observes route-back invalidation records, so a join cannot be claimed
+ * merely because an old pass remains in the historical outcome list.
+ */
+export function claimReadySteps(definition: unknown, state: any): string[] {
   const invalidated = new Set<string>();
   const transitions = Array.isArray(state?.transitions) ? state.transitions : [];
   for (const step of validateDefinition(definition).steps) {

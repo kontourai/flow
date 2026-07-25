@@ -110,6 +110,18 @@
       "description": "Separate pause, resume, and cancellation history. Absence on a legacy run is normalized to an empty array when loaded; lifecycle records never count as Step transitions.",
       "items": { "$ref": "#/$defs/lifecycle_event" }
     },
+    "multi_cursor": {
+      "type": "object",
+      "description": "Versioned durable multi-cursor coordination ledger. Claims bind a step-local non-self-referential base state; hosts still own execution dispatch.",
+      "required": ["schema_version", "active_claims", "blocked_steps", "claim_history"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "1" },
+        "active_claims": { "type": "array", "items": { "$ref": "#/$defs/durable_step_claim" } },
+        "blocked_steps": { "type": "array", "items": { "$ref": "#/$defs/blocked_step" } },
+        "claim_history": { "type": "array", "items": { "$ref": "#/$defs/claim_event" } }
+      }
+    },
     "exceptions": {
       "type": "array",
       "description": "Accepted exceptions with explicit reason and authority.",
@@ -117,6 +129,34 @@
     }
   },
   "$defs": {
+    "step_claim_actor": {
+      "type": "object", "required": ["key"], "additionalProperties": false,
+      "properties": { "key": { "$ref": "#/$defs/identifier" }, "kind": { "$ref": "#/$defs/identifier" } }
+    },
+    "identifier": { "type": "string", "maxLength": 256, "pattern": "^[a-z0-9][a-z0-9._:-]*$" },
+    "mutable_resource_id": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*$" },
+    "durable_step_claim": {
+      "type": "object",
+      "required": ["schema_version", "claim_id", "liveness_id", "run_id", "definition", "claim_base", "step_id", "actor", "mutable_resources", "issued_at", "renewed_at", "expires_at"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "1" }, "claim_id": { "$ref": "#/$defs/identifier" }, "liveness_id": { "$ref": "#/$defs/identifier" },
+        "run_id": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\\\u0000]+$", "not": { "enum": [".", ".."] } },
+        "definition": { "$ref": "#/$defs/definition_identity" },
+        "claim_base": { "type": "object", "required": ["schema_version", "step_id", "head"], "additionalProperties": false, "properties": { "schema_version": { "const": "1" }, "step_id": { "$ref": "#/$defs/identifier" }, "head": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
+        "step_id": { "$ref": "#/$defs/identifier" }, "actor": { "$ref": "#/$defs/step_claim_actor" },
+        "mutable_resources": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "$ref": "#/$defs/mutable_resource_id" } },
+        "issued_at": { "type": "string", "format": "date-time" }, "renewed_at": { "type": "string", "format": "date-time" }, "expires_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "blocked_step": {
+      "type": "object", "required": ["step_id", "gate_id", "at", "summary"], "additionalProperties": false,
+      "properties": { "step_id": { "$ref": "#/$defs/identifier" }, "gate_id": { "type": "string", "minLength": 1 }, "at": { "type": "string", "format": "date-time" }, "summary": { "type": "string", "minLength": 1 } }
+    },
+    "claim_event": {
+      "type": "object", "required": ["action", "claim_id", "step_id", "at"], "additionalProperties": false,
+      "properties": { "action": { "enum": ["claimed", "renewed", "released", "expired", "settled", "invalidated"] }, "claim_id": { "$ref": "#/$defs/identifier" }, "step_id": { "$ref": "#/$defs/identifier" }, "at": { "type": "string", "format": "date-time" }, "reason": { "type": "string", "minLength": 1 } }
+    },
     "definition_identity": {
       "type": "object",
       "required": ["id", "version", "digest"],
