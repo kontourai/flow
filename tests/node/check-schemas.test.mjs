@@ -26,6 +26,7 @@ const addFormats = require("ajv-formats");
 test("schemas describe the runtime contract", async () => {
   const definitionSchema = await json("schemas/flow-definition.schema.json");
   const runSchema = await json("schemas/flow-run.schema.json");
+  const activeStepClaimSchema = await json("schemas/flow-active-step-claim.schema.json");
   const amendmentRequestSchema = await json("schemas/flow-definition-amendment-request.schema.json");
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
   const commandEvidenceSchema = await json("schemas/command-evidence.schema.json");
@@ -55,6 +56,9 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(definitionSchema.$defs.resource_spec.properties.steps.$ref, "#/$defs/steps");
   assert.equal(definitionSchema.$defs.resource_spec.properties.gates.$ref, "#/$defs/gates");
   assert.equal(definitionSchema.$defs.steps.items.$ref, "#/$defs/step");
+  assert.equal(definitionSchema.$defs.step.properties.mutable_resources.items.$ref, "#/$defs/mutable_resource_id");
+  assert.equal(definitionSchema.$defs.execution.properties.mode.const, "multi-cursor");
+  assert.equal(definitionSchema.$defs.execution.properties.claim_contract_version.const, "1");
   assert.equal(definitionSchema.$defs.gates.additionalProperties.$ref, "#/$defs/gate");
   assert.equal(runSchema.title, "Flow Run State");
   assert.match(runSchema.description, /state\.json/);
@@ -71,6 +75,10 @@ test("schemas describe the runtime contract", async () => {
   assert.match(runSchema.properties.transitions.description, /route-back attempt counting/);
   assert.deepEqual(runSchema.properties.status.enum, ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]);
   assert.equal(runSchema.properties.lifecycle.items.$ref, "#/$defs/lifecycle_event");
+  assert.equal(runSchema.properties.active_step_claims, undefined, "pure claim validation must not reserve a self-referential persisted run field");
+  assert.equal(activeStepClaimSchema.title, "Flow Active Step Claim");
+  assert.equal(activeStepClaimSchema.properties.schema_version.const, "1");
+  assert.match(activeStepClaimSchema.description, /not a host-work dispatch contract/);
   assert.match(runSchema.properties.lifecycle.description, /never count as Step transitions/);
   assert.deepEqual(runSchema.$defs.lifecycle_authority.properties.kind.enum, ["user_request", "operator_request"]);
   assert.equal(runSchema.$defs.lifecycle_authority.properties.request_ref.minLength, 1);

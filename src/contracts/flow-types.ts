@@ -6,6 +6,14 @@ export interface FlowStep {
   id: string;
   next: string | null;
   needs?: string[];
+  /** Required (including as an empty array) when execution.mode is multi-cursor. */
+  mutable_resources?: string[];
+}
+
+/** Versioned opt-in to the pure multi-cursor claim contract. */
+export interface FlowExecutionDeclaration {
+  mode: "multi-cursor";
+  claim_contract_version: "1";
 }
 
 export interface FlowBundleClaimSelector {
@@ -45,6 +53,7 @@ export interface FlowDefinition {
   version: string;
   steps: FlowStep[];
   gates: Record<string, FlowGate>;
+  execution?: FlowExecutionDeclaration;
 }
 
 export interface FlowDiagnostic extends MutableRecord {
@@ -310,6 +319,53 @@ export interface FlowRunState extends MutableRecord {
   exceptions: MutableRecord[];
   next_action: string;
   updated_at: string;
+}
+
+/** Provider-neutral actor identity supplied by the host that owns authentication. */
+export interface FlowStepClaimActor {
+  key: string;
+  kind?: string;
+}
+
+/** Canonical, versioned active-step claim. It does not authorize host execution. */
+export interface FlowActiveStepClaim {
+  schema_version: "1";
+  claim_id: string;
+  liveness_id: string;
+  run_id: string;
+  definition: FlowDefinitionIdentity;
+  run_head: string;
+  step_id: string;
+  actor: FlowStepClaimActor;
+  mutable_resources: string[];
+}
+
+/** Caller-supplied identity for a claim constructed from the current frontier. */
+export interface FlowActiveStepClaimRequest {
+  claim_id: string;
+  liveness_id: string;
+  step_id: string;
+  actor: FlowStepClaimActor;
+}
+
+/** Pure ready-frontier projection for an opted-in multi-cursor definition. */
+export interface FlowReadyStepFrontier {
+  schema_version: "1";
+  run_id: string;
+  definition: FlowDefinitionIdentity;
+  run_head: string;
+  ready_steps: Array<{ step_id: string; mutable_resources: string[] }>;
+}
+
+export interface FlowStepClaimDiagnostic extends FlowDiagnostic {
+  code: string;
+}
+
+/** Validation result only; it never writes run state or dispatches host work. */
+export interface FlowActiveStepClaimValidation {
+  valid: boolean;
+  diagnostics: FlowStepClaimDiagnostic[];
+  conflicts: Array<{ claim_id: string; step_id: string; mutable_resources: string[] }>;
 }
 
 export interface FlowConfig extends MutableRecord {

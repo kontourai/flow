@@ -166,6 +166,58 @@ Consumers that securely read canonical bytes themselves can use this public
 root export instead of importing private `dist/` modules or copying only part
 of Flow's validation semantics.
 
+### Multi-cursor resource claims (pure prerequisite)
+
+Definitions that a host may execute with more than one active cursor opt in
+explicitly. Every step then declares the bounded mutable-resource set it may
+change; an empty array is the explicit read-only declaration.
+
+```json
+{
+  "execution": { "mode": "multi-cursor", "claim_contract_version": "1" },
+  "steps": [
+    { "id": "render", "next": null, "mutable_resources": ["dist"] },
+    { "id": "review", "next": null, "mutable_resources": [] }
+  ]
+}
+```
+
+`projectReadyStepFrontier()` derives the Flow-owned ready frontier and binds it
+to the run id, normalized definition id/version/digest, and exact run head.
+`buildActiveStepClaim()` builds a versioned claim for one ready step from a
+caller-supplied claim id, liveness id, and structured actor. Before recording a
+claim, a host can call `validateActiveStepClaim()` with other active claims:
+the result exposes deterministic same-resource conflicts, stale run heads,
+stale definition identities, and no-longer-ready steps. Flow first binds the
+supplied run state's definition id/version and optional legacy-compatible digest
+to the supplied definition. It revalidates every supplied active claim against
+that same identity, run head, and the step's authored resource set before using
+the claim for conflict comparison.
+
+```ts
+import {
+  buildActiveStepClaim,
+  projectReadyStepFrontier,
+  validateActiveStepClaim
+} from "@kontourai/flow";
+
+const frontier = projectReadyStepFrontier(definition, state);
+const claim = buildActiveStepClaim(definition, state, {
+  claim_id: "claim-render-1",
+  liveness_id: "lease-worker-7",
+  step_id: "render",
+  actor: { key: "worker-7", kind: "host" }
+});
+const admission = validateActiveStepClaim(definition, state, claim, activeClaims);
+```
+
+These functions are pure: they do not persist a claim, acquire a host lock,
+dispatch work, infer actor authority, or treat observed writes as scheduling
+authority. Hosts own liveness, durable claim mutation, and execution. Existing
+definitions that omit `execution` remain legacy single-cursor definitions and
+are readable and serial; they are deliberately rejected by the multi-cursor
+claim API until migrated explicitly.
+
 ### Pure trust attachment reducer
 
 `reduceTrustAttachment()` is the separately versioned `1.0.0` reducer for an
