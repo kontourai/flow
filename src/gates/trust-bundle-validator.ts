@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 // Use the 2020 draft validator since Hachure schemas use JSON Schema 2020-12.
 const _require = createRequire(import.meta.url);
 const Ajv = _require("ajv/dist/2020");
+const addFormats = _require("ajv-formats");
 
 // Resolve hachure dir from its main entry (package.json is not exported)
 const hachureDir = dirname(_require.resolve("hachure"));
@@ -37,6 +38,10 @@ function getValidator() {
 
   const hachureSchemas = loadHachureSchemas();
   const ajv = new Ajv({ strict: false, allErrors: true });
+  // Register standard formats (date-time etc.). Without this, Ajv 8 logs
+  // 'unknown format ... ignored' for every format keyword and silently skips
+  // format validation — timestamps in trust bundles went unchecked (#183).
+  addFormats(ajv);
 
   // Add all sub-schemas so $ref can resolve locally
   for (const [filename, schema] of Object.entries(hachureSchemas)) {
