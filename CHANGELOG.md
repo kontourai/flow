@@ -10,6 +10,14 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.9.0](https://github.com/kontourai/flow/compare/v3.8.1...v3.9.0) (2026-07-25)
+
+
+### Features
+
+* add durable multi-cursor execution ([#182](https://github.com/kontourai/flow/issues/182)) ([49ae21d](https://github.com/kontourai/flow/commit/49ae21d4d8c65dc0bbe5096500e634dc7cc05985))
+* define mutable-resource step claims ([#180](https://github.com/kontourai/flow/issues/180)) ([aef6c80](https://github.com/kontourai/flow/commit/aef6c80e00564de2ae8d3b708de1b91554dd95aa))
+
 ## [3.8.1](https://github.com/kontourai/flow/compare/v3.8.0...v3.8.1) (2026-07-24)
 
 
