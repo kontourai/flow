@@ -10,6 +10,13 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.10.0](https://github.com/kontourai/flow/compare/v3.9.0...v3.10.0) (2026-07-25)
+
+
+### Features
+
+* **gates:** validate date-time formats in trust bundles ([#184](https://github.com/kontourai/flow/issues/184)) ([200c586](https://github.com/kontourai/flow/commit/200c5864c239f9915cd6b5df453b0a7b882dcbec)), closes [#183](https://github.com/kontourai/flow/issues/183)
+
 ## [3.9.0](https://github.com/kontourai/flow/compare/v3.8.1...v3.9.0) (2026-07-25)
 
 
