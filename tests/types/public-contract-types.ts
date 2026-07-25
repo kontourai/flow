@@ -1,5 +1,7 @@
 import type {
   FlowConfig,
+  FlowActiveStepClaim,
+  FlowActiveStepClaimRequest,
   FlowConsoleProjection,
   FlowDefinition,
   FlowDiagnostic,
@@ -15,6 +17,24 @@ import type {
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
+
+const activeStepClaimRequest: FlowActiveStepClaimRequest = {
+  claim_id: "claim-render-1",
+  liveness_id: "lease-worker-1",
+  step_id: "render",
+  actor: { key: "worker-1", kind: "host" }
+};
+const activeStepClaim: FlowActiveStepClaim = {
+  schema_version: "1",
+  ...activeStepClaimRequest,
+  run_id: "run-1",
+  definition: { id: "resource-flow", version: "1", digest: "0".repeat(64) },
+  run_head: "1".repeat(64),
+  mutable_resources: ["dist"]
+};
+// @ts-expect-error active claims are versioned at schema version 1.
+const activeStepClaimWrongVersion: FlowActiveStepClaim = { ...activeStepClaim, schema_version: "2" };
+void [activeStepClaim, activeStepClaimRequest, activeStepClaimWrongVersion];
 
 const activeRecoveryFenceWrite: FlowRunRecoveryFenceWrite = {
   protocol: "flow.run-recovery-fence.v1",
@@ -72,6 +92,7 @@ const ingestBadSource: FlowIngestRequest = { ...validIngestRequest, source: "sur
 void [validIngestRequest, ingestBadVersion, ingestBadSource];
 
 const validStep: FlowStep = { id: "verify", next: "publish" };
+const multiCursorStep: FlowStep = { id: "render", next: null, mutable_resources: ["dist"] };
 const validTerminalStep: FlowStep = { id: "publish", next: null };
 
 const validExpectation: FlowExpectation = {
@@ -214,6 +235,7 @@ const configWithOpenTrustMaps: FlowConfig = {
 
 void [
   validDefinition,
+  multiCursorStep,
   gateWithId,
   gateWithRequires,
   gateWithUnknownField,

@@ -33,8 +33,23 @@
         },
         "gates": {
           "$ref": "#/$defs/gates"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["execution"] },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": { "required": ["id", "next", "mutable_resources"] }
+              }
+            }
+          }
+        }
+      ]
     },
     "resource_definition": {
       "type": "object",
@@ -96,8 +111,23 @@
         },
         "gates": {
           "$ref": "#/$defs/gates"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["execution"] },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": { "required": ["id", "next", "mutable_resources"] }
+              }
+            }
+          }
+        }
+      ]
     },
     "resource_string_map": {
       "type": "object",
@@ -151,8 +181,31 @@
           },
           "uniqueItems": true,
           "description": "Explicit predecessor step ids. When present, overrides the implicit predecessor derived from next-chain traversal. Must be acyclic."
+        },
+        "mutable_resources": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/mutable_resource_id" },
+          "description": "Explicit mutable resource ids for multi-cursor claims. Use [] for a read-only step."
         }
       }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["mode", "claim_contract_version"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "const": "multi-cursor" },
+        "claim_contract_version": { "const": "1" }
+      },
+      "description": "Opt-in to the versioned provider-neutral multi-cursor claim contract."
+    },
+    "mutable_resource_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*$",
+      "description": "Unambiguous lowercase identifier or slash-separated identifier segments; traversal, empty, and trailing segments are rejected."
     },
     "gate": {
       "type": "object",

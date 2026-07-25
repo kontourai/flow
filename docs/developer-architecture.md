@@ -92,6 +92,47 @@ flowchart TD
 
 Current implementation: gate evaluation uses the authored Flow Definition, local evidence manifest, accepted exceptions, and `.flow/config.json` for trusted producers and gate overrides. Transition validation checks the current state, proposed transition, gate outcomes, route-back policy, and persisted transition history. It does not inspect Flow Agents sidecars, GitHub boards, hosted providers, or Veritas internals.
 
+## Multi-Cursor Claim Prerequisite
+
+Flow's dependency DAG already projects ready steps. A definition that opts in
+to `execution: { mode: "multi-cursor", claim_contract_version: "1" }` gives
+each step an explicit `mutable_resources` array. The declaration is bounded and
+uses unambiguous lowercase resource identifiers; `[]` is an intentional
+read-only set. A multi-cursor definition missing that declaration fails
+validation. Definitions without the opt-in retain legacy single-cursor
+compatibility.
+
+The public pure API separates four concepts:
+
+- **Declared resources** are authored on a step and are the only resource set a
+  claim may carry.
+- **Ready frontier** is Flow's deterministic projection of DAG-ready steps,
+  bound to run id, definition id/version/digest, and current run head.
+- **Active step claim** is a versioned neutral value carrying that binding plus
+  step id, actor, claim id, liveness id, and declared resources.
+- **Host execution** is outside Flow. A host may use claim validation conflicts
+  to serialize shared resources and run disjoint claims concurrently, but Flow
+  does not dispatch work or infer host liveness.
+
+`validateActiveStepClaim()` compares a candidate with the current frontier and
+the active claims supplied by the caller. It reports stale heads, stale
+definition identities, non-ready steps, duplicate step claims, and overlapping
+mutable resources deterministically. Caller-supplied active claims are
+untrusted inputs: each must match the current run/definition/head and its
+step's declared resource set before conflict comparison. It does not write
+`state.json` or reserve a persisted claim field. The later multi-cursor
+run-state slice must define a non-self-referential claim head domain before it
+adds durable claims, because hashing a claim inside the state it identifies
+would make that claim self-invalidating.
+
+Route-back remains Flow-owned. The claim frontier consumes persisted route-back
+and invalidated-step markers, so a retained pre-route gate outcome cannot make a
+downstream join ready. The rerouted prerequisite must record a later allowed
+completion before the join is claimable. Route-back also changes the run head,
+so a previously built sibling claim fails closed until a host derives a fresh
+frontier. The full #174 slice will own durable claim lifecycle, atomic
+claim/release, sibling settlement, liveness recovery, and console projection.
+
 ## Route-Back Loop Protection
 
 Route-back turns failed evidence into a deterministic recovery path. Flow uses only the failed evidence `route_reason`, the gate's `on_route_back` map, route-back policy, and persisted transitions.

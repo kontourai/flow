@@ -23,7 +23,8 @@ export function normalizeFlowDefinition(definition: any) {
     id: metadata.name,
     version: spec.version,
     steps: spec.steps,
-    gates: spec.gates
+    gates: spec.gates,
+    ...(spec.execution === undefined ? {} : { execution: spec.execution })
   };
 }
 
@@ -34,6 +35,8 @@ function resourcePathForFlatPath(path: string) {
   if (path.startsWith("$.steps[")) return `$.spec${path.slice(1)}`;
   if (path === "$.gates") return "$.spec.gates";
   if (path.startsWith("$.gates.")) return `$.spec${path.slice(1)}`;
+  if (path === "$.execution") return "$.spec.execution";
+  if (path.startsWith("$.execution.")) return `$.spec${path.slice(1)}`;
   return path;
 }
 
@@ -177,6 +180,24 @@ function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
     diagnostics.push(createDiagnostic("definition.gates.required", "$.gates", "definition.gates must be a non-empty object"));
   }
 
+  const multiCursor = definition.execution?.mode === "multi-cursor";
+  if (definition.execution !== undefined) {
+    if (!isObject(definition.execution)) {
+      diagnostics.push(createDiagnostic("definition.execution.invalid", "$.execution", "execution must be an object"));
+    } else {
+      const allowedExecutionFields = new Set(["mode", "claim_contract_version"]);
+      if (Object.keys(definition.execution).some((key) => !allowedExecutionFields.has(key))) {
+        diagnostics.push(createDiagnostic("definition.execution.field.unsupported", "$.execution", "execution contains unsupported fields"));
+      }
+      if (definition.execution.mode !== "multi-cursor") {
+        diagnostics.push(createDiagnostic("definition.execution.mode.unsupported", "$.execution.mode", "execution.mode must be multi-cursor"));
+      }
+      if (definition.execution.claim_contract_version !== "1") {
+        diagnostics.push(createDiagnostic("definition.execution.claim_contract_version.unsupported", "$.execution.claim_contract_version", "execution.claim_contract_version must be 1"));
+      }
+    }
+  }
+
   const stepIds = new Set();
   if (Array.isArray(definition.steps)) {
     definition.steps.forEach((step, index) => {
@@ -191,6 +212,25 @@ function flatDefinitionDiagnostics(definition: any): FlowDiagnostic[] {
         diagnostics.push(createDiagnostic("definition.step.id.duplicate", `${stepPath}.id`, `duplicate step id: ${step.id}`));
       } else {
         stepIds.add(step.id);
+      }
+      if (multiCursor) {
+        if (!Array.isArray(step.mutable_resources)) {
+          diagnostics.push(createDiagnostic("definition.step.mutable_resources.required", `${stepPath}.mutable_resources`, "multi-cursor steps must explicitly declare mutable_resources, including [] for read-only steps"));
+        } else if (step.mutable_resources.length > 32) {
+          diagnostics.push(createDiagnostic("definition.step.mutable_resources.too_many", `${stepPath}.mutable_resources`, "mutable_resources may contain at most 32 resource ids"));
+        } else {
+          const resources = new Set<string>();
+          step.mutable_resources.forEach((resource: unknown, resourceIndex: number) => {
+            const resourcePath = `${stepPath}.mutable_resources[${resourceIndex}]`;
+            if (typeof resource !== "string" || !/^[a-z0-9][a-z0-9._:-]*(?:\/[a-z0-9][a-z0-9._:-]*)*$/u.test(resource) || resource.length > 128) {
+              diagnostics.push(createDiagnostic("definition.step.mutable_resources.invalid", resourcePath, "mutable resource ids must be unambiguous lowercase identifiers or slash-separated identifier segments"));
+            } else if (resources.has(resource)) {
+              diagnostics.push(createDiagnostic("definition.step.mutable_resources.duplicate", resourcePath, `duplicate mutable resource id: ${resource}`));
+            } else {
+              resources.add(resource);
+            }
+          });
+        }
       }
     });
   }

@@ -8,6 +8,9 @@ export type {
   FlowPausedGateContinuationResult,
   ConfigMergeReport,
   FlowConfig,
+  FlowActiveStepClaim,
+  FlowActiveStepClaimRequest,
+  FlowActiveStepClaimValidation,
   FlowDefinitionAmendmentDiagnostic,
   FlowDefinitionAmendmentDiagnosticCode,
   FlowDefinitionAmendmentEvent,
@@ -19,6 +22,7 @@ export type {
   FlowEvidenceEntry,
   FlowEvidenceManifest,
   FlowExpectation,
+  FlowExecutionDeclaration,
   FlowFreshnessGateRecheck,
   FlowGate,
   FlowLifecycleAction,
@@ -36,7 +40,10 @@ export type {
   FlowResumableStatus,
   FlowRunState,
   FlowRunStatus,
+  FlowReadyStepFrontier,
   FlowStep,
+  FlowStepClaimActor,
+  FlowStepClaimDiagnostic,
   GateOutcome,
   JsonObject,
   JsonValue,
@@ -56,6 +63,14 @@ export type {
   VersionReleaseReportGapKind,
   VersionReleaseReportInput
 } from "./contracts/flow-types.js";
+export {
+  FLOW_MUTABLE_RESOURCE_LIMIT,
+  FLOW_STEP_CLAIM_SCHEMA_VERSION,
+  FlowStepClaimError,
+  buildActiveStepClaim,
+  projectReadyStepFrontier,
+  validateActiveStepClaim
+} from "./claims/flow-step-claims.js";
 export {
   assertSafeRunId,
   examplePath,

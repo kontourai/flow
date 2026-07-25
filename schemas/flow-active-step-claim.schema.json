@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-active-step-claim.schema.json",
+  "title": "Flow Active Step Claim",
+  "description": "Versioned provider-neutral active-step claim. It binds a multi-cursor ready step to a run identity, exact run head, definition identity, actor, liveness identity, and declared mutable resources. It is not a host-work dispatch contract.",
+  "type": "object",
+  "required": ["schema_version", "claim_id", "liveness_id", "run_id", "definition", "run_head", "step_id", "actor", "mutable_resources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "claim_id": { "$ref": "#/$defs/identifier" },
+    "liveness_id": { "$ref": "#/$defs/identifier" },
+    "run_id": { "$ref": "#/$defs/run_id" },
+    "definition": { "$ref": "#/$defs/definition_identity" },
+    "run_head": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "step_id": { "$ref": "#/$defs/identifier" },
+    "actor": {
+      "type": "object",
+      "required": ["key"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/identifier" },
+        "kind": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "mutable_resources": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/mutable_resource_id" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\\\u0000]+$",
+      "not": { "enum": [".", ".."] }
+    },
+    "mutable_resource_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*$"
+    },
+    "definition_identity": {
+      "type": "object",
+      "required": ["id", "version", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
