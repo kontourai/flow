@@ -24,7 +24,7 @@ deep/large ledgers stay cheap. Emit freshness transitions as events.
    `now = Date.now()`). Fold Hachure's `expiresAt`/`ttlSeconds` and the new
    invalidation events into status: an expired claim derives `stale`; a revoked
    claim derives `stale`/`rejected`/`superseded` per the status function. Pin
-   behaviour with the new `statusFunctionVersion`. **Back-compat:** a bundle with
+   behavior with the new `statusFunctionVersion`. **Back-compat:** a bundle with
    none of the new fields must derive exactly as today.
 
 2. **`asOf` in the report:** each derived claim should carry the freshness
@@ -62,7 +62,7 @@ confirmed before Flow builds (or *doesn't* build) recursion machinery:
    it on the next `buildTrustReport`?
 
 Why it matters: if rollups span referenced bundles **and** propagate, then the
-"a child run going stale re-surfaces on the parent" behaviour is **Surface's job,
+"a child run going stale re-surfaces on the parent" behavior is **Surface's job,
 not Flow's** — Flow keeps only the process-side cascade
 (`invalidateDescendants`) and deletes any parent-freshness logic from its plate.
 If rollups are intra-bundle only, Flow still owns the cross-bundle *re-resolution*
@@ -113,7 +113,7 @@ bundles):**
    …) are re-emitted each call. `claim-groups.ts` rollups read the live derived
    statuses likewise.
 
-**Answer / behaviour (what is true now after this change):**
+**Answer / behavior (what is true now after this change):**
 - `buildTrustReport(bundle, { now, since })` is time-aware. `statusFunctionVersion`
   bumped `"1" → "2"` and is stamped into the report (`report.statusFunctionVersion`).
 - Claim-intrinsic validity window folded into status: `expiresAt` (canonical) or
@@ -221,7 +221,7 @@ freshness fields (`expiresAt`/`ttlSeconds`/invalidation events) is proven to
 derive identically across two `now` values **decades apart** (deep-equal of all
 derivation outputs, modulo the `asOf` echo and instant-stamped id/generatedAt),
 and to carry no intrinsic expiry and no time-staleness on any claim. This pins
-prior behaviour directly rather than relying only on the indirect
+prior behavior directly rather than relying only on the indirect
 `sf-no-freshness-fields` spec vector.
 
 **Tested:** `npm run build` + `npm test` → **322 node tests pass** (was 316; +6

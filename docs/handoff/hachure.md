@@ -1,7 +1,7 @@
 # Handoff — Hachure: Freshness & Invalidation Schema
 
 **Repo:** `kontourai/hachure` · **Layer:** neutral format contract (no runtime
-behaviour) · **Depends on:** nothing · **Blocks:** Surface, Flow.
+behavior) · **Depends on:** nothing · **Blocks:** Surface, Flow.
 
 ## Context
 
@@ -14,7 +14,7 @@ is **no validity window** and **no explicit invalidation/revocation event** — 
 
 ## Goal
 
-Add the *shape* for time-based freshness and explicit invalidation. Behaviour
+Add the *shape* for time-based freshness and explicit invalidation. Behavior
 (deriving a status from these) is Surface's job, not Hachure's.
 
 ## Changes
@@ -33,10 +33,10 @@ Add the *shape* for time-based freshness and explicit invalidation. Behaviour
    appending a line, not firing a signal.
 
 3. **Bump `schemaVersion`** and a new `statusFunctionVersion` value so derivers
-   pin behaviour. Add conformance test vectors:
+   pin behavior. Add conformance test vectors:
    - a claim past `expiresAt` (expects "no longer fresh"),
    - a claim with a later `revoked` event (expects "invalidated"),
-   - a claim with neither (expects unchanged from current behaviour).
+   - a claim with neither (expects unchanged from current behavior).
 
 ## Acceptance criteria
 
@@ -61,7 +61,7 @@ Add the *shape* for time-based freshness and explicit invalidation. Behaviour
 **Question answered:** what is the concrete field contract for freshness +
 invalidation, and does it stay back-compatible? → Done, fully optional.
 
-**Answer / behaviour:**
+**Answer / behavior:**
 - **Claim validity window (`claim.schema.json`):** added optional `expiresAt`
   (ISO-8601 `date-time`) and optional `ttlSeconds` (`integer ≥ 0`). **Canonical
   precedence: `expiresAt` wins when both are present.** `ttlSeconds` resolves

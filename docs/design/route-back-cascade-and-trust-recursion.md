@@ -233,7 +233,7 @@ consume.
 > but with NO actual check (the existing DFS cycle check guards only the
 > unrelated `needs` step-DAG). `projectRunOutputBundle` now runs
 > `assertEvidenceReferencesAcyclic(bundle, bundlesByEvidenceId)` (in
-> `src/reports/flow-run-bundle.ts`): a three-colour DFS over the reference graph
+> `src/reports/flow-run-bundle.ts`): a three-color DFS over the reference graph
 > that throws `EvidenceReferenceCycleError` if any reference path loops back to
 > the run-output bundle being emitted or revisits a node on the stack. Tested in
 > `tests/node/check-run-output-bundle.test.mjs` (root-back-reference, deep
