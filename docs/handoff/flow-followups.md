@@ -204,7 +204,7 @@ prior "keep bridge vs push kontour.console.event" fork and the original generic
 records and depends on NO console package. Implemented (Task E):
 - **`ConsoleSink` seam** (`src/console/console-sink.ts`): `ConsoleSink` interface
   + `FileConsoleSink` (writes the projection under the run dir — today's
-  local/pull behaviour, DEFAULT) + `HostedConsoleSink` (POSTs the SAME
+  local/pull behavior, DEFAULT) + `HostedConsoleSink` (POSTs the SAME
   `FlowConsoleProjection` payload over HTTP to a configurable console ingest
   endpoint; gated via `createConsoleSink({ mode: "hosted", hosted: { endpoint }
   })`, OFF by default, imports nothing from any console package — it knows only

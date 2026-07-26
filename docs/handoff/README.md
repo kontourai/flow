@@ -46,7 +46,7 @@ thing carrying claims, it's a bundle.* In Flow terms: an evidence entry carries 
 ## Dependency order (do in this order)
 
 1. **`hachure.md`** — schema fields for freshness + invalidation. Pure shape; no
-   behaviour. Everything else keys off these field names + a `statusFunctionVersion`.
+   behavior. Everything else keys off these field names + a `statusFunctionVersion`.
 2. **`surface.md`** — make `buildTrustReport` time-aware and add checkpoint
    derivation; emit freshness transitions. Depends on (1).
 3. **`flow-followups.md`** — Flow re-derives instead of caching; emits a
@@ -92,7 +92,7 @@ open question or ship a change in `hachure`/`surface`/`console`:
 ## Findings — 2026-06-17
 **Repo/PR:** kontourai/surface#123 (sha abc1234)
 **Question answered:** can derived claims span referenced bundles? → YES / NO
-**Answer / behaviour:** <one paragraph of what is actually true now>
+**Answer / behavior:** <one paragraph of what is actually true now>
 **Impact on Flow:** <which flow-followups.md task changes, and how>
 **Follow-up / open:** <anything still blocked, under "Needs decision" if so>
 ```
