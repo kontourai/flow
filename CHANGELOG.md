@@ -14,6 +14,18 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [3.11.0](https://github.com/kontourai/flow/compare/v3.10.0...v3.11.0) (2026-07-28)
+
+
+### Features
+
+* support deferred trust attachment evaluation ([#191](https://github.com/kontourai/flow/issues/191)) ([1e3dcf6](https://github.com/kontourai/flow/commit/1e3dcf6719cef68f22eb855da69b29c6f47919d1))
+
+
+### Documentation
+
+* use US spellings ([#186](https://github.com/kontourai/flow/issues/186)) ([320f617](https://github.com/kontourai/flow/commit/320f617d1d46677891973a0f540dc485b84c3321))
+
 ## [3.10.0](https://github.com/kontourai/flow/compare/v3.9.0...v3.10.0) (2026-07-25)
 
 
