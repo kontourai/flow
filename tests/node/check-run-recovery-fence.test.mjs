@@ -173,6 +173,21 @@ test("active, malformed, and unknown recovery fence states fail closed", async (
   await assert.rejects(() => loadRun(run.runId, cwd), /flow\.run_recovery\.malformed/);
 });
 
+test("active fence publication does not require parseable run artifacts", async () => {
+  const { cwd, run } = await fixture("fence-corrupt-state");
+  await writeFile(path.join(run.dir, "state.json"), "{ corrupt");
+
+  const active = await writeRunRecoveryFence(
+    run.runId,
+    fence(run.runId, "active", "recover-corrupt-state"),
+    cwd
+  );
+
+  assert.equal(active.status, "active");
+  assert.equal(active.fence.recovery_id, "recover-corrupt-state");
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).fence.generation, active.fence.generation);
+});
+
 test("a supported read rejects a fence generation changed during the read", async () => {
   const { cwd, run } = await fixture("read-toctou");
   await activateAndFinalize(run.runId, "recovery-1", cwd);
@@ -244,6 +259,156 @@ test("Flow-generated generations reject open A to active B to open A byte reuse"
   assert.notEqual(last.fence.generation, first.fence.generation);
 });
 
+test("finalization runs the caller assertion under the native ticket and leaves a rejected fence unchanged", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-reject");
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  const fenceFile = flowRunRecoveryFencePath(run.runId, cwd);
+  const activeBytes = await readFile(fenceFile);
+  const sentinel = new Error("protected input changed");
+  let assertions = 0;
+
+  await assert.rejects(
+    () => finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-1",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd, {
+      beforeOpen: async () => {
+        assertions += 1;
+        throw sentinel;
+      }
+    }),
+    (error) => error === sentinel
+  );
+
+  assert.equal(assertions, 1);
+  assert.deepEqual(await readFile(fenceFile), activeBytes);
+  const observed = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(observed.status, "active");
+  assert.equal(observed.fence.generation, active.fence.generation);
+});
+
+test("finalization runs a successful caller assertion before publishing the open successor", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-pass");
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  let assertions = 0;
+
+  const opened = await finalizeRunRecoveryFence(run.runId, {
+    recovery_id: "recovery-1",
+    expected_generation: active.fence.generation,
+    updated_at: "2026-07-23T12:01:00.000Z"
+  }, cwd, {
+    beforeOpen: async () => {
+      assertions += 1;
+      assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).fence.generation, active.fence.generation);
+    }
+  });
+
+  assert.equal(assertions, 1);
+  assert.equal(opened.status, "open");
+  assert.equal(opened.fence.previous_generation, active.fence.generation);
+});
+
+test("an active generation published during finalization survives and rejects the older generation opening", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-next-generation");
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active", "recovery-a"), cwd);
+  let next;
+
+  await assert.rejects(
+    () => finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-a",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd, {
+      beforeOpen: async () => {
+        next = await writeRunRecoveryFence(
+          run.runId,
+          fence(run.runId, "active", "recovery-b"),
+          cwd
+        );
+      }
+    }),
+    /changed during the pre-open assertion/
+  );
+
+  const observed = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(observed.status, "active");
+  assert.equal(observed.fence.recovery_id, "recovery-b");
+  assert.equal(observed.fence.generation, next.fence.generation);
+  assert.notEqual(observed.fence.generation, active.fence.generation);
+});
+
+test("equivalent cwd spellings share the native ticket during finalization", async () => {
+  const { cwd, run } = await fixture("finalize-cwd-alias");
+  const relativeCwd = path.relative(process.cwd(), cwd);
+  const active = await writeRunRecoveryFence(
+    run.runId,
+    fence(run.runId, "active", "recovery-a"),
+    cwd
+  );
+  let next;
+
+  await assert.rejects(
+    () => finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-a",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, relativeCwd, {
+      beforeOpen: async () => {
+        next = await writeRunRecoveryFence(
+          run.runId,
+          fence(run.runId, "active", "recovery-b"),
+          cwd
+        );
+      }
+    }),
+    /changed during the pre-open assertion/
+  );
+
+  const observed = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(observed.status, "active");
+  assert.equal(observed.fence.recovery_id, "recovery-b");
+  assert.equal(observed.fence.generation, next.fence.generation);
+});
+
+test("finalization observes protected-input drift that occurs while waiting for its native ticket", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-queued-drift");
+  const protectedInput = path.join(cwd, "coordinator-owned-input.txt");
+  await writeFile(protectedInput, "authorized");
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  let releaseHolder;
+  const hold = new Promise((resolve) => { releaseHolder = resolve; });
+  let holderAcquired;
+  const acquired = new Promise((resolve) => { holderAcquired = resolve; });
+  const holder = withRunRecoveryLock(run.runId, "recovery-1", cwd, async () => {
+    holderAcquired();
+    await hold;
+  });
+  await acquired;
+
+  const fenceFile = flowRunRecoveryFencePath(run.runId, cwd);
+  const activeBytes = await readFile(fenceFile);
+  const finalization = assert.rejects(
+    finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-1",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd, {
+      beforeOpen: async () => {
+        assert.equal(await readFile(protectedInput, "utf8"), "authorized");
+      }
+    }),
+    /Expected values to be strictly equal/
+  );
+
+  await writeFile(protectedInput, "changed while queued");
+  releaseHolder();
+  await holder;
+  await finalization;
+  assert.deepEqual(await readFile(fenceFile), activeBytes);
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "active");
+});
+
 test("supported reads reject a byte-identical replacement of the fixed run directory", async () => {
   const { cwd, run } = await fixture("read-dir-replacement");
   const parked = `${run.dir}.parked`;
@@ -260,7 +425,7 @@ test("supported reads reject a byte-identical replacement of the fixed run direc
   }
 });
 
-test("a mutation queued before fencing requeues until that exact recovery opens", async () => {
+test("a mutation queued behind fence publication requeues until that exact recovery opens", async () => {
   const { cwd, run } = await fixture("mutation-recheck");
   let releaseFirst;
   const firstHolding = new Promise((resolve) => { releaseFirst = resolve; });
@@ -273,24 +438,25 @@ test("a mutation queued before fencing requeues until that exact recovery opens"
   });
   await acquired;
 
+  const lockRoot = path.join(run.dir, ".mutation.lock");
+  const activePublication = writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const tickets = await readdir(lockRoot);
+    if (tickets.filter((name) => name.startsWith("ticket-")).length === 2) break;
+    if (attempt === 199) assert.fail("active fence publication did not queue");
+    await delay(5);
+  }
+  // Ticket order is timestamp then UUID. Cross the millisecond boundary so the
+  // later ordinary mutation cannot randomly sort ahead on a fast runner.
+  await delay(5);
+
   let secondRan = false;
   const second = withRunMutationLock(run.runId, cwd, async () => {
     secondRan = true;
   });
-  const lockRoot = path.join(run.dir, ".mutation.lock");
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const tickets = await readdir(lockRoot);
-    if (tickets.filter((name) => name.startsWith("ticket-")).length === 2) break;
-    if (attempt === 199) assert.fail("second mutation did not queue before recovery fencing");
-    await delay(5);
-  }
-  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
-  // The earlier ordinary holder may remain active beyond the native five-second
-  // contention timeout after fencing. The already-queued mutation must observe
-  // the fence while it waits rather than being discarded before acquisition.
-  await delay(5_250);
   releaseFirst();
   await first;
+  const active = await activePublication;
 
   assert.equal(secondRan, false);
 
@@ -314,6 +480,83 @@ test("a mutation queued before fencing requeues until that exact recovery opens"
     () => withRunRecoveryLock(run.runId, "wrong-recovery", cwd, async () => undefined),
     /flow\.run_recovery\.coordinator_fence_mismatch/
   );
+});
+
+test("an async descendant cannot reuse a released native mutation ticket", async () => {
+  const { cwd, run } = await fixture("mutation-ticket-context-expired");
+  let releaseDescendant;
+  const descendantGate = new Promise((resolve) => { releaseDescendant = resolve; });
+  let descendant;
+
+  await withRunMutationLock(run.runId, cwd, async () => {
+    descendant = (async () => {
+      await descendantGate;
+      return writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+    })();
+  });
+
+  let releaseHolder;
+  const holderGate = new Promise((resolve) => { releaseHolder = resolve; });
+  let holderAcquired;
+  const acquired = new Promise((resolve) => { holderAcquired = resolve; });
+  const holder = withRunMutationLock(run.runId, cwd, async () => {
+    holderAcquired();
+    await holderGate;
+  });
+  await acquired;
+
+  releaseDescendant();
+  await delay(50);
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "absent");
+
+  releaseHolder();
+  await holder;
+  const active = await descendant;
+  assert.equal(active.status, "active");
+});
+
+test("an async descendant cannot reuse a native mutation ticket once release begins", async () => {
+  const { cwd, run } = await fixture("mutation-ticket-release-window");
+  const lockRoot = path.join(run.dir, ".mutation.lock");
+  let releaseDescendant;
+  const descendantGate = new Promise((resolve) => { releaseDescendant = resolve; });
+  let descendant;
+  let releaseHolder;
+  const holderGate = new Promise((resolve) => { releaseHolder = resolve; });
+  let holderAcquired;
+  const acquired = new Promise((resolve) => { holderAcquired = resolve; });
+  let holder;
+
+  await withRunMutationLock(run.runId, cwd, async () => {
+    descendant = (async () => {
+      await descendantGate;
+      return writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+    })();
+
+    await delay(5);
+    holder = withRunMutationLock(run.runId, cwd, async () => {
+      holderAcquired();
+      await holderGate;
+    });
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const tickets = await readdir(lockRoot);
+      if (tickets.filter((name) => name.startsWith("ticket-")).length === 2) break;
+      if (attempt === 199) assert.fail("second mutation did not queue before release");
+      await delay(5);
+    }
+  }, {
+    afterReleaseQuarantine: async () => {
+      await acquired;
+      releaseDescendant();
+      await delay(50);
+      assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "absent");
+      releaseHolder();
+      await holder;
+    }
+  });
+
+  const active = await descendant;
+  assert.equal(active.status, "active");
 });
 
 test("a mutation callback cannot forge the private recovery retry signal", async () => {

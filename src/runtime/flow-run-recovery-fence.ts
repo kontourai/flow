@@ -13,6 +13,7 @@ import {
 } from "./flow-files.js";
 
 export const FLOW_RUN_RECOVERY_FENCE_PROTOCOL = "flow.run-recovery-fence.v1";
+export const FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN = "flow.run-recovery.finalize-before-open.v1";
 
 export type FlowRunRecoveryFenceStatus = "active" | "open";
 
@@ -65,6 +66,15 @@ export interface RunRecoveryFenceWriteHooks {
   afterTempFsync?: () => Promise<void> | void;
   afterRename?: () => Promise<void> | void;
   afterParentFsync?: () => Promise<void> | void;
+}
+
+/** @internal Public active publication validates before waiting for the native ticket. */
+export function assertActiveRunRecoveryFenceWrite(
+  runId: string,
+  fence: FlowRunRecoveryFenceWrite
+): void {
+  assertSafeRunId(runId);
+  validateFenceFields(fence, runId, { persisted: false, writeStatus: "active" });
 }
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -206,6 +216,15 @@ async function assertCanonicalRunDirectory(
   return { dir: target, identity: directoryIdentity(finalEntry) };
 }
 
+/** @internal Resolves the fixed recovery path without requiring parseable run artifacts. */
+export async function resolveRunRecoveryDirectory(
+  runId: string,
+  cwd = process.cwd()
+): Promise<{ dir: string; identity: FlowRunRecoveryDirectoryIdentity }> {
+  assertSafeRunId(runId);
+  return await assertCanonicalRunDirectory(runId, path.resolve(cwd));
+}
+
 export function flowRunRecoveryFencePath(runId: string, cwd = process.cwd()) {
   return path.join(runDir(assertSafeRunId(runId), path.resolve(cwd)), FLOW_RUN_RECOVERY_FENCE_FILE);
 }
@@ -291,7 +310,8 @@ export async function inspectRunRecoveryFence(
   }
 }
 
-export async function writeRunRecoveryFence(
+/** @internal Active publication is called only through flow-run-store's native ticket. */
+export async function publishActiveRunRecoveryFence(
   runId: string,
   fence: FlowRunRecoveryFenceWrite,
   cwd = process.cwd(),

@@ -111,12 +111,12 @@ export {
   writeJson
 } from "./runtime/flow-files.js";
 export {
+  FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN,
   FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
   assertRunRecoveryFenceOpen,
   flowRunRecoveryFencePath,
   inspectRunRecoveryFence,
-  withRunRecoveryFenceRead,
-  writeRunRecoveryFence
+  withRunRecoveryFenceRead
 } from "./runtime/flow-run-recovery-fence.js";
 export type {
   FlowRunRecoveryFence,
@@ -270,13 +270,17 @@ export {
   releaseStepClaim,
   renewStepClaim,
   reopenMultiCursorStep,
-  validateRunStateConsistency
+  validateRunStateConsistency,
+  writeRunRecoveryFence
 } from "./runtime/flow-run-store.js";
 export {
   withRunMutationLock,
   withRunRecoveryLock
 } from "./runtime/flow-run-store.js";
-export type { RunMutationLockHooks } from "./runtime/flow-run-store.js";
+export type {
+  FlowRunRecoveryFenceFinalizeHooks,
+  RunMutationLockHooks
+} from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,
   renderMarkdownReport,
