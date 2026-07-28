@@ -216,6 +216,15 @@ async function assertCanonicalRunDirectory(
   return { dir: target, identity: directoryIdentity(finalEntry) };
 }
 
+/** @internal Resolves the fixed recovery path without requiring parseable run artifacts. */
+export async function resolveRunRecoveryDirectory(
+  runId: string,
+  cwd = process.cwd()
+): Promise<{ dir: string; identity: FlowRunRecoveryDirectoryIdentity }> {
+  assertSafeRunId(runId);
+  return await assertCanonicalRunDirectory(runId, path.resolve(cwd));
+}
+
 export function flowRunRecoveryFencePath(runId: string, cwd = process.cwd()) {
   return path.join(runDir(assertSafeRunId(runId), path.resolve(cwd)), FLOW_RUN_RECOVERY_FENCE_FILE);
 }
