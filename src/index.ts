@@ -116,8 +116,7 @@ export {
   assertRunRecoveryFenceOpen,
   flowRunRecoveryFencePath,
   inspectRunRecoveryFence,
-  withRunRecoveryFenceRead,
-  writeRunRecoveryFence
+  withRunRecoveryFenceRead
 } from "./runtime/flow-run-recovery-fence.js";
 export type {
   FlowRunRecoveryFence,
@@ -271,7 +270,8 @@ export {
   releaseStepClaim,
   renewStepClaim,
   reopenMultiCursorStep,
-  validateRunStateConsistency
+  validateRunStateConsistency,
+  writeRunRecoveryFence
 } from "./runtime/flow-run-store.js";
 export {
   withRunMutationLock,

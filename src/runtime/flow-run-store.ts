@@ -3,6 +3,7 @@ import { constants, existsSync } from "node:fs";
 import { readFile, readdir, lstat, open, writeFile, mkdir, rename, rm, link } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -75,9 +76,14 @@ import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./fl
 import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type TrustAttachmentReducerDependencies } from "./trust-attachment-reducer.js";
 import {
   assertRunRecoveryFenceOpen,
+  assertActiveRunRecoveryFenceWrite,
   inspectRunRecoveryFence,
+  publishActiveRunRecoveryFence,
   publishOpenRunRecoveryFence,
+  type FlowRunRecoveryFenceSnapshot,
   type FlowRunRecoveryFenceFinalizeRequest,
+  type FlowRunRecoveryFenceWrite,
+  type RunRecoveryFenceWriteHooks,
   withRunRecoveryFenceRead
 } from "./flow-run-recovery-fence.js";
 
@@ -127,6 +133,7 @@ type RunLocation = {
 
 const resolvedRunContexts = new WeakMap<object, { cwd: string }>();
 const activeMutationLockTokens = new Set<string>();
+const activeRunMutationTicket = new AsyncLocalStorage<{ token: string; run_id: string; run_dir: string }>();
 const RETRY_MUTATION_AFTER_RECOVERY = Symbol("retry-mutation-after-recovery");
 
 function flowRunsRoot(cwd = process.cwd()) {
@@ -1369,7 +1376,10 @@ async function withRunMutationLockCheck<T>(
     ticketPath = ticket.ticketPath;
     await awaitMutationTicket(lockRoot, ticket.ticketName, ticket.ticketPath, owner, recoveryWait);
     await afterAcquire();
-    return await operation();
+    return await activeRunMutationTicket.run(
+      { token, run_id: runId, run_dir: location.dir },
+      operation
+    );
   } catch (error) {
     activeMutationLockTokens.delete(token);
     if (ticketPath) {
@@ -1465,6 +1475,34 @@ export async function withRunMutationLock<T>(
       await delay(10);
     }
   }
+}
+
+/**
+ * Sole supported active-fence publication. Active generations share Flow's
+ * native mutation ticket with recovery finalization so neither can overwrite
+ * a generation published by the other.
+ */
+export async function writeRunRecoveryFence(
+  runId: string,
+  fence: FlowRunRecoveryFenceWrite,
+  cwd = process.cwd(),
+  hooks: RunRecoveryFenceWriteHooks = {}
+): Promise<FlowRunRecoveryFenceSnapshot> {
+  assertActiveRunRecoveryFenceWrite(runId, fence);
+  const heldTicket = activeRunMutationTicket.getStore();
+  if (heldTicket?.run_id === runId && activeMutationLockTokens.has(heldTicket.token)) {
+    const location = await resolveRunLocation(runId, cwd);
+    if (location.dir === heldTicket.run_dir) {
+      return publishActiveRunRecoveryFence(runId, fence, cwd, hooks);
+    }
+  }
+  return withRunMutationLockCheck(
+    runId,
+    cwd,
+    () => publishActiveRunRecoveryFence(runId, fence, cwd, hooks),
+    {},
+    async () => {}
+  );
 }
 
 /**
@@ -1603,6 +1641,19 @@ export async function finalizeRunRecoveryFence(
   const activeBefore = before;
   return withRunMutationLockCheck(runId, cwd, async () => {
     await hooks.beforeOpen?.();
+    const afterAssertion = await inspectRunRecoveryFence(runId, cwd);
+    if (
+      !matchesExpectedActive(afterAssertion) ||
+      afterAssertion.status !== "active" ||
+      afterAssertion.fingerprint !== activeBefore.fingerprint ||
+      afterAssertion.directory.device !== activeBefore.directory.device ||
+      afterAssertion.directory.inode !== activeBefore.directory.inode
+    ) {
+      throw runLocationError(
+        "flow.run_recovery.coordinator_fence_mismatch",
+        `active recovery fence "${request.recovery_id}" changed during the pre-open assertion`
+      );
+    }
     const opened = await publishOpenRunRecoveryFence(runId, {
       protocol: activeBefore.fence.protocol,
       run_id: runId,

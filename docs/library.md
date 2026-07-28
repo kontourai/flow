@@ -107,7 +107,11 @@ transition: it acquires Flow's native mutation ticket, verifies the exact
 expected active generation again, runs the optional coordinator-owned
 `beforeOpen` assertion under that same ticket, durably publishes `open` with
 that predecessor link, and only then releases the ticket. If the assertion
-throws, the active fence remains unchanged.
+throws, the active fence remains unchanged. Active publication uses the same
+ticket, and a same-ticket replacement during the assertion makes the stale
+finalizer reject. Callers validating external inputs must keep their own
+mutation guard held across the complete finalizer call when those inputs have
+writers outside Flow's native ticket.
 
 Absence and a stable `open` record allow supported access. `active`, malformed,
 or unknown records fail closed. Exact bytes, generation, and directory identity

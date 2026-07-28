@@ -64,9 +64,10 @@ coordinator's provider, backup format, or recovery algorithm.
   current projection under its native mutation ticket rather than persisting a
   possibly stale caller projection.
 
-The exported active-only fence writer atomically replaces only
-`recovery-fence.json`. Recovery coordinators own authorization, durability,
-and postimages.
+The exported active-only fence writer publishes under Flow's native per-run
+mutation ticket and atomically replaces only `recovery-fence.json`. Active and
+open publication therefore cannot overwrite one another across processes.
+Recovery coordinators own authorization, durability, and postimages.
 `withRunRecoveryLock()` is the recovery-only entry to Flow's native mutation
 ticket: it requires the exact active `recovery_id` both before waiting and after
 the ticket is held, then verifies the same active generation again after the
@@ -77,8 +78,13 @@ and run-directory identity after acquisition, runs an optional caller-owned
 `beforeOpen` assertion while still holding that ticket, durably publishes a
 fresh open generation linked to that active predecessor, and then releases it.
 The assertion is the provider-neutral boundary for coordinator-owned external
-invariants; Flow does not interpret those invariants. If it throws, the active
-fence remains byte-identical. A direct
+invariants; Flow does not interpret those invariants. The coordinator must keep
+its own mutation guard held across the complete finalizer call when those
+external invariants have writers outside Flow's native ticket. Unsupported raw
+filesystem writes are not made atomic by the callback. Flow rechecks the exact
+active fence after the assertion, so a same-ticket active replacement rejects
+the stale finalization and survives. If the assertion throws, the active fence
+remains byte-identical. A direct
 writer cannot publish `open` in the same process or a different process.
 Ordinary `withRunMutationLock()` calls that begin while a fence is already
 active remain closed. A call that entered while the fence was open but reached

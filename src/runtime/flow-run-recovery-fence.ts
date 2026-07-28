@@ -68,6 +68,15 @@ export interface RunRecoveryFenceWriteHooks {
   afterParentFsync?: () => Promise<void> | void;
 }
 
+/** @internal Public active publication validates before waiting for the native ticket. */
+export function assertActiveRunRecoveryFenceWrite(
+  runId: string,
+  fence: FlowRunRecoveryFenceWrite
+): void {
+  assertSafeRunId(runId);
+  validateFenceFields(fence, runId, { persisted: false, writeStatus: "active" });
+}
+
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_RECOVERY_FENCE_BYTES = 64 * 1024;
 
@@ -292,7 +301,8 @@ export async function inspectRunRecoveryFence(
   }
 }
 
-export async function writeRunRecoveryFence(
+/** @internal Active publication is called only through flow-run-store's native ticket. */
+export async function publishActiveRunRecoveryFence(
   runId: string,
   fence: FlowRunRecoveryFenceWrite,
   cwd = process.cwd(),

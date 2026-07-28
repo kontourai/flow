@@ -1,3 +1,6 @@
+import {
+  finalizeRunRecoveryFence
+} from "../../src/index.js";
 import type {
   FlowConfig,
   FlowActiveStepClaim,
@@ -10,6 +13,7 @@ import type {
   FlowGate,
   FlowIngestRequest,
   FlowRunRecoveryFence,
+  FlowRunRecoveryFenceFinalizeHooks,
   FlowRunRecoveryFenceFinalizeRequest,
   FlowRunRecoveryFenceWrite,
   FlowRunRecoveryFenceSnapshot,
@@ -58,6 +62,17 @@ const recoveryFenceFinalizeRequest: FlowRunRecoveryFenceFinalizeRequest = {
   expected_generation: activeRecoveryFence.generation,
   updated_at: "2026-07-23T12:01:00.000Z"
 };
+const recoveryFenceFinalizeHooks: FlowRunRecoveryFenceFinalizeHooks = {
+  beforeOpen: async () => {}
+};
+const recoveryFenceFinalization = finalizeRunRecoveryFence(
+  "run-1",
+  recoveryFenceFinalizeRequest,
+  "/tmp/flow-contract",
+  recoveryFenceFinalizeHooks
+);
+// @ts-expect-error beforeOpen must be callable.
+const invalidRecoveryFenceFinalizeHooks: FlowRunRecoveryFenceFinalizeHooks = { beforeOpen: "invalid" };
 // @ts-expect-error recovery fence states are closed to active/open.
 const unknownRecoveryFence: FlowRunRecoveryFenceWrite = { ...activeRecoveryFenceWrite, status: "future" };
 // @ts-expect-error generic recovery fence writes can only publish active.
@@ -68,6 +83,9 @@ void [
   activeRecoveryFence,
   recoveryFenceSnapshot,
   recoveryFenceFinalizeRequest,
+  recoveryFenceFinalizeHooks,
+  recoveryFenceFinalization,
+  invalidRecoveryFenceFinalizeHooks,
   unknownRecoveryFence,
   openRecoveryFenceWrite
 ];
