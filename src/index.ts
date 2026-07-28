@@ -111,6 +111,7 @@ export {
   writeJson
 } from "./runtime/flow-files.js";
 export {
+  FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN,
   FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
   assertRunRecoveryFenceOpen,
   flowRunRecoveryFencePath,
@@ -276,7 +277,10 @@ export {
   withRunMutationLock,
   withRunRecoveryLock
 } from "./runtime/flow-run-store.js";
-export type { RunMutationLockHooks } from "./runtime/flow-run-store.js";
+export type {
+  FlowRunRecoveryFenceFinalizeHooks,
+  RunMutationLockHooks
+} from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,
   renderMarkdownReport,

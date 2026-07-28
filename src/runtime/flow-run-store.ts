@@ -1019,6 +1019,10 @@ export type RunMutationLockHooks = {
   afterReleaseQuarantine?: (releasedPath: string) => Promise<void> | void;
 };
 
+export type FlowRunRecoveryFenceFinalizeHooks = {
+  beforeOpen?: () => Promise<void> | void;
+};
+
 type MutationLockOwner = {
   token: string;
   pid: number;
@@ -1548,8 +1552,19 @@ export async function withRunRecoveryLock<T>(
 export async function finalizeRunRecoveryFence(
   runId: string,
   request: FlowRunRecoveryFenceFinalizeRequest,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  hooks: FlowRunRecoveryFenceFinalizeHooks = {}
 ) {
+  if (
+    !hooks ||
+    typeof hooks !== "object" ||
+    (hooks.beforeOpen !== undefined && typeof hooks.beforeOpen !== "function")
+  ) {
+    throw runLocationError(
+      "flow.run_recovery.finalize_malformed",
+      `run "${runId}" recovery finalization hooks are malformed`
+    );
+  }
   const requestKeys = request && typeof request === "object"
     ? Object.keys(request as unknown as Record<string, unknown>).sort()
     : [];
@@ -1587,6 +1602,7 @@ export async function finalizeRunRecoveryFence(
   }
   const activeBefore = before;
   return withRunMutationLockCheck(runId, cwd, async () => {
+    await hooks.beforeOpen?.();
     const opened = await publishOpenRunRecoveryFence(runId, {
       protocol: activeBefore.fence.protocol,
       run_id: runId,

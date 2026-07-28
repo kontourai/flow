@@ -73,9 +73,12 @@ the ticket is held, then verifies the same active generation again after the
 callback and before ticket release. `finalizeRunRecoveryFence()` is the sole
 supported `active` to `open` transition. It obtains a new native mutation
 ticket, verifies the caller's exact expected active generation, fingerprint,
-and run-directory identity after acquisition, durably publishes a fresh open
-generation linked to that active predecessor while still holding that ticket,
-and then releases it. A direct
+and run-directory identity after acquisition, runs an optional caller-owned
+`beforeOpen` assertion while still holding that ticket, durably publishes a
+fresh open generation linked to that active predecessor, and then releases it.
+The assertion is the provider-neutral boundary for coordinator-owned external
+invariants; Flow does not interpret those invariants. If it throws, the active
+fence remains byte-identical. A direct
 writer cannot publish `open` in the same process or a different process.
 Ordinary `withRunMutationLock()` calls that begin while a fence is already
 active remain closed. A call that entered while the fence was open but reached

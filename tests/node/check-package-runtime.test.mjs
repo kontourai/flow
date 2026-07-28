@@ -40,6 +40,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "FLOW_RUN_LAYOUT",
     "FLOW_RUN_RECOVERY_FENCE_FILE",
     "FLOW_RUN_RECOVERY_FENCE_PROTOCOL",
+    "FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN",
     "FLOW_RUN_REPORT_JSON_FILE",
     "FLOW_RUN_REPORT_MARKDOWN_FILE",
     "FLOW_RUN_STATE_FILE",

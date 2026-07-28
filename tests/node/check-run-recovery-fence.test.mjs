@@ -244,6 +244,73 @@ test("Flow-generated generations reject open A to active B to open A byte reuse"
   assert.notEqual(last.fence.generation, first.fence.generation);
 });
 
+test("finalization runs the caller assertion under the native ticket and leaves a rejected fence unchanged", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-reject");
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  const fenceFile = flowRunRecoveryFencePath(run.runId, cwd);
+  const activeBytes = await readFile(fenceFile);
+  const sentinel = new Error("protected input changed");
+  let assertions = 0;
+
+  await assert.rejects(
+    () => finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-1",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd, {
+      beforeOpen: async () => {
+        assertions += 1;
+        throw sentinel;
+      }
+    }),
+    (error) => error === sentinel
+  );
+
+  assert.equal(assertions, 1);
+  assert.deepEqual(await readFile(fenceFile), activeBytes);
+  const observed = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(observed.status, "active");
+  assert.equal(observed.fence.generation, active.fence.generation);
+});
+
+test("finalization observes protected-input drift that occurs while waiting for its native ticket", async () => {
+  const { cwd, run } = await fixture("finalize-before-open-queued-drift");
+  const protectedInput = path.join(cwd, "coordinator-owned-input.txt");
+  await writeFile(protectedInput, "authorized");
+  let releaseHolder;
+  const hold = new Promise((resolve) => { releaseHolder = resolve; });
+  let holderAcquired;
+  const acquired = new Promise((resolve) => { holderAcquired = resolve; });
+  const holder = withRunMutationLock(run.runId, cwd, async () => {
+    holderAcquired();
+    await hold;
+  });
+  await acquired;
+
+  const active = await writeRunRecoveryFence(run.runId, fence(run.runId, "active"), cwd);
+  const fenceFile = flowRunRecoveryFencePath(run.runId, cwd);
+  const activeBytes = await readFile(fenceFile);
+  const finalization = assert.rejects(
+    finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-1",
+      expected_generation: active.fence.generation,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd, {
+      beforeOpen: async () => {
+        assert.equal(await readFile(protectedInput, "utf8"), "authorized");
+      }
+    }),
+    /Expected values to be strictly equal/
+  );
+
+  await writeFile(protectedInput, "changed while queued");
+  releaseHolder();
+  await holder;
+  await finalization;
+  assert.deepEqual(await readFile(fenceFile), activeBytes);
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "active");
+});
+
 test("supported reads reject a byte-identical replacement of the fixed run directory", async () => {
   const { cwd, run } = await fixture("read-dir-replacement");
   const parked = `${run.dir}.parked`;

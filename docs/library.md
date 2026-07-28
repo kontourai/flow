@@ -49,12 +49,15 @@ provider behavior to Flow:
 
 ```ts
 import {
+  FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN,
   FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
   finalizeRunRecoveryFence,
   inspectRunRecoveryFence,
   withRunRecoveryLock,
   writeRunRecoveryFence
 } from "@kontourai/flow";
+
+console.log(FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN);
 
 const activeFence = await writeRunRecoveryFence("dev-1847", {
   protocol: FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
@@ -79,7 +82,11 @@ await finalizeRunRecoveryFence("dev-1847", {
   recovery_id: "recovery-01",
   expected_generation: activeFence.fence.generation,
   updated_at: new Date().toISOString()
-}, process.cwd());
+}, process.cwd(), {
+  beforeOpen: async () => {
+    // Revalidate coordinator-owned protected inputs under Flow's native ticket.
+  }
+});
 
 console.log(await inspectRunRecoveryFence("dev-1847", process.cwd()));
 ```
@@ -97,8 +104,10 @@ older writer at the ordinary contention deadline first binds any active
 recovery; ordinary contention is not otherwise extended.
 `finalizeRunRecoveryFence()` is the sole supported `active` → `open`
 transition: it acquires Flow's native mutation ticket, verifies the exact
-expected active generation again, durably publishes `open` with that predecessor
-link, and only then releases the ticket.
+expected active generation again, runs the optional coordinator-owned
+`beforeOpen` assertion under that same ticket, durably publishes `open` with
+that predecessor link, and only then releases the ticket. If the assertion
+throws, the active fence remains unchanged.
 
 Absence and a stable `open` record allow supported access. `active`, malformed,
 or unknown records fail closed. Exact bytes, generation, and directory identity

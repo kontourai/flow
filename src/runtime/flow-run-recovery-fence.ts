@@ -13,6 +13,7 @@ import {
 } from "./flow-files.js";
 
 export const FLOW_RUN_RECOVERY_FENCE_PROTOCOL = "flow.run-recovery-fence.v1";
+export const FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN = "flow.run-recovery.finalize-before-open.v1";
 
 export type FlowRunRecoveryFenceStatus = "active" | "open";
 
