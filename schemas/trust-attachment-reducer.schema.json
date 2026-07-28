@@ -5,7 +5,7 @@
   "description": "The separately versioned, side-effect-free trust attachment reducer result. A coordinator supplies all time, identifiers, source metadata, and versioned Hachure/Surface dependencies, then owns writes described by write.artifacts.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["identity", "evidence", "next_manifest", "next_state", "evaluation", "result", "report", "write"],
+  "required": ["identity", "evaluation_mode", "evidence", "next_manifest", "next_state", "evaluation", "result", "report", "write"],
   "properties": {
     "identity": {
       "type": "object",
@@ -23,15 +23,16 @@
         "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
       }
     },
+    "evaluation_mode": { "enum": ["evaluate", "attach-only"] },
     "evidence": { "type": "object" },
     "next_manifest": { "type": "object" },
     "next_state": { "type": "object" },
-    "evaluation": { "type": "object" },
+    "evaluation": { "type": ["object", "null"] },
     "result": {
       "type": "object",
       "additionalProperties": false,
       "required": ["evidence", "evaluation", "state"],
-      "properties": { "evidence": { "type": "object" }, "evaluation": { "type": "object" }, "state": { "type": "object" } }
+      "properties": { "evidence": { "type": "object" }, "evaluation": { "type": ["object", "null"] }, "state": { "type": "object" } }
     },
     "report": {
       "type": "object",
@@ -47,7 +48,7 @@
         "intent": { "const": "replace" },
         "artifacts": {
           "type": "array",
-          "minItems": 4,
+          "minItems": 3,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -60,5 +61,53 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "evaluation_mode": { "const": "attach-only" } } },
+      "then": {
+        "properties": {
+          "evaluation": { "type": "null" },
+          "result": { "properties": { "evaluation": { "type": "null" } } },
+          "write": {
+            "properties": {
+              "artifacts": {
+                "minItems": 3,
+                "maxItems": 3,
+                "allOf": [
+                  { "contains": { "properties": { "path": { "const": "evidence/manifest.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "properties": { "path": { "const": "report.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "properties": { "path": { "const": "report.md" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 }
+                ],
+                "not": { "contains": { "properties": { "path": { "const": "state.json" } }, "required": ["path"] } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "evaluation_mode": { "const": "evaluate" } } },
+      "then": {
+        "properties": {
+          "evaluation": { "type": "object" },
+          "result": { "properties": { "evaluation": { "type": "object" } } },
+          "write": {
+            "properties": {
+              "artifacts": {
+                "minItems": 4,
+                "maxItems": 4,
+                "allOf": [
+                  { "contains": { "properties": { "path": { "const": "evidence/manifest.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "properties": { "path": { "const": "state.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "properties": { "path": { "const": "report.json" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "properties": { "path": { "const": "report.md" } }, "required": ["path"] }, "minContains": 1, "maxContains": 1 }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

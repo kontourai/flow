@@ -226,6 +226,7 @@ export {
 } from "./runtime/trust-attachment-reducer.js";
 export { FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES } from "./runtime/flow-run-store.js";
 export type {
+  TrustAttachmentEvaluationMode,
   TrustAttachmentReducerDependencies,
   TrustAttachmentReducerIdentity,
   TrustAttachmentReducerInput,

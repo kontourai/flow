@@ -26,7 +26,8 @@ const definition = {
         description: "Review acceptance is attached.",
         bundle_claim: { claimType: "quality.review", subjectType: "flow-step", subjectId: "verify", accepted_statuses: ["verified"] }
       }],
-      on_route_back: { implementation_defect: "verify", default: "verify" }
+      on_route_back: { implementation_defect: "verify", missing_evidence: "verify", default: "verify" },
+      route_back_policy: { max_attempts: 3, on_exceeded: "block" }
     }
   }
 };
@@ -68,7 +69,8 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.0.0");
+  assert.equal(result.identity.version, "1.1.0");
+  assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.12.0" });
   assert.match(result.identity.hash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(result.evidence.kind, "trust.bundle");
@@ -77,6 +79,61 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(result.result.evidence.id, result.evidence.id);
   assert.equal(result.next_state.status, "completed");
   assert.deepEqual(result.write.artifacts.map((entry) => entry.path), ["evidence/manifest.json", "state.json", "report.json", "report.md"]);
+});
+
+test("attach-only synchronization preserves state and route-back budget across supersession", async () => {
+  const run = runInput();
+  const beforeState = structuredClone(run.state);
+  const first = reduceTrustAttachment({
+    run,
+    bundle: bundle({ id: "claim.unrelated.1" }),
+    attachment: attachment("ev.unrelated.1"),
+    evaluation_mode: "attach-only",
+    now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+
+  assert.equal(first.evaluation, null);
+  assert.equal(first.result.evaluation, null);
+  assert.deepEqual(first.next_state, beforeState);
+  assert.deepEqual(first.write.artifacts.map((entry) => entry.path), ["evidence/manifest.json", "report.json", "report.md"]);
+
+  const second = reduceTrustAttachment({
+    run: { ...run, state: first.next_state, manifest: first.next_manifest },
+    bundle: bundle({ id: "claim.unrelated.2" }),
+    attachment: attachment("ev.unrelated.2", { supersede: "ev.unrelated.1" }),
+    evaluation_mode: "attach-only",
+    now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+
+  assert.deepEqual(second.next_state, beforeState);
+  assert.deepEqual(second.next_state.transitions, []);
+  assert.equal(second.next_manifest.evidence[0].superseded_by, "ev.unrelated.2");
+
+  const evaluated = reduceTrustAttachment({
+    run: { ...run, state: second.next_state, manifest: second.next_manifest },
+    bundle: bundle({ id: "claim.review.final" }),
+    attachment: attachment("ev.review.final", { supersede: "ev.unrelated.2" }),
+    now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+
+  assert.equal(evaluated.evaluation_mode, "evaluate");
+  assert.equal(evaluated.evaluation.status, "pass");
+  assert.equal(evaluated.next_state.status, "completed");
+  assert.equal(evaluated.next_state.transitions.some((entry) => entry.type === "route_back"), false);
+
+  const schema = await import("node:fs/promises").then(({ readFile }) => readFile(new URL("../../schemas/trust-attachment-reducer.schema.json", import.meta.url), "utf8"));
+  const validate = new Ajv({ strict: false, allErrors: true }).compile(JSON.parse(schema));
+  assert.equal(validate(second), true, JSON.stringify(validate.errors));
+  assert.equal(validate(evaluated), true, JSON.stringify(validate.errors));
+  const duplicateManifestWrites = structuredClone(second);
+  duplicateManifestWrites.write.artifacts = duplicateManifestWrites.write.artifacts.map((entry) => ({
+    ...entry,
+    path: "evidence/manifest.json"
+  }));
+  assert.equal(validate(duplicateManifestWrites), false, "schema must reject duplicate artifact paths");
 });
 
 test("trust attachment reducer preserves attachEvidence supersession semantics for repaired critique", () => {
@@ -102,7 +159,15 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
     dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
   assert.equal(stale.evidence.bundle_report.claims[0].status, "stale");
-  assert.equal(stale.evaluation.status, "block");
+  assert.equal(stale.evaluation.status, "route-back");
+  assert.equal(stale.evaluation.attempt, 1);
+  assert.throws(
+    () => reduceTrustAttachment({
+      run, bundle: bundle(), attachment: attachment("ev.bad-mode"), evaluation_mode: "later",
+      now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+    }),
+    /unsupported trust attachment evaluation mode/
+  );
 });
 
 test("trust attachment reducer matches the canonical attachEvidence manifest projection", async () => {

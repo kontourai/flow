@@ -267,13 +267,19 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.0.0` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.1.0` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
 adapters. It returns the next manifest/state, derived report, evaluation result,
 and a complete descriptive write set. It never reads files, uses ambient time,
 or performs network/process operations.
+
+The default `evaluate` mode preserves the atomic attach-and-evaluate behavior.
+Use `evaluation_mode: "attach-only"` for provenance refreshes, critique
+supersession, and other authority-only synchronization. That mode validates and
+attaches the bundle, derives reports, and deliberately leaves run state and
+route-back accounting unchanged; its write set therefore omits `state.json`.
 
 The reducer does not embed Hachure schema or Surface trust semantics. A caller
 supplies the `hachure@0.15.0` schema validator and `@kontourai/surface@2.12.0`
