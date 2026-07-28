@@ -398,6 +398,9 @@ test("a mutation queued behind fence publication requeues until that exact recov
     if (attempt === 199) assert.fail("active fence publication did not queue");
     await delay(5);
   }
+  // Ticket order is timestamp then UUID. Cross the millisecond boundary so the
+  // later ordinary mutation cannot randomly sort ahead on a fast runner.
+  await delay(5);
 
   let secondRan = false;
   const second = withRunMutationLock(run.runId, cwd, async () => {
