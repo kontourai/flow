@@ -8,8 +8,9 @@ import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.0.0";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.1.0";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
+export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
 export interface TrustAttachmentReducerDependencies {
   hachure: {
@@ -46,6 +47,7 @@ export interface TrustAttachmentReducerInput {
     attached_at: string;
     supersede?: string | string[];
   };
+  evaluation_mode?: TrustAttachmentEvaluationMode;
   now: string;
   dependencies: TrustAttachmentReducerDependencies;
 }
@@ -57,11 +59,12 @@ export interface TrustAttachmentReducerWrite {
 
 export interface TrustAttachmentReducerResult {
   identity: TrustAttachmentReducerIdentity;
+  evaluation_mode: TrustAttachmentEvaluationMode;
   evidence: FlowEvidenceEntry;
   next_manifest: MutableRecord;
   next_state: MutableRecord;
-  evaluation: MutableRecord;
-  result: { evidence: FlowEvidenceEntry; evaluation: MutableRecord; state: MutableRecord };
+  evaluation: MutableRecord | null;
+  result: { evidence: FlowEvidenceEntry; evaluation: MutableRecord | null; state: MutableRecord };
   report: { json: MutableRecord; markdown: string };
   write: { intent: "replace"; artifacts: TrustAttachmentReducerWrite[] };
 }
@@ -153,6 +156,8 @@ function attachmentMetadata(attachment: MutableRecord): MutableRecord {
  */
 export function reduceTrustAttachment(input: TrustAttachmentReducerInput): TrustAttachmentReducerResult {
   const { run, attachment, dependencies } = input;
+  const evaluationMode = input.evaluation_mode ?? "evaluate";
+  if (!["evaluate", "attach-only"].includes(evaluationMode)) throw new Error(`unsupported trust attachment evaluation mode: ${String(evaluationMode)}`);
   if (!findGate(run.definition, attachment.gate_id)) throw new Error(`unknown gate: ${attachment.gate_id}`);
   const now = new Date(input.now);
   if (!Number.isFinite(now.getTime())) throw new Error("now must be a valid RFC3339 date-time");
@@ -165,14 +170,17 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
   const { next_manifest } = reduceTrustAttachmentManifest(run.manifest, evidence, attachment.supersede);
 
   const next_state = structuredClone(run.state) as MutableRecord;
-  const evaluation = evaluateGate(run.definition, next_state, next_manifest, attachment.gate_id, run.config ?? defaultFlowConfig());
-  applyEvaluation(run.definition, next_state, evaluation, input.now);
+  const evaluation = evaluationMode === "evaluate"
+    ? evaluateGate(run.definition, next_state, next_manifest, attachment.gate_id, run.config ?? defaultFlowConfig())
+    : null;
+  if (evaluation) applyEvaluation(run.definition, next_state, evaluation, input.now);
   const report = {
     json: reportJson(run.definition, next_state, next_manifest),
     markdown: renderMarkdownReport(run.definition, next_state, next_manifest)
   };
   return {
     identity: trustAttachmentReducerIdentity(dependencies),
+    evaluation_mode: evaluationMode,
     evidence,
     next_manifest,
     next_state,
@@ -183,7 +191,7 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
       intent: "replace",
       artifacts: [
         { path: "evidence/manifest.json", value: next_manifest },
-        { path: "state.json", value: next_state },
+        ...(evaluationMode === "evaluate" ? [{ path: "state.json" as const, value: next_state }] : []),
         { path: "report.json", value: report.json },
         { path: "report.md", value: report.markdown }
       ]
