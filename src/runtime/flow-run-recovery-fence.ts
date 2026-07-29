@@ -25,13 +25,25 @@ export interface FlowRunRecoveryFenceWrite {
   updated_at: string;
 }
 
+export interface FlowRunRecoveryFenceBoundWrite extends FlowRunRecoveryFenceWrite {
+  /**
+   * Coordinator-chosen identity bound by an authority boundary before
+   * delegation. Flow validates and atomically publishes this exact value.
+   */
+  expected_generation: string;
+}
+
 export interface FlowRunRecoveryFence {
   protocol: typeof FLOW_RUN_RECOVERY_FENCE_PROTOCOL;
   run_id: string;
   recovery_id: string;
   status: FlowRunRecoveryFenceStatus;
   updated_at: string;
-  /** Flow-generated identity; callers cannot reuse or choose it. */
+  /**
+   * Correlation identity. Ordinary writes generate it in Flow; the explicit
+   * coordinator writer publishes a pre-bound value. Coordinators own external
+   * authorization, durable binding, and non-reuse across logical recoveries.
+   */
   generation: string;
   /** Active generation finalized by this open successor. Absent only on legacy open records. */
   previous_generation?: string;
@@ -84,6 +96,19 @@ function recoveryFenceError(code: string, message: string): Error {
   const error = new Error(`${code}: ${message}`);
   (error as Error & { code?: string }).code = code;
   return error;
+}
+
+/** @internal Coordinator-bound publication requires a caller-owned generation. */
+export function assertExpectedRunRecoveryFenceGeneration(
+  runId: string,
+  expectedGeneration: unknown
+): asserts expectedGeneration is string {
+  if (typeof expectedGeneration !== "string" || !UUID_V4.test(expectedGeneration)) {
+    throw recoveryFenceError(
+      "flow.run_recovery.malformed",
+      `run "${runId}" expected recovery generation must be a canonical UUID v4`
+    );
+  }
 }
 
 function isMissingPathError(error: unknown) {
@@ -315,9 +340,11 @@ export async function publishActiveRunRecoveryFence(
   runId: string,
   fence: FlowRunRecoveryFenceWrite,
   cwd = process.cwd(),
-  hooks: RunRecoveryFenceWriteHooks = {}
+  hooks: RunRecoveryFenceWriteHooks = {},
+  expectedGeneration?: string
 ): Promise<FlowRunRecoveryFenceSnapshot> {
-  return publishRunRecoveryFence(runId, fence, cwd, hooks, "active");
+  if (expectedGeneration !== undefined) assertExpectedRunRecoveryFenceGeneration(runId, expectedGeneration);
+  return publishRunRecoveryFence(runId, fence, cwd, hooks, "active", expectedGeneration);
 }
 
 /** @internal Open publication is called only while flow-run-store holds the native ticket. */
@@ -335,7 +362,8 @@ async function publishRunRecoveryFence(
   fence: Omit<FlowRunRecoveryFence, "generation">,
   cwd: string,
   hooks: RunRecoveryFenceWriteHooks,
-  writeStatus: "active" | "open"
+  writeStatus: "active" | "open",
+  expectedGeneration?: string
 ): Promise<FlowRunRecoveryFenceSnapshot> {
   assertSafeRunId(runId);
   const resolvedCwd = path.resolve(cwd);
@@ -343,7 +371,7 @@ async function publishRunRecoveryFence(
   const resolved = await assertCanonicalRunDirectory(runId, resolvedCwd);
   const record: FlowRunRecoveryFence = {
     ...validated,
-    generation: randomUUID()
+    generation: expectedGeneration ?? randomUUID()
   };
   const target = path.join(resolved.dir, FLOW_RUN_RECOVERY_FENCE_FILE);
   const temporary = path.join(resolved.dir, `.${FLOW_RUN_RECOVERY_FENCE_FILE}.${randomUUID()}.tmp`);

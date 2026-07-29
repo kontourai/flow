@@ -77,6 +77,7 @@ import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type Tru
 import {
   assertRunRecoveryFenceOpen,
   assertActiveRunRecoveryFenceWrite,
+  assertExpectedRunRecoveryFenceGeneration,
   inspectRunRecoveryFence,
   publishActiveRunRecoveryFence,
   publishOpenRunRecoveryFence,
@@ -84,6 +85,7 @@ import {
   type FlowRunRecoveryFenceSnapshot,
   type FlowRunRecoveryFenceFinalizeRequest,
   type FlowRunRecoveryFenceWrite,
+  type FlowRunRecoveryFenceBoundWrite,
   type RunRecoveryFenceWriteHooks,
   withRunRecoveryFenceRead
 } from "./flow-run-recovery-fence.js";
@@ -1500,6 +1502,32 @@ export async function writeRunRecoveryFence(
   hooks: RunRecoveryFenceWriteHooks = {}
 ): Promise<FlowRunRecoveryFenceSnapshot> {
   assertActiveRunRecoveryFenceWrite(runId, fence);
+  return writeRunRecoveryFenceGeneration(runId, fence, cwd, hooks);
+}
+
+/**
+ * Coordinator-facing active publication. The caller owns authorization and
+ * must durably bind the expected generation before delegating this write.
+ */
+export async function writeRunRecoveryFenceWithExpectedGeneration(
+  runId: string,
+  fence: FlowRunRecoveryFenceBoundWrite,
+  cwd = process.cwd(),
+  hooks: RunRecoveryFenceWriteHooks = {}
+): Promise<FlowRunRecoveryFenceSnapshot> {
+  const { expected_generation: expectedGeneration, ...activeFence } = fence;
+  assertExpectedRunRecoveryFenceGeneration(runId, expectedGeneration);
+  assertActiveRunRecoveryFenceWrite(runId, activeFence);
+  return writeRunRecoveryFenceGeneration(runId, activeFence, cwd, hooks, expectedGeneration);
+}
+
+async function writeRunRecoveryFenceGeneration(
+  runId: string,
+  fence: FlowRunRecoveryFenceWrite,
+  cwd: string,
+  hooks: RunRecoveryFenceWriteHooks,
+  expectedGeneration?: string
+): Promise<FlowRunRecoveryFenceSnapshot> {
   const recoveryLocation = await resolveRunRecoveryDirectory(runId, cwd);
   const heldTicket = activeRunMutationTicket.getStore();
   if (heldTicket?.run_id === runId && activeMutationLockTokens.has(heldTicket.token)) {
@@ -1507,13 +1535,13 @@ export async function writeRunRecoveryFence(
       recoveryLocation.identity.device === heldTicket.directory.device
       && recoveryLocation.identity.inode === heldTicket.directory.inode
     ) {
-      return publishActiveRunRecoveryFence(runId, fence, cwd, hooks);
+      return publishActiveRunRecoveryFence(runId, fence, cwd, hooks, expectedGeneration);
     }
   }
   return withRunMutationLockCheck(
     runId,
     cwd,
-    () => publishActiveRunRecoveryFence(runId, fence, cwd, hooks),
+    () => publishActiveRunRecoveryFence(runId, fence, cwd, hooks, expectedGeneration),
     {},
     async () => {
       const afterAcquire = await resolveRunRecoveryDirectory(runId, cwd);

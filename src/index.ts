@@ -122,6 +122,7 @@ export type {
   FlowRunRecoveryFence,
   FlowRunRecoveryFenceFinalizeRequest,
   FlowRunRecoveryFenceWrite,
+  FlowRunRecoveryFenceBoundWrite,
   FlowRunRecoveryDirectoryIdentity,
   FlowRunRecoveryFenceSnapshot,
   FlowRunRecoveryFenceStatus,
@@ -271,7 +272,8 @@ export {
   renewStepClaim,
   reopenMultiCursorStep,
   validateRunStateConsistency,
-  writeRunRecoveryFence
+  writeRunRecoveryFence,
+  writeRunRecoveryFenceWithExpectedGeneration
 } from "./runtime/flow-run-store.js";
 export {
   withRunMutationLock,

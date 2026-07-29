@@ -1,5 +1,6 @@
 import {
-  finalizeRunRecoveryFence
+  finalizeRunRecoveryFence,
+  writeRunRecoveryFenceWithExpectedGeneration
 } from "../../src/index.js";
 import type {
   FlowConfig,
@@ -13,6 +14,7 @@ import type {
   FlowGate,
   FlowIngestRequest,
   FlowRunRecoveryFence,
+  FlowRunRecoveryFenceBoundWrite,
   FlowRunRecoveryFenceFinalizeHooks,
   FlowRunRecoveryFenceFinalizeRequest,
   FlowRunRecoveryFenceWrite,
@@ -51,6 +53,15 @@ const activeRecoveryFence: FlowRunRecoveryFence = {
   ...activeRecoveryFenceWrite,
   generation: "8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f"
 };
+const boundRecoveryFenceWrite: FlowRunRecoveryFenceBoundWrite = {
+  ...activeRecoveryFenceWrite,
+  expected_generation: "8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f"
+};
+const boundRecoveryFencePublication = writeRunRecoveryFenceWithExpectedGeneration(
+  "run-1",
+  boundRecoveryFenceWrite,
+  "/tmp/flow-contract"
+);
 const recoveryFenceSnapshot: FlowRunRecoveryFenceSnapshot = {
   status: "active",
   fence: activeRecoveryFence,
@@ -80,6 +91,8 @@ const openRecoveryFenceWrite: FlowRunRecoveryFenceWrite = { ...activeRecoveryFen
 
 void [
   activeRecoveryFenceWrite,
+  boundRecoveryFenceWrite,
+  boundRecoveryFencePublication,
   activeRecoveryFence,
   recoveryFenceSnapshot,
   recoveryFenceFinalizeRequest,
