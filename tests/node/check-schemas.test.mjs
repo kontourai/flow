@@ -132,6 +132,10 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(configSchema.$defs.trusted_producers.propertyNames.$ref, "#/$defs/safe_map_key");
   assert.equal(configSchema.$defs.gate_overrides.propertyNames.$ref, "#/$defs/safe_map_key");
   assert.equal(configSchema.$defs.gate_override.properties.expectations.propertyNames.$ref, "#/$defs/safe_map_key");
+  assert.ok(configSchema.$defs.trusted_producer_mapping.properties.authority_refs);
+  assert.equal(configSchema.$defs.trusted_producer_mapping.properties.authority_traces, undefined);
+  assert.ok(configSchema.$defs.expectation_override.properties.authority_refs);
+  assert.equal(configSchema.$defs.expectation_override.properties.authority_traces, undefined);
   assert.equal(configMergeReportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(configMergeReportSchema.properties.merged_config.$ref, "flow-config.schema.json#/$defs/flat_config");
   assert.equal(transitionValidationRequestSchema.title, "Flow Transition Validation Request");

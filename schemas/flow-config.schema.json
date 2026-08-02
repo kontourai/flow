@@ -80,7 +80,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "authority_traces": {
+        "authority_refs": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
@@ -114,7 +114,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "authority_traces": {
+        "authority_refs": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true

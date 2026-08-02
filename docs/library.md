@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.2.0` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.3.0` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -303,10 +303,10 @@ needs a stable reducer contract. The identity hash binds the reducer API version
 and dependency versions, while package integrity binds the artifact bytes.
 
 `attachEvidence()` accepts the typed `FlowEvidenceAttachmentOptions` contract.
-Use `authorityTrace` for the compatible one-value form, or `authorityTraces`
-for multiple authority references; Flow persists the first as `authority_trace`
-and the full list as `authority_traces`. Unknown option keys and malformed
-trace lists reject before evidence I/O.
+It deliberately has no authority-string option: authority policy reads only the
+validated rich `bundle.authorityTrace` records, at the explicit evaluation
+instant supplied by the runtime or pure reducer. Historical manifest
+`authority_trace(s)` fields remain display-only and have zero trust weight.
 
 ### Authorized definition amendment
 

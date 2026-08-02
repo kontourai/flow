@@ -147,7 +147,7 @@ test("config merge accepts conflicting authority only with explicit exception re
   assert.equal(report.exceptions[0].reason, "project owner accepted kit authority update");
   assert.equal(report.exceptions[0].authority, "owner@example.com");
   assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].producers, ["ci/kit"]);
-  assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].authority_traces, ["github:kit"]);
+  assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].authority_refs, ["github:kit"]);
   assert.ok(report.conflicts.every((change) => !change.path.startsWith("$.trusted_producers.quality.tests")));
 });
 
@@ -229,4 +229,20 @@ test("config merge rejects malformed producer mappings before preview or publica
     /ENOENT/,
     "malformed proposal must not create a config file"
   );
+
+  const legacy = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.tests": { authority_traces: ["legacy:opaque"] } },
+    gate_overrides: {}
+  };
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), legacy),
+    /authority_traces is removed; migrate its authority references to authority_refs/
+  );
+  await writeFile(path.join(existing, "legacy-proposal.json"), `${JSON.stringify(legacy, null, 2)}\n`);
+  await assert.rejects(
+    () => applyFlowConfigMerge(existing, "legacy-proposal.json"),
+    /authority_traces is removed; migrate its authority references to authority_refs/
+  );
+  assert.equal(await readFile(existingPath, "utf8"), original, "legacy authority authoring must not rewrite config");
 });

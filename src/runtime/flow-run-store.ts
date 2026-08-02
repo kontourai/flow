@@ -975,7 +975,7 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     if (!gates.length) throw new FlowMultiCursorError("flow.multi_cursor.gate.required", `claimed step ${claim.step_id} has no gate to evaluate`);
     const outcomes: GateOutcome[] = [];
     for (const gateId of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config, now);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -2065,7 +2065,7 @@ async function preflightRunMutationLifecycle(runId: string, cwd: string, operati
 
 const ATTACH_EVIDENCE_OPTION_KEYS = new Set([
   "cwd", "gate", "file", "kind", "bundle", "trustArtifact", "expectedRunHead", "expectedSha256", "status", "supersede",
-  "producer", "authorityTrace", "authorityTraces", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"
+  "producer", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"
 ]);
 
 function attachmentOptionString(options: any, key: string, required = false) {
@@ -2096,8 +2096,8 @@ function validateEvidenceAttachmentOptions(options: unknown): FlowEvidenceAttach
   }
   attachmentOptionString(candidate, "gate", true);
   attachmentOptionString(candidate, "file", true);
-  for (const key of ["cwd", "kind", "expectedRunHead", "expectedSha256", "status", "producer", "authorityTrace", "route_reason"]) attachmentOptionString(candidate, key);
-  for (const key of ["authorityTraces", "expectation_ids"]) attachmentOptionStrings(candidate, key);
+  for (const key of ["cwd", "kind", "expectedRunHead", "expectedSha256", "status", "producer", "route_reason"]) attachmentOptionString(candidate, key);
+  for (const key of ["expectation_ids"]) attachmentOptionStrings(candidate, key);
   for (const key of ["bundle", "trustArtifact"]) {
     if (candidate[key] !== undefined && typeof candidate[key] !== "boolean") throw new Error(`flow.attach_evidence.options.invalid: ${key} must be a boolean`);
   }
@@ -2251,11 +2251,6 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
     evidence.bundle_report = normalizedBundle.bundle_report;
   }
   if (options.producer) evidence.producer = options.producer;
-  if (options.authorityTrace) evidence.authority_trace = options.authorityTrace;
-  if (options.authorityTraces) {
-    evidence.authority_traces = [...options.authorityTraces];
-    evidence.authority_trace ??= evidence.authority_traces[0];
-  }
   if (options.route_reason) evidence.route_reason = options.route_reason;
   if (options.expectation_ids) evidence.expectation_ids = options.expectation_ids;
   if (options.classifier) evidence.classifier = options.classifier;
@@ -2292,7 +2287,7 @@ function blockingFreshnessRechecks(definition: any, currentStep: string, recheck
 }
 
 function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, state: FlowRunState, manifest: MutableRecord, request: ReturnType<typeof pausedGateContinuationRequest>) {
-  const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config);
+  const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config, request.now);
   const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now.toISOString());
   if (validation.status === "invalid") throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
   outcome.transition_validation = validation;
@@ -2560,7 +2555,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!rechecks?.length) continue;
     const gate = findGate(run.definition, gateId);
     if (!gate || !descendantsOf(run.definition, gate.step).includes(run.state.current_step)) continue;
-    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, now);
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
@@ -2598,7 +2593,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
     if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], now.toISOString());
     for (const gate of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, now);
       if (options.gate) assertOffCurrentOutcomeCannotAdvance(run.definition, run.state, gate, outcome);
       // No synthesised cursor: the jump guard in `validateRunTransition` sees
       // the run's real state and can fire for the case it exists to catch.
@@ -2619,8 +2614,10 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
 
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
+  const now = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(now.getTime())) throw new Error("flow.evaluate.now.invalid: now must be a valid date-time");
   await preflightRunMutationLifecycle(runId, cwd, "evaluate");
-  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd }));
+  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd, now: now.toISOString() }));
 }
 
 async function acceptExceptionUnlocked(runId, options) {

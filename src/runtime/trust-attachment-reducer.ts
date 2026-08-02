@@ -8,7 +8,7 @@ import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.2.0";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.0";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -171,7 +171,7 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
 
   const next_state = structuredClone(run.state) as MutableRecord;
   const evaluation = evaluationMode === "evaluate"
-    ? evaluateGate(run.definition, next_state, next_manifest, attachment.gate_id, run.config ?? defaultFlowConfig())
+    ? evaluateGate(run.definition, next_state, next_manifest, attachment.gate_id, run.config ?? defaultFlowConfig(), now)
     : null;
   if (evaluation) applyEvaluation(run.definition, next_state, evaluation, input.now);
   const report = {

@@ -32,7 +32,7 @@ const definition = {
   }
 };
 
-function bundle({ id = "claim.review", expiresAt } = {}) {
+function bundle({ id = "claim.review", expiresAt, producerId, authorityTrace } = {}) {
   return {
     schemaVersion: 7, source: "test/reducer",
     claims: [{
@@ -42,7 +42,9 @@ function bundle({ id = "claim.review", expiresAt } = {}) {
       ...(expiresAt ? { expiresAt } : {})
     }],
     evidence: [], policies: [],
-    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: [], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }]
+    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: [], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }],
+    ...(producerId ? { producerId } : {}),
+    ...(authorityTrace ? { authorityTrace } : {})
   };
 }
 
@@ -59,6 +61,20 @@ function attachment(id = "ev.reducer.1", overrides = {}) {
   return { id, gate_id: "verify-gate", attached_at: NOW, original_path: "review.json", stored_path: `evidence/${id}.json`, sha256: "a".repeat(64), ...overrides };
 }
 
+function reviewAuthorityTrace(overrides = {}) {
+  return {
+    id: "trace.review",
+    subject: { subjectType: "flow-step", subjectId: "verify" },
+    actorRef: "test/reviewer",
+    authorityType: "role",
+    authorityRef: "authority:review",
+    sourceRef: "policy:review",
+    observedAt: "2026-07-19T15:30:00.000Z",
+    claimIds: ["claim.review"],
+    ...overrides
+  };
+}
+
 test("trust attachment reducer is pure, versioned, schema-valid, and returns the full write intent", async () => {
   const run = runInput();
   const before = structuredClone(run);
@@ -69,7 +85,7 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.2.0");
+  assert.equal(result.identity.version, "1.3.0");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   assert.match(result.identity.hash, /^sha256:[a-f0-9]{64}$/);
@@ -170,16 +186,16 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
   );
 });
 
-test("trust attachment reducer enforces producer pins and preserves authority traces like the canonical evaluator", () => {
+test("trust attachment reducer enforces validated producer identity and gives opaque authority metadata zero trust weight", () => {
   const trustedConfig = {
     schema_version: FLOW_SCHEMA_VERSION,
-    trusted_producers: { "quality.review": { producers: ["review/trusted"], authority_traces: ["authority:review"] } },
+    trusted_producers: { "quality.review": { producers: ["review/trusted"] } },
     gate_overrides: {}
   };
   const trustedRun = runInput();
   trustedRun.config = trustedConfig;
   const trusted = reduceTrustAttachment({
-    run: trustedRun, bundle: bundle(), attachment: attachment("ev.trusted", { producer: "review/trusted" }), now: NOW,
+    run: trustedRun, bundle: bundle({ producerId: "review/trusted" }), attachment: attachment("ev.trusted", { producer: "review/trusted" }), now: NOW,
     dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
   assert.equal(trusted.evaluation.status, "pass");
@@ -193,13 +209,22 @@ test("trust attachment reducer enforces producer pins and preserves authority tr
     assert.equal(rejected.evaluation.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
   }
 
+  const authorityOnlyConfig = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } }, gate_overrides: {} };
   const authority = reduceTrustAttachment({
-    run: trustedRun, bundle: bundle({ id: "claim.authority" }), attachment: attachment("ev.authority", {
+    run: { ...trustedRun, config: authorityOnlyConfig }, bundle: bundle({ id: "claim.authority" }), attachment: attachment("ev.authority", {
       authority_trace: "authority:review", authority_traces: ["authority:other", "authority:review"]
     }), now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
-  assert.equal(authority.evaluation.status, "pass");
+  assert.equal(authority.evaluation.status, "route-back");
+  assert.deepEqual(authority.evaluation.diagnostics.claim_evaluation[0].authority, { code: "no_trace" });
   assert.deepEqual(authority.evidence.authority_traces, ["authority:other", "authority:review"]);
+
+  const richAuthority = reduceTrustAttachment({
+    run: { ...trustedRun, config: authorityOnlyConfig },
+    bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }), attachment: attachment("ev.rich-authority"), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(richAuthority.evaluation.status, "pass");
 
   const malformedRun = runInput();
   malformedRun.config = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { producers: "review/trusted" } }, gate_overrides: {} };
@@ -220,15 +245,13 @@ test("trust attachment reducer matches the canonical attachEvidence manifest pro
   before.state = started.state;
   before.manifest.run_id = started.state.run_id;
   const attached = await attachEvidence(started.runId, {
-    cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle",
-    authorityTraces: ["authority:one", "authority:two"]
+    cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle"
   });
   const reduced = reduceTrustAttachment({
     run: before, bundle: bundle(), now: attached.attached_at,
     attachment: attachment(attached.id, {
       status: attached.status, attached_at: attached.attached_at, original_path: attached.original_path,
-      stored_path: attached.stored_path, sha256: attached.sha256,
-      authority_trace: attached.authority_trace, authority_traces: attached.authority_traces
+      stored_path: attached.stored_path, sha256: attached.sha256
     }), dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
   assert.deepEqual(

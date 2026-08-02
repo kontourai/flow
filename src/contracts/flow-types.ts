@@ -87,7 +87,9 @@ export interface FlowEvidenceEntry extends MutableRecord {
    */
   inquiry_records?: MutableRecord[];
   producer?: string;
+  /** Legacy display-only metadata. Never used to authorize a gate. */
   authority_trace?: string;
+  /** Legacy display-only metadata. Never used to authorize a gate. */
   authority_traces?: string[];
   route_reason?: string;
   expectation_ids?: string[];
@@ -114,10 +116,6 @@ export interface FlowEvidenceAttachmentOptions {
   status?: string;
   supersede?: string | string[];
   producer?: string;
-  /** Legacy one-value convenience form; persisted as `authority_trace`. */
-  authorityTrace?: string;
-  /** Repeatable authority references; the first also becomes `authority_trace`. */
-  authorityTraces?: string[];
   route_reason?: string;
   expectation_ids?: string[];
   classifier?: MutableRecord;

@@ -193,13 +193,13 @@ const evidenceEntryWithOpenBundle: FlowEvidenceEntry = {
 
 const attachmentOptions: FlowEvidenceAttachmentOptions = {
   gate: "verify-gate",
-  file: "evidence.json",
-  authorityTraces: ["authority:one", "authority:two"]
+  file: "evidence.json"
 };
 const pausedContinuationEvidence: FlowPausedGateContinuationEvidence = {
-  file: "evidence.json",
-  authorityTraces: ["authority:one", "authority:two"]
+  file: "evidence.json"
 };
+// @ts-expect-error opaque authority metadata is not an attachment option.
+const attachmentOptionsWithAuthorityTrace: FlowEvidenceAttachmentOptions = { gate: "verify-gate", file: "evidence.json", authorityTraces: ["authority:one"] };
 // @ts-expect-error paused continuation evidence cannot supply an enclosing gate.
 const pausedContinuationEvidenceWithGate: FlowPausedGateContinuationEvidence = { file: "evidence.json", gate: "verify-gate" };
 // @ts-expect-error paused continuation evidence rejects unknown fields.
@@ -281,6 +281,7 @@ void [
   stepWithUnknownField,
   stepWithoutNext,
   attachmentOptions,
+  attachmentOptionsWithAuthorityTrace,
   pausedContinuationEvidence,
   pausedContinuationEvidenceWithGate,
   pausedContinuationEvidenceWithUnknownField,

@@ -84,6 +84,11 @@ flow config apply ./platform-flow-config.json \
   --authority 'platform-lead'
 ```
 
+Producer pins use the bundle's stable `producerId`. When a platform needs an
+authority alternative, its config names `authority_refs` and the producing
+bundle carries an active, subject- and actor-bound rich authority trace; copied
+attachment strings cannot substitute for that evidence.
+
 When a service launches without a passing capacity check, that is an `accept-exception` with a reason and an authority — visible in every report, instead of a forgotten thread.
 
 **What they get:** golden paths that are enforced by evidence rather than memory, org-wide config distribution without silently overwriting project authority, and exceptions that are attributable instead of invisible. See [Project Config](project-config.md).

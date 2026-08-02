@@ -24,6 +24,14 @@ Flow owns these primitives:
 
 Flow does not run agents, dispatch work, replace CI, own repo governance, own Surface trust semantics, or call hosted services as part of v0.1 gate evaluation.
 
+For configured producer policy, Flow consumes Surface/Hachure's validated
+bundle facts rather than inventing an authority representation: `producerId`
+is the direct producer identity and `authorityTrace` records are checked one at
+a time against their `authorityRef`, exact claim subject, claim/evidence scope,
+actor, and active validity at the operation's explicit evaluation instant.
+Opaque manifest `authority_trace(s)` values are retained only for historical
+display and never authorize a gate.
+
 ## Definition amendment boundary
 
 The run's `definition.json` and evidence manifest identify the immutable start

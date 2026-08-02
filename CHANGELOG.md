@@ -5,9 +5,11 @@
 ### Features
 
 * Add an `attach-only` trust attachment reducer mode for provenance synchronization that must not evaluate a gate, mutate run state, or consume route-back budget.
-* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.2.0.
+* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.3.0 and evaluates rich Surface authority traces at the supplied instant.
 
 ### ⚠ BREAKING CHANGES
+
+* Project config `authority_traces`, attachment `authorityTrace(s)`, and CLI `--authority-trace` are removed. Migrate policy values to `authority_refs` and put the matching active, scoped rich `authorityTrace` records in the attached trust bundle; persisted opaque fields are display-only and cannot authorize a gate.
 
 * New Flow Run writes now use `.kontourai/flow/runs/<run-id>/`, and `flow init --demo` writes disposable evidence under `.kontourai/flow/demo/`. The public `runDir()` helper now returns the canonical run path; this is a semver-major API change. `flowRoot()` and `flowConfigPath()` continue to identify durable authored `.flow/` state, and `flowRuntimeRoot()` identifies the generated runtime root.
 

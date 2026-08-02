@@ -68,8 +68,8 @@
           }
         },
         "producer": { "type": "string" },
-        "authority_trace": { "type": "string" },
-        "authority_traces": { "type": "array", "items": { "type": "string" } },
+        "authority_trace": { "type": "string", "description": "Legacy display-only metadata; never used for gate authorization." },
+        "authority_traces": { "type": "array", "items": { "type": "string" }, "description": "Legacy display-only metadata; never used for gate authorization." },
         "route_reason": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]*$"

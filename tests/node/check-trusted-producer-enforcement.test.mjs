@@ -17,10 +17,32 @@ const configFor = (overrides = {}) => ({
   ...overrides
 });
 
-async function passingFixture(producer, authorityTrace) {
+async function passingFixture(producer) {
   const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
-  if (producer !== undefined) manifest.evidence[0].producer = producer;
-  if (authorityTrace !== undefined) manifest.evidence[0].authority_trace = authorityTrace;
+  if (producer !== undefined) {
+    manifest.evidence[0].producer = producer;
+    manifest.evidence[0].bundle.producerId = producer;
+  }
+  return manifest;
+}
+
+function authorityTrace(overrides = {}) {
+  return {
+    id: "trace.quality",
+    subject: { subjectType: "flow-step", subjectId: "builder.verify" },
+    actorRef: "ci/main",
+    authorityType: "system",
+    authorityRef: "authority:quality",
+    sourceRef: "policy:quality",
+    observedAt: "2026-06-15T00:00:00.000Z",
+    claimIds: ["claim.quality.tests.verify"],
+    ...overrides
+  };
+}
+
+async function authorityFixture(trace = authorityTrace()) {
+  const manifest = await passingFixture();
+  manifest.evidence[0].bundle.authorityTrace = [trace];
   return manifest;
 }
 
@@ -57,6 +79,12 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
   assert.equal(trusted.status, "pass");
   assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report" }]);
   assert.equal(trusted.diagnostics, undefined);
+
+  const mismatchedAssertion = await passingFixture("ci/trusted");
+  mismatchedAssertion.evidence[0].producer = "ci/untrusted";
+  const mismatch = flow.evaluateGate(definition, structuredClone(state), mismatchedAssertion, "verify-gate", config);
+  assert.equal(mismatch.status, "route-back");
+  assert.deepEqual(claimDiagnostic(mismatch)?.authority, { code: "producer_mismatch" });
 });
 
 test("producer policy rejects malformed config and treats explicitly empty lists as deny-all", async () => {
@@ -65,16 +93,19 @@ test("producer policy rejects malformed config and treats explicitly empty lists
   const malformedConfigs = [
     configFor({ trusted_producers: { "quality.tests": { producers: "ci/trusted" } } }),
     configFor({ trusted_producers: { "quality.tests": { producers: ["ci/trusted", 42] } } }),
-    configFor({ trusted_producers: { "quality.tests": { authority_traces: {} } } })
+    configFor({ trusted_producers: { "quality.tests": { authority_refs: {} } } }),
+    configFor({ trusted_producers: { "quality.tests": { authority_traces: ["legacy"] } } })
   ];
-  for (const config of malformedConfigs) {
+  for (const [index, config] of malformedConfigs.entries()) {
     assert.throws(
       () => flow.evaluateGate(definition, structuredClone(state), validManifest, "verify-gate", config),
-      /flow config does not satisfy flow-config\.schema\.json/
+      index === malformedConfigs.length - 1
+        ? /authority_traces is removed; migrate its authority references to authority_refs/
+        : /flow config does not satisfy flow-config\.schema\.json/
     );
   }
 
-  for (const mapping of [{ producers: [] }, { authority_traces: [] }, { producers: [], authority_traces: [] }]) {
+  for (const mapping of [{ producers: [] }, { authority_refs: [] }, { producers: [], authority_refs: [] }]) {
     const outcome = flow.evaluateGate(definition, structuredClone(state), validManifest, "verify-gate", configFor({
       trusted_producers: { "quality.tests": mapping }
     }));
@@ -94,30 +125,68 @@ test("loadFlowConfig validates normalized authored config before evaluation", as
   await assert.rejects(() => flow.loadFlowConfig(cwd), /flow config does not satisfy flow-config\.schema\.json/);
 });
 
-test("expectation-level producer and authority-trace pins apply through the same evaluator", async () => {
+test("active, scoped embedded AuthorityTrace is the only authority path", async () => {
   const { definition, state } = await gateState("expectation-pins");
-  const config = configFor({
-    gate_overrides: {
-      "verify-gate": {
-        expectations: {
-          "tests-passed": {
-            trusted_producers: ["ci/expectation"],
-            authority_traces: ["authority:quality"]
-          }
-        }
-      }
-    }
+  const config = configFor({ trusted_producers: { "quality.tests": { authority_refs: ["authority:quality"] } } });
+  const now = new Date("2026-06-16T00:00:00.000Z");
+  const active = flow.evaluateGate(definition, structuredClone(state), await authorityFixture(), "verify-gate", config, now);
+  assert.equal(active.status, "pass");
+
+  const opaque = await passingFixture();
+  opaque.evidence[0].authority_trace = "authority:quality";
+  opaque.evidence[0].authority_traces = ["authority:quality"];
+  const rejectedOpaque = flow.evaluateGate(definition, structuredClone(state), opaque, "verify-gate", config, now);
+  assert.equal(rejectedOpaque.status, "route-back", "the opaque metadata shortcut passed at 0bee but has zero trust weight now");
+  assert.deepEqual(claimDiagnostic(rejectedOpaque)?.authority, { code: "no_trace" });
+
+  for (const [label, trace, expected] of [
+    ["future", authorityTrace({ validFrom: "2026-06-17T00:00:00.000Z" }), "not_yet_valid"],
+    ["expired", authorityTrace({ validUntil: "2026-06-15T00:00:00.000Z" }), "expired"],
+    ["revoked", authorityTrace({ revokedAt: "2026-06-15T00:00:00.000Z" }), "revoked"],
+    ["wrong-ref", authorityTrace({ authorityRef: "authority:other" }), "authority_ref_mismatch"],
+    ["wrong-actor", authorityTrace({ actorRef: "ci/other" }), "actor_mismatch"],
+    ["wrong-subject", authorityTrace({ subject: { subjectType: "work-item", subjectId: "other" } }), "subject_mismatch"],
+    ["unlinked", authorityTrace({ claimIds: undefined }), "scope_mismatch"]
+  ]) {
+    const outcome = flow.evaluateGate(definition, structuredClone(state), await authorityFixture(trace), "verify-gate", config, now);
+    assert.equal(outcome.status, "route-back", label);
+    assert.deepEqual(claimDiagnostic(outcome)?.authority, { code: expected }, label);
+  }
+
+  const wrongIdConfig = configFor({ trusted_producers: { "quality.tests": { authority_refs: ["trace.quality"] } } });
+  const wrongId = flow.evaluateGate(definition, structuredClone(state), await authorityFixture(), "verify-gate", wrongIdConfig, now);
+  assert.deepEqual(claimDiagnostic(wrongId)?.authority, { code: "authority_ref_mismatch" });
+
+  const intersection = configFor({
+    trusted_producers: { "quality.tests": { authority_refs: ["authority:one"] } },
+    gate_overrides: { "verify-gate": { expectations: { "tests-passed": { authority_refs: ["authority:two"] } } } }
   });
+  const widened = await authorityFixture();
+  widened.evidence[0].bundle.authorityTrace = [authorityTrace({ authorityRef: "authority:one" }), authorityTrace({ id: "trace.two", authorityRef: "authority:two" })];
+  const widenedOutcome = flow.evaluateGate(definition, structuredClone(state), widened, "verify-gate", intersection, now);
+  assert.equal(widenedOutcome.status, "route-back");
+  assert.deepEqual(claimDiagnostic(widenedOutcome)?.authority, { code: "authority_ref_mismatch" });
+});
 
-  const producer = flow.evaluateGate(definition, structuredClone(state), await passingFixture("ci/expectation"), "verify-gate", config);
-  assert.equal(producer.status, "pass");
-
-  const trace = flow.evaluateGate(definition, structuredClone(state), await passingFixture(undefined, "authority:quality"), "verify-gate", config);
-  assert.equal(trace.status, "pass");
-
-  const rejected = flow.evaluateGate(definition, structuredClone(state), await passingFixture("ci/other"), "verify-gate", config);
-  assert.equal(rejected.status, "route-back");
-  assert.equal(claimDiagnostic(rejected)?.reason, "untrusted_producer");
+test("canonical filesystem evaluation uses the same rich authority path and pinned instant", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-trusted-producer-canonical-"));
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const manifest = await authorityFixture();
+  const definitionPath = path.join(cwd, "definition.json");
+  const evidencePath = path.join(cwd, "quality-bundle.json");
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(definitionPath, `${JSON.stringify(definition)}\n`),
+    writeFile(evidencePath, `${JSON.stringify(manifest.evidence[0].bundle)}\n`),
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(configFor({
+      trusted_producers: { "quality.tests": { authority_refs: ["authority:quality"] } }
+    }))}\n`)
+  ]);
+  const started = await flow.startRun(definitionPath, { cwd, runId: "canonical-rich-authority" });
+  await flow.attachEvidence(started.runId, { cwd, gate: "verify-gate", file: evidencePath, kind: "trust.bundle", bundle: true });
+  const evaluated = await flow.evaluateRun(started.runId, { cwd, gate: "verify-gate", now: "2026-06-16T00:00:00.000Z" });
+  assert.equal(evaluated.outcomes.at(-1)?.status, "pass");
+  assert.equal((await flow.loadRun(started.runId, cwd)).state.gate_outcomes.at(-1)?.status, "pass");
 });
 
 test("an expectation-level pin cannot broaden a claim-type producer boundary", async () => {
@@ -184,6 +253,7 @@ test("concurrent attachment and evaluation contend for the mutation lock without
     }
   };
   const evidence = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  evidence.evidence[0].bundle.producerId = "ci/trusted";
   const definitionPath = path.join(cwd, "definition.json");
   const evidencePath = path.join(cwd, "evidence.json");
   await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
@@ -267,7 +337,7 @@ test("concurrent attachment and evaluation contend for the mutation lock without
   await runContended("concurrent-evaluate-first", "evaluate-first");
 });
 
-test("attachEvidence preserves plural authority traces for evaluator policy", async () => {
+test("attachEvidence rejects opaque authority metadata instead of preserving a trust shortcut", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-trusted-producer-traces-"));
   const definition = {
     id: "plural-authority-traces", version: "1", steps: [{ id: "verify", next: null }],
@@ -289,21 +359,15 @@ test("attachEvidence preserves plural authority traces for evaluator policy", as
   await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
   await writeFile(evidencePath, `${JSON.stringify(evidence.evidence[0].bundle)}\n`);
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(configFor({
-    trusted_producers: { "quality.tests": { authority_traces: ["authority:trusted"] } }
-  }))}\n`);
   await flow.startRun(definitionPath, { cwd, runId: "plural-authority-traces" });
 
-  await flow.attachEvidence("plural-authority-traces", {
+  assert.throws(() => flow.attachEvidence("plural-authority-traces", {
     cwd, gate: "verify-gate", file: evidencePath, kind: "trust.bundle", bundle: true,
     authorityTraces: ["authority:unrelated", "authority:trusted"]
-  });
-  const outcome = await flow.evaluateRun("plural-authority-traces", { cwd });
-  assert.equal(outcome.outcomes[0].status, "pass");
-  assert.deepEqual((await flow.loadRun("plural-authority-traces", cwd)).manifest.evidence[0].authority_traces, ["authority:unrelated", "authority:trusted"]);
+  }), /unsupported option authorityTraces/);
 });
 
-test("attachEvidence validates its public options and preserves singular compatibility", async () => {
+test("attachEvidence rejects removed opaque authority options", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-attachment-options-"));
   const definition = {
     id: "attachment-options", version: "1", steps: [{ id: "verify", next: null }],
@@ -316,17 +380,16 @@ test("attachEvidence validates its public options and preserves singular compati
   await flow.startRun(definitionPath, { cwd, runId: "attachment-options" });
   assert.throws(
     () => flow.attachEvidence("attachment-options", { cwd, gate: "verify-gate", file: evidencePath, authorityTraces: "authority:not-an-array" }),
-    /flow\.attach_evidence\.options\.invalid: authorityTraces must be an array/
+    /flow\.attach_evidence\.options\.invalid: unsupported option authorityTraces/
   );
   assert.throws(
     () => flow.attachEvidence("attachment-options", { cwd, gate: "verify-gate", file: evidencePath, unsupported: true }),
     /flow\.attach_evidence\.options\.invalid: unsupported option unsupported/
   );
-  const attached = await flow.attachEvidence("attachment-options", {
-    cwd, gate: "verify-gate", file: evidencePath, authorityTrace: "authority:legacy"
-  });
-  assert.equal(attached.authority_trace, "authority:legacy");
-  assert.equal(attached.authority_traces, undefined);
+  assert.throws(
+    () => flow.attachEvidence("attachment-options", { cwd, gate: "verify-gate", file: evidencePath, authorityTrace: "authority:legacy" }),
+    /flow\.attach_evidence\.options\.invalid: unsupported option authorityTrace/
+  );
 });
 
 test("attachEvidence snapshots caller options before asynchronous preflight and persistence", async () => {
@@ -346,7 +409,6 @@ test("attachEvidence snapshots caller options before asynchronous preflight and 
     cwd,
     gate: "verify-gate",
     file: evidencePath,
-    authorityTraces: ["authority:original"],
     classifier: { kind: "original", nested: { value: "original" } },
     diagnostics: { code: "original", nested: { value: "original" } },
     analytics: { loop_key: "original", nested: { value: "original" } }
@@ -354,7 +416,6 @@ test("attachEvidence snapshots caller options before asynchronous preflight and 
   const pending = flow.attachEvidence("attachment-option-snapshot", options);
   options.gate = "mutated-gate";
   options.file = path.join(cwd, "missing-after-invocation.txt");
-  options.authorityTraces[0] = "authority:mutated";
   options.classifier.nested.value = "mutated";
   options.diagnostics.nested.value = "mutated";
   options.analytics.nested.value = "mutated";
@@ -362,7 +423,6 @@ test("attachEvidence snapshots caller options before asynchronous preflight and 
   const attached = await pending;
   assert.equal(attached.gate_id, "verify-gate");
   assert.equal(attached.original_path, evidencePath);
-  assert.deepEqual(attached.authority_traces, ["authority:original"]);
   assert.deepEqual(attached.classifier, { kind: "original", nested: { value: "original" } });
   assert.deepEqual(attached.diagnostics, { code: "original", nested: { value: "original" } });
   assert.deepEqual(attached.analytics, { loop_key: "original", nested: { value: "original" } });
@@ -375,7 +435,7 @@ test("attachEvidence snapshots caller options before asynchronous preflight and 
   );
 });
 
-test("CLI repeatable authority traces satisfy independently configured producer scopes", async () => {
+test("CLI rejects removed opaque authority-trace input", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-authority-traces-"));
   const definition = {
     id: "cli-authority-traces", version: "1", steps: [{ id: "verify", next: null }],
@@ -395,17 +455,12 @@ test("CLI repeatable authority traces satisfy independently configured producer 
   await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
   await writeFile(evidencePath, `${JSON.stringify(evidence.evidence[0].bundle)}\n`);
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(configFor({
-    trusted_producers: { "quality.tests": { authority_traces: ["authority:one"] } },
-    gate_overrides: { "verify-gate": { expectations: { "tests-passed": { authority_traces: ["authority:two"] } } } }
-  }))}\n`);
   await flow.startRun(definitionPath, { cwd, runId: "cli-authority-traces" });
-  await execFile(process.execPath, [
-    cliPath, "attach-evidence", "cli-authority-traces", "--gate", "verify-gate", "--file", evidencePath,
-    "--kind", "trust.bundle", "--authority-trace", "authority:one", "--authority-trace", "authority:two", "--cwd", cwd
-  ]);
-  const entry = (await flow.loadRun("cli-authority-traces", cwd)).manifest.evidence[0];
-  assert.equal(entry.authority_trace, "authority:one");
-  assert.deepEqual(entry.authority_traces, ["authority:one", "authority:two"]);
-  assert.equal((await flow.evaluateRun("cli-authority-traces", { cwd })).outcomes[0].status, "pass");
+  await assert.rejects(
+    () => execFile(process.execPath, [
+      cliPath, "attach-evidence", "cli-authority-traces", "--gate", "verify-gate", "--file", evidencePath,
+      "--kind", "trust.bundle", "--authority-trace", "authority:one", "--cwd", cwd
+    ]),
+    /--authority-trace is removed/
+  );
 });

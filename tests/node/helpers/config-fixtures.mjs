@@ -6,7 +6,7 @@ export function localConfigFixture() {
     trusted_producers: {
       "quality.tests": {
         producers: ["ci/main"],
-        authority_traces: ["github:main"]
+        authority_refs: ["github:main"]
       },
       "quality.browser-evidence": {
         producers: ["browser/main"]
@@ -32,7 +32,7 @@ export function proposedConfigFixture() {
     trusted_producers: {
       "quality.tests": {
         producers: ["ci/kit"],
-        authority_traces: ["github:kit"]
+        authority_refs: ["github:kit"]
       },
       "quality.browser-evidence": {
         producers: ["browser/main"]

@@ -14,10 +14,12 @@
 }
 ```
 
-- `trusted_producers` maps claim types to allow-lists, e.g. `{ "quality.tests": { "producers": ["ci/main"] } }`. A matching `authority_trace` or `authority_traces` entry can also satisfy that claim type when listed in `authority_traces`. When either allow-list is configured, evidence without a matching producer or authority trace is rejected with `untrusted_producer` during gate evaluation. `{}` reserves an unpinned claim type, while an explicitly empty `producers` or `authority_traces` array is a deny-all pin. A gate expectation can add its own producer or authority-trace pin through `gate_overrides`; it is an additional restriction, never a way to broaden the claim-type allow-list.
+- `trusted_producers` maps claim types to allow-lists, e.g. `{ "quality.tests": { "producers": ["ci/main"], "authority_refs": ["policy:quality"] } }`. `producers` matches only the validated bundle `producerId`; an attachment `producer` can only corroborate that same value. `authority_refs` matches only a validated embedded Surface `authorityTrace[].authorityRef`, never a trace id or an attachment string. A pinned trace must be active at Flow's explicit evaluation instant, have the exact matched claim subject, link that claim or its supporting evidence, and bind its actor to the accepted verification event or linked evidence collector. Every configured claim-type and expectation scope must admit the same producer or authority ref. `{}` reserves an unpinned claim type, while an explicitly empty `producers` or `authority_refs` array is a deny-all pin.
 - `gate_overrides` carries project-level gate adjustments applied during evaluation.
 
 Two authored shapes are accepted: the flat v0.1 shape above, and the Resource Contract shape (`apiVersion`, `kind: "FlowProjectConfig"`, `metadata`, `spec`) shown in [`examples/flow-project-config-resource-contract.json`](../examples/flow-project-config-resource-contract.json). Resource-shaped files map `spec` to the same flat runtime config, and merge reports plus the applied `.flow/config.json` stay flat — existing tools that read `trusted_producers` and `gate_overrides` never need to migrate.
+
+`authority_traces` was removed because opaque strings could not establish trace identity, subject, actor, scope, or validity. Migrate each configured value to `authority_refs` and put the corresponding rich `authorityTrace` record in the producer's trust bundle. Flow rejects old config before preview or apply can publish it.
 
 ## Preview before apply
 
