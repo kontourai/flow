@@ -1002,7 +1002,7 @@ test("CLI version-release-report renders deterministic JSON and Markdown from lo
   assert.match(missing.stdout, /release_lane deployment-window/);
 });
 
-test("CLI config preview and apply support JSON and Markdown reports", async () => {
+test("CLI config preview remains available while apply explains that a trusted publisher host is required", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-config-merge-"));
   const repoCwd = repoRootUrl;
   const cli = cliPath;
@@ -1020,7 +1020,7 @@ test("CLI config preview and apply support JSON and Markdown reports", async () 
   const markdown = await execFile(process.execPath, [cli, "config", "preview", "proposal.json", "--format", "markdown", "--cwd", cwd], { cwd: repoCwd });
   assert.match(markdown.stdout, /## Conflicts/);
 
-  const applied = await execFile(process.execPath, [
+  await assert.rejects(execFile(process.execPath, [
     cli,
     "config",
     "apply",
@@ -1037,13 +1037,12 @@ test("CLI config preview and apply support JSON and Markdown reports", async () 
     "cli-smoke",
     "--cwd",
     cwd
-  ], { cwd: repoCwd });
-  const applyReport = JSON.parse(applied.stdout);
-  assert.equal(applyReport.status, "applied");
-  assert.ok(applyReport.exceptions.some((entry) => entry.authority === "cli-smoke"));
+  ], { cwd: repoCwd }), /flow\.config\.merge\.publisher\.unavailable:.*flow config preview/);
+  const afterApply = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(afterApply, afterPreview);
 });
 
-test("CLI config preview and apply accept Resource-shaped project config proposals", async () => {
+test("CLI config preview accepts Resource-shaped project config proposals", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-resource-config-merge-"));
   const repoCwd = repoRootUrl;
   const cli = cliPath;
@@ -1057,7 +1056,7 @@ test("CLI config preview and apply accept Resource-shaped project config proposa
   assert.equal(previewReport.merged_config.apiVersion, undefined);
   assert.deepEqual(previewReport.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
 
-  const applied = await execFile(process.execPath, [
+  await assert.rejects(execFile(process.execPath, [
     cli,
     "config",
     "apply",
@@ -1074,12 +1073,7 @@ test("CLI config preview and apply accept Resource-shaped project config proposa
     "cli-smoke",
     "--cwd",
     cwd
-  ], { cwd: repoCwd });
-  const applyReport = JSON.parse(applied.stdout);
-  const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.equal(applyReport.status, "applied");
-  assert.equal(stored.apiVersion, undefined);
-  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/kit"]);
+  ], { cwd: repoCwd }), /flow\.config\.merge\.publisher\.unavailable/);
 });
 
 test("CLI records route-back metadata and only route_reason selects the route", async () => {

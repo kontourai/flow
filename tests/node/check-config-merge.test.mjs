@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -51,7 +51,10 @@ test("Resource-shaped project config normalizes for load and merge workflows", a
   assert.deepEqual(preview.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
   assert.equal(preview.merged_config.apiVersion, undefined);
 
-  const blocked = await applyFlowConfigMerge(cwd, "proposal.json");
+  const notCalled = async () => {
+    throw new Error("publisher must not run for blocked merge");
+  };
+  const blocked = await applyFlowConfigMerge(cwd, "proposal.json", { publisher: notCalled });
   assert.equal(blocked.status, "blocked");
   let stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
   assert.equal(stored.kind, "FlowProjectConfig");
@@ -62,13 +65,20 @@ test("Resource-shaped project config normalizes for load and merge workflows", a
       "$.gate_overrides.verify-gate.expectations.tests-passed"
     ],
     exceptionReason: "accepted Resource-shaped project config proposal",
-    authority: "flow-maintainer"
+    authority: "flow-maintainer",
+    publisher: async (request) => ({
+      api_version: "flow.kontourai.io/v1alpha1",
+      status: "applied",
+      publisher: "test-host",
+      publication_id: "resource-config-apply",
+      config_path: request.config_path,
+      contents_sha256: request.contents_sha256
+    })
   });
   assert.equal(applied.status, "applied");
+  assert.equal(applied.publisher_receipt.publisher, "test-host");
   stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.equal(stored.apiVersion, undefined);
-  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/kit"]);
-  assert.equal(stored.gate_overrides["verify-gate"].expectations["tests-passed"].required, false);
+  assert.equal(stored.kind, "FlowProjectConfig", "Flow does not perform an unsafe fallback publication");
 });
 
 test("project config merge rejects unsafe map keys before object traversal", () => {
@@ -161,186 +171,86 @@ test("config merge markdown exposes human review buckets", () => {
   assert.match(markdown, /\$\.trusted_producers\.quality\.tests\.producers/);
 });
 
-test("config merge apply writes only accepted changes unless conflicts are explicitly accepted", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-"));
-  await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`);
-  await writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`);
+test("config merge apply fails closed without a trusted publisher and never writes config", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-no-publisher-"));
+  const configPath = path.join(cwd, ".flow", "config.json");
+  const original = `${JSON.stringify(localConfigFixture(), null, 2)}\n`;
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await Promise.all([
+    writeFile(configPath, original),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`)
+  ]);
 
-  const blocked = await applyFlowConfigMerge(cwd, "proposal.json");
-  assert.equal(blocked.status, "blocked");
-  let config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["ci/main"]);
-  assert.equal(config.gate_overrides["verify-gate"].expectations["tests-passed"].required, true);
+  await assert.rejects(
+    () => applyFlowConfigMerge(cwd, "proposal.json"),
+    /flow\.config\.merge\.publisher\.unavailable:.*flow config preview/
+  );
+  assert.equal(await readFile(configPath, "utf8"), original);
+  await assert.rejects(() => readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), /ENOENT/);
+});
 
+test("config merge hands canonical immutable bytes to a trusted publisher and validates its receipt", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-publisher-"));
+  const configPath = path.join(cwd, ".flow", "config.json");
+  const original = `${JSON.stringify(localConfigFixture(), null, 2)}\n`;
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await Promise.all([
+    writeFile(configPath, original),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`)
+  ]);
+
+  let request;
   const applied = await applyFlowConfigMerge(cwd, "proposal.json", {
     acceptConflicts: [
       "$.trusted_producers.quality.tests",
       "$.gate_overrides.verify-gate.expectations.tests-passed"
     ],
     exceptionReason: "maintainer accepted kit update",
-    authority: "flow-maintainer"
+    authority: "flow-maintainer",
+    publisher: async (received) => {
+      request = received;
+      assert.ok(Object.isFrozen(received));
+      assert.equal(received.config_path, configPath);
+      assert.equal(received.expected_config_sha256.length, 64);
+      assert.equal(received.contents, `${JSON.stringify(JSON.parse(received.contents), null, 2)}\n`, "publisher receives canonical JSON bytes");
+      return {
+        api_version: "flow.kontourai.io/v1alpha1",
+        status: "applied",
+        publisher: "test-capability-host",
+        publication_id: "publish-1",
+        config_path: received.config_path,
+        contents_sha256: received.contents_sha256
+      };
+    }
   });
   assert.equal(applied.status, "applied");
-  assert.ok(applied.exceptions.length > 0);
-  config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["ci/kit"]);
-  assert.equal(config.gate_overrides["verify-gate"].expectations["tests-passed"].required, false);
-  assert.deepEqual(config.trusted_producers["quality.lint"].producers, ["lint/kit"]);
+  assert.equal(applied.publisher_receipt.publication_id, "publish-1");
+  assert.equal(JSON.parse(request.contents).trusted_producers["quality.tests"].producers[0], "ci/kit");
+  assert.equal(await readFile(configPath, "utf8"), original, "only the host capability may publish bytes");
 });
 
-test("concurrent config applies serialize disjoint authority additions and publish complete JSON atomically", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-concurrent-"));
-  await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  const initial = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} };
-  const first = { ...initial, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } } };
-  const second = { ...initial, trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } } };
-  await Promise.all([
-    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(initial, null, 2)}\n`),
-    writeFile(path.join(cwd, "first.json"), `${JSON.stringify(first, null, 2)}\n`),
-    writeFile(path.join(cwd, "second.json"), `${JSON.stringify(second, null, 2)}\n`)
-  ]);
-
-  const results = await Promise.all([
-    applyFlowConfigMerge(cwd, "first.json"),
-    applyFlowConfigMerge(cwd, "second.json")
-  ]);
-  assert.deepEqual(results.map((result) => result.status), ["applied", "applied"]);
-  const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/tests"]);
-  assert.deepEqual(stored.trusted_producers["quality.review"].authority_refs, ["authority:review"]);
-});
-
-test("config merge rejects a symlinked .flow project boundary without mutating its target", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-symlink-project-"));
-  const outside = await mkdtemp(path.join(tmpdir(), "flow-config-merge-symlink-outside-"));
-  const original = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`;
-  await Promise.all([
-    writeFile(path.join(outside, "config.json"), original),
-    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
-      schema_version: FLOW_SCHEMA_VERSION,
-      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
-      gate_overrides: {}
-    }, null, 2)}\n`)
-  ]);
-  await symlink(outside, path.join(cwd, ".flow"));
-
-  await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "proposal.json"),
-    /flow\.run_location\.unsafe_directory/
-  );
-  assert.equal(await readFile(path.join(outside, "config.json"), "utf8"), original);
-});
-
-test("config merge binds publication and cleanup to the locked .flow directory identity", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-directory-identity-"));
-  const outside = await mkdtemp(path.join(tmpdir(), "flow-config-merge-directory-successor-"));
-  const displaced = path.join(cwd, ".flow-displaced");
-  const initial = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`;
-  const externalConfig = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.external": { producers: ["external"] } }, gate_overrides: {} }, null, 2)}\n`;
-  await Promise.all([
-    mkdir(path.join(cwd, ".flow"), { recursive: true }),
-    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
-      schema_version: FLOW_SCHEMA_VERSION,
-      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
-      gate_overrides: {}
-    }, null, 2)}\n`),
-    writeFile(path.join(outside, "config.json"), externalConfig),
-    writeFile(path.join(outside, "config.json.merge.lock"), "successor-lock\n")
-  ]);
-  await writeFile(path.join(cwd, ".flow", "config.json"), initial);
-
-  await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "proposal.json", {
-      // This project already uses explicit fault-injection seams for
-      // deterministic filesystem-race coverage. Swap the pathname after the
-      // merge has read its proposal but before any config staging can begin.
-      faultInjection: async (stage) => {
-        if (stage !== "before_stage") return;
-        await rename(path.join(cwd, ".flow"), displaced);
-        await symlink(outside, path.join(cwd, ".flow"));
-      }
-    }),
-    /flow\.config\.merge\.directory\.changed/
-  );
-
-  assert.equal(await readFile(path.join(outside, "config.json"), "utf8"), externalConfig, "the successor target must never receive staged config bytes");
-  assert.equal(await readFile(path.join(outside, "config.json.merge.lock"), "utf8"), "successor-lock\n", "cleanup must not unlink a successor directory's lock");
-  assert.equal(await readFile(path.join(displaced, "config.json"), "utf8"), initial, "the original directory remains unchanged after rejection");
-  await assert.rejects(() => readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), /ENOENT/, "the stable project lock must be released after rejection");
-  await assert.rejects(() => readFile(path.join(displaced, "config.json.merge.lock"), "utf8"), /ENOENT/, "the displaced .flow directory must not retain a stale merge lock");
-});
-
-test("config merge fails closed and preserves a replaced project-root lock", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-root-lock-"));
-  const heldLock = path.join(cwd, ".flow.config.merge.lock.displaced");
-  const initial = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} };
+test("config merge rejects invalid and failed publisher capabilities", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-invalid-publisher-"));
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
   await Promise.all([
-    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(initial, null, 2)}\n`),
-    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
-      schema_version: FLOW_SCHEMA_VERSION,
-      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
-      gate_overrides: {}
-    }, null, 2)}\n`)
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } }, gate_overrides: {} }, null, 2)}\n`)
   ]);
-
+  await assert.rejects(() => applyFlowConfigMerge(cwd, "proposal.json", { publisher: true }), /flow\.config\.merge\.publisher\.invalid/);
   await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "proposal.json", {
-      faultInjection: async (stage) => {
-        if (stage !== "before_stage") return;
-        await rename(path.join(cwd, ".flow.config.merge.lock"), heldLock);
-        await writeFile(path.join(cwd, ".flow.config.merge.lock"), "successor-root-lock\n");
-      }
-    }),
-    /flow\.config\.merge\.lock\.lost/
+    () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => { throw new Error("host refused unsafe target"); } }),
+    /flow\.config\.merge\.publisher\.failed:.*host refused unsafe target/
   );
-
-  assert.equal(await readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), "successor-root-lock\n", "cleanup must not unlink a replacement root lock");
-  assert.match(await readFile(heldLock, "utf8"), /^\d+\n$/, "the displaced acquired lock remains distinct from the successor");
-  const config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.deepEqual(config, initial, "a writer that lost its lock must not publish stale config");
-});
-
-test("config merge never overwrites a merge completed under a replacement lock", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-lost-update-"));
-  const displacedLock = path.join(cwd, ".flow.config.merge.lock.displaced");
-  const initial = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} };
-  const first = {
-    ...initial,
-    trusted_producers: { "quality.tests": { producers: ["ci/tests"] } }
-  };
-  const second = {
-    ...initial,
-    trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } }
-  };
-  await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  await Promise.all([
-    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(initial, null, 2)}\n`),
-    writeFile(path.join(cwd, "first.json"), `${JSON.stringify(first, null, 2)}\n`),
-    writeFile(path.join(cwd, "second.json"), `${JSON.stringify(second, null, 2)}\n`)
-  ]);
-
   await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "first.json", {
-      faultInjection: async (stage) => {
-        if (stage !== "before_stage") return;
-        await rename(path.join(cwd, ".flow.config.merge.lock"), displacedLock);
-        const secondResult = await applyFlowConfigMerge(cwd, "second.json");
-        assert.equal(secondResult.status, "applied");
-      }
-    }),
-    /flow\.config\.merge\.lock\.lost/
+    () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => ({ status: "applied" }) }),
+    /flow\.config\.merge\.publisher\.receipt\.invalid/
   );
-
-  const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
-  assert.deepEqual(stored.trusted_producers["quality.review"].authority_refs, ["authority:review"]);
-  assert.equal(stored.trusted_producers["quality.tests"], undefined, "the stale first merge must not overwrite the replacement-lock merge");
-  assert.match(await readFile(displacedLock, "utf8"), /^\d+\n$/, "the first writer must not delete its displaced lock inode");
-  await assert.rejects(() => readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), /ENOENT/, "the replacement writer releases its own lock");
 });
 
 test("config merge rejects malformed producer mappings before preview or publication", async () => {
+  const publisher = async () => {
+    throw new Error("publisher must not run for malformed config");
+  };
   const malformed = {
     schema_version: FLOW_SCHEMA_VERSION,
     trusted_producers: { "quality.tests": { producers: "ci/not-an-array" } },
@@ -364,7 +274,7 @@ test("config merge rejects malformed producer mappings before preview or publica
     writeFile(path.join(existing, "proposal.json"), `${JSON.stringify(malformed, null, 2)}\n`)
   ]);
   await assert.rejects(
-    () => applyFlowConfigMerge(existing, "proposal.json"),
+    () => applyFlowConfigMerge(existing, "proposal.json", { publisher }),
     /flow config does not satisfy flow-config\.schema\.json/
   );
   assert.equal(await readFile(existingPath, "utf8"), original, "malformed proposal must not rewrite an existing authority config");
@@ -372,7 +282,7 @@ test("config merge rejects malformed producer mappings before preview or publica
   const missing = await mkdtemp(path.join(tmpdir(), "flow-config-merge-malformed-missing-"));
   await writeFile(path.join(missing, "proposal.json"), `${JSON.stringify(malformed, null, 2)}\n`);
   await assert.rejects(
-    () => applyFlowConfigMerge(missing, "proposal.json"),
+    () => applyFlowConfigMerge(missing, "proposal.json", { publisher }),
     /flow config does not satisfy flow-config\.schema\.json/
   );
   await assert.rejects(
@@ -392,7 +302,7 @@ test("config merge rejects malformed producer mappings before preview or publica
   );
   await writeFile(path.join(existing, "legacy-proposal.json"), `${JSON.stringify(legacy, null, 2)}\n`);
   await assert.rejects(
-    () => applyFlowConfigMerge(existing, "legacy-proposal.json"),
+    () => applyFlowConfigMerge(existing, "legacy-proposal.json", { publisher }),
     /authority_traces is removed; migrate its authority references to authority_refs/
   );
   assert.equal(await readFile(existingPath, "utf8"), original, "legacy authority authoring must not rewrite config");

@@ -565,15 +565,33 @@ See [Release Readiness](release-readiness.md) for a worked example against the b
 import {
   previewFlowConfigMerge,
   applyFlowConfigMerge,
+  type FlowConfigMergePublisher,
   renderConfigMergeMarkdown
 } from "@kontourai/flow";
 
 const report = previewFlowConfigMerge(localConfig, proposedConfig);
 console.log(renderConfigMergeMarkdown(report));
+
+// Flow core does not perform pathname-based publication. A host must provide
+// an atomic, capability-anchored publisher and return a receipt for these
+// exact bytes. The receipt is a host acknowledgement, not Flow I/O evidence.
+const publisher: FlowConfigMergePublisher = async (request) => {
+  await hostAtomicReplace(request); // validates request.expected_config_sha256
+  return {
+    api_version: "flow.kontourai.io/v1alpha1",
+    status: "applied",
+    publisher: "example-host",
+    publication_id: "host-publication-id",
+    config_path: request.config_path,
+    contents_sha256: request.contents_sha256
+  };
+};
+
+await applyFlowConfigMerge("./kit-flow-config.json", { publisher });
 ```
 
 See [Project Config](project-config.md) for merge semantics and conflict handling.
 
 ## Types
 
-The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowRunStatus`, `FlowLifecycleAction`, `FlowLifecycleAuthority`, `FlowLifecycleEvent`, `FlowLifecycleRequest`, `FlowLifecycleDiagnostic`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.
+The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowRunStatus`, `FlowLifecycleAction`, `FlowLifecycleAuthority`, `FlowLifecycleEvent`, `FlowLifecycleRequest`, `FlowLifecycleDiagnostic`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, `FlowConfigMergeApplyOptions`, `FlowConfigMergePublisher`, `FlowConfigMergePublisherRequest`, `FlowConfigMergePublisherReceipt`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.

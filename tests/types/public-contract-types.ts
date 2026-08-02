@@ -3,6 +3,10 @@ import {
 } from "../../src/index.js";
 import type {
   FlowConfig,
+  FlowConfigMergeApplyOptions,
+  FlowConfigMergePublisher,
+  FlowConfigMergePublisherRequest,
+  FlowConfigMergePublisherReceipt,
   FlowActiveStepClaim,
   FlowActiveStepClaimRequest,
   FlowConsoleProjection,
@@ -23,6 +27,34 @@ import type {
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
+
+const configMergePublisher: FlowConfigMergePublisher = async (request: Readonly<FlowConfigMergePublisherRequest>) => ({
+  api_version: "flow.kontourai.io/v1alpha1",
+  status: "applied",
+  publisher: "test-host",
+  publication_id: "publication-1",
+  config_path: request.config_path,
+  contents_sha256: request.contents_sha256
+});
+const configMergeOptions: FlowConfigMergeApplyOptions = { publisher: configMergePublisher };
+const configMergeRequest: FlowConfigMergePublisherRequest = {
+  api_version: "flow.kontourai.io/v1alpha1",
+  project_directory: "/project",
+  config_directory: "/project/.flow",
+  config_path: "/project/.flow/config.json",
+  expected_config_sha256: null,
+  contents: "{}\n",
+  contents_sha256: "a".repeat(64)
+};
+const configMergeReceipt: FlowConfigMergePublisherReceipt = {
+  api_version: "flow.kontourai.io/v1alpha1",
+  status: "applied",
+  publisher: "test-host",
+  publication_id: "publication-1",
+  config_path: configMergeRequest.config_path,
+  contents_sha256: configMergeRequest.contents_sha256
+};
+void [configMergeOptions, configMergeRequest, configMergeReceipt];
 
 const activeStepClaimRequest: FlowActiveStepClaimRequest = {
   claim_id: "claim-render-1",

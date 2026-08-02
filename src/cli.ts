@@ -59,7 +59,7 @@ function usage() {
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
-  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
+  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]  (requires a trusted host publisher; unavailable in this CLI)
   flow report <run-id> [--format summary|markdown|json] [--cwd <path>]
   flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path>]
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]

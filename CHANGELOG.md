@@ -11,6 +11,8 @@
 
 * Project config `authority_traces`, attachment `authorityTrace(s)`, and CLI `--authority-trace` are removed. Migrate policy values to `authority_refs` and put the matching active, scoped rich `authorityTrace` records in the attached trust bundle; persisted opaque fields are display-only and cannot authorize a gate.
 
+* `flow config apply` no longer performs a pathname-based write. The standalone CLI now fails closed with `flow.config.merge.publisher.unavailable`; library callers must supply a trusted host `FlowConfigMergePublisher` that returns a receipt bound to Flow's canonical bytes.
+
 * New Flow Run writes now use `.kontourai/flow/runs/<run-id>/`, and `flow init --demo` writes disposable evidence under `.kontourai/flow/demo/`. The public `runDir()` helper now returns the canonical run path; this is a semver-major API change. `flowRoot()` and `flowConfigPath()` continue to identify durable authored `.flow/` state, and `flowRuntimeRoot()` identifies the generated runtime root.
 
 ### Documentation

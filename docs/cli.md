@@ -342,7 +342,7 @@ flow config apply <proposal> [--accept-conflict <path> ...]
   [--format summary|markdown|json] [--cwd <path>]
 ```
 
-Preview is read-only; apply merges additive changes and rejects conflicts unless each is accepted with `--accept-conflict` plus a reason and authority. `apply` exits `1` when the merge is blocked by unaccepted conflicts. Full semantics: [Project Config](project-config.md).
+Preview is read-only. The standalone CLI has no capability-anchored atomic publisher, so `apply` exits `1` with `flow.config.merge.publisher.unavailable` and directs you to preview; it never writes `.flow/config.json`. Trusted desktop/host integrations use the library publisher capability instead. Full semantics: [Project Config](project-config.md).
 
 ## flow validate-transition
 

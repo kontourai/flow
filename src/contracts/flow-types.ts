@@ -588,6 +588,55 @@ export interface ConfigMergeReport extends MutableRecord {
   exceptions: MutableRecord[];
   merged_config: FlowConfig;
   summary: MutableRecord;
+  publisher_receipt?: FlowConfigMergePublisherReceipt;
+}
+
+/**
+ * Immutable hand-off from Flow's deterministic config merge engine to a host
+ * that owns an atomic, capability-anchored filesystem publisher.
+ *
+ * Flow deliberately does not implement that publisher: Node's pathname-only
+ * filesystem API cannot make the final replacement safe when `.flow` changes
+ * concurrently. A host (for example Station) must bind this request to its
+ * own atomic publication primitive and verify `expected_config_sha256` before
+ * replacing the target.
+ */
+export interface FlowConfigMergePublisherRequest {
+  api_version: "flow.kontourai.io/v1alpha1";
+  project_directory: string;
+  config_directory: string;
+  config_path: string;
+  /** SHA-256 of the exact raw config bytes Flow merged from, or null when absent. */
+  expected_config_sha256: string | null;
+  /** Canonical, immutable JSON bytes the host must publish verbatim. */
+  contents: string;
+  contents_sha256: string;
+}
+
+/**
+ * A structured acknowledgement from a trusted config merge publisher. This
+ * binds the acknowledgement to the exact target and canonical bytes; it is
+ * not evidence that Flow itself performed or verified an atomic write.
+ */
+export interface FlowConfigMergePublisherReceipt extends MutableRecord {
+  api_version: "flow.kontourai.io/v1alpha1";
+  status: "applied";
+  publisher: string;
+  publication_id: string;
+  config_path: string;
+  contents_sha256: string;
+}
+
+export type FlowConfigMergePublisher = (
+  request: Readonly<FlowConfigMergePublisherRequest>
+) => Promise<FlowConfigMergePublisherReceipt> | FlowConfigMergePublisherReceipt;
+
+export interface FlowConfigMergeApplyOptions extends MutableRecord {
+  publisher?: FlowConfigMergePublisher;
+  acceptConflicts?: string[];
+  acceptedConflicts?: string[];
+  exceptionReason?: string;
+  authority?: string;
 }
 
 export const FLOW_SCHEMA_VERSION = "0.1";
