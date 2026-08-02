@@ -184,10 +184,7 @@ export interface FlowLifecycleRequest {
  * paused run. The attachment fields use the same neutral vocabulary as
  * attachEvidence; `gate` and `cwd` belong to the enclosing operation.
  */
-export interface FlowPausedGateContinuationEvidence extends MutableRecord {
-  file: string;
-  kind?: string;
-}
+export type FlowPausedGateContinuationEvidence = Omit<FlowEvidenceAttachmentOptions, "cwd" | "gate">;
 
 /**
  * Atomically evaluate new evidence at a paused run's current gate.

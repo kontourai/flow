@@ -2083,9 +2083,14 @@ function attachmentOptionStrings(options: any, key: string) {
 }
 
 /** Reject malformed or silently ignored public attachment options before I/O. */
-export function validateEvidenceAttachmentOptions(options: unknown): FlowEvidenceAttachmentOptions {
-  if (!isObject(options) || Array.isArray(options)) throw new Error("flow.attach_evidence.options.invalid: options must be an object");
-  const candidate = options as MutableRecord;
+function validateEvidenceAttachmentOptions(options: unknown): FlowEvidenceAttachmentOptions {
+  let candidate: MutableRecord;
+  try {
+    candidate = structuredClone(options) as MutableRecord;
+  } catch {
+    throw new Error("flow.attach_evidence.options.invalid: options must be structured-cloneable");
+  }
+  if (!isObject(candidate) || Array.isArray(candidate)) throw new Error("flow.attach_evidence.options.invalid: options must be an object");
   for (const key of Object.keys(candidate)) {
     if (!ATTACH_EVIDENCE_OPTION_KEYS.has(key)) throw new Error(`flow.attach_evidence.options.invalid: unsupported option ${key}`);
   }
@@ -2149,6 +2154,12 @@ function pausedGateContinuationRequest(options: FlowPausedGateContinuationOption
   if (!isObject(options.evidence) || !isNonEmptyString(options.evidence.file)) {
     throw new Error("flow.paused_gate_continuation.request.invalid: evidence.file must be a non-empty string");
   }
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const evidence = validateEvidenceAttachmentOptions({
+    ...(options.evidence as MutableRecord),
+    cwd,
+    gate: options.gate
+  });
   if (typeof options.resumeOnPass !== "boolean") {
     throw new Error("flow.paused_gate_continuation.request.invalid: resumeOnPass must be a boolean");
   }
@@ -2169,10 +2180,10 @@ function pausedGateContinuationRequest(options: FlowPausedGateContinuationOption
     throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
   }
   return {
-    cwd: path.resolve(options.cwd ?? process.cwd()),
+    cwd,
     expectedRunHead: options.expectedRunHead.toLowerCase(),
     gate: options.gate,
-    evidence: options.evidence,
+    evidence,
     resumeOnPass: options.resumeOnPass,
     resume,
     now
@@ -2295,7 +2306,7 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
   return withRunMutationLock(runId, request.cwd, async () => {
     const run = await loadRun(runId, request.cwd);
     assertPausedContinuation(run, request);
-    const prepared = await prepareEvidenceAttachment(run, validateEvidenceAttachmentOptions({ ...request.evidence, cwd: request.cwd, gate: request.gate }), { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
+    const prepared = await prepareEvidenceAttachment(run, request.evidence, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
     const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
     const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };

@@ -329,6 +329,52 @@ test("attachEvidence validates its public options and preserves singular compati
   assert.equal(attached.authority_traces, undefined);
 });
 
+test("attachEvidence snapshots caller options before asynchronous preflight and persistence", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-attachment-option-snapshot-"));
+  const definition = {
+    id: "attachment-option-snapshot", version: "1", steps: [{ id: "verify", next: null }],
+    gates: { "verify-gate": { step: "verify", expects: [] } }
+  };
+  const definitionPath = path.join(cwd, "definition.json");
+  const evidencePath = path.join(cwd, "evidence.txt");
+  await Promise.all([
+    writeFile(definitionPath, `${JSON.stringify(definition)}\n`),
+    writeFile(evidencePath, "initial evidence\n")
+  ]);
+  await flow.startRun(definitionPath, { cwd, runId: "attachment-option-snapshot" });
+  const options = {
+    cwd,
+    gate: "verify-gate",
+    file: evidencePath,
+    authorityTraces: ["authority:original"],
+    classifier: { kind: "original", nested: { value: "original" } },
+    diagnostics: { code: "original", nested: { value: "original" } },
+    analytics: { loop_key: "original", nested: { value: "original" } }
+  };
+  const pending = flow.attachEvidence("attachment-option-snapshot", options);
+  options.gate = "mutated-gate";
+  options.file = path.join(cwd, "missing-after-invocation.txt");
+  options.authorityTraces[0] = "authority:mutated";
+  options.classifier.nested.value = "mutated";
+  options.diagnostics.nested.value = "mutated";
+  options.analytics.nested.value = "mutated";
+
+  const attached = await pending;
+  assert.equal(attached.gate_id, "verify-gate");
+  assert.equal(attached.original_path, evidencePath);
+  assert.deepEqual(attached.authority_traces, ["authority:original"]);
+  assert.deepEqual(attached.classifier, { kind: "original", nested: { value: "original" } });
+  assert.deepEqual(attached.diagnostics, { code: "original", nested: { value: "original" } });
+  assert.deepEqual(attached.analytics, { loop_key: "original", nested: { value: "original" } });
+
+  assert.throws(
+    () => flow.attachEvidence("attachment-option-snapshot", {
+      cwd, gate: "verify-gate", file: evidencePath, diagnostics: { notCloneable: () => {} }
+    }),
+    /flow\.attach_evidence\.options\.invalid: options must be structured-cloneable/
+  );
+});
+
 test("CLI repeatable authority traces satisfy independently configured producer scopes", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-authority-traces-"));
   const definition = {

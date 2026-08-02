@@ -188,3 +188,45 @@ test("config merge apply writes only accepted changes unless conflicts are expli
   assert.equal(config.gate_overrides["verify-gate"].expectations["tests-passed"].required, false);
   assert.deepEqual(config.trusted_producers["quality.lint"].producers, ["lint/kit"]);
 });
+
+test("config merge rejects malformed producer mappings before preview or publication", async () => {
+  const malformed = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.tests": { producers: "ci/not-an-array" } },
+    gate_overrides: {}
+  };
+  assert.throws(
+    () => previewFlowConfigMerge(malformed, proposedConfigFixture()),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), malformed),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+
+  const existing = await mkdtemp(path.join(tmpdir(), "flow-config-merge-malformed-existing-"));
+  await mkdir(path.join(existing, ".flow"), { recursive: true });
+  const existingPath = path.join(existing, ".flow", "config.json");
+  const original = `${JSON.stringify(localConfigFixture(), null, 2)}\n`;
+  await Promise.all([
+    writeFile(existingPath, original),
+    writeFile(path.join(existing, "proposal.json"), `${JSON.stringify(malformed, null, 2)}\n`)
+  ]);
+  await assert.rejects(
+    () => applyFlowConfigMerge(existing, "proposal.json"),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+  assert.equal(await readFile(existingPath, "utf8"), original, "malformed proposal must not rewrite an existing authority config");
+
+  const missing = await mkdtemp(path.join(tmpdir(), "flow-config-merge-malformed-missing-"));
+  await writeFile(path.join(missing, "proposal.json"), `${JSON.stringify(malformed, null, 2)}\n`);
+  await assert.rejects(
+    () => applyFlowConfigMerge(missing, "proposal.json"),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+  await assert.rejects(
+    () => readFile(path.join(missing, ".flow", "config.json"), "utf8"),
+    /ENOENT/,
+    "malformed proposal must not create a config file"
+  );
+});

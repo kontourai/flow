@@ -192,6 +192,38 @@ test("AC1: omitted now and resume.at share one operation timestamp", async () =>
   assert.equal(result.committed, true);
 });
 
+test("paused gate continuation snapshots evidence before waiting for the mutation lock", async () => {
+  const fixtureData = await fixture("option-snapshot");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const continuation = request(fixtureData, evidencePath, {
+    evidence: {
+      file: evidencePath,
+      kind: "trust.bundle",
+      authorityTraces: ["authority:original"],
+      classifier: { kind: "original", nested: { value: "original" } },
+      diagnostics: { code: "original", nested: { value: "original" } },
+      analytics: { loop_key: "original", nested: { value: "original" } }
+    }
+  });
+  const pending = continuePausedGate(fixtureData.runId, continuation);
+  continuation.gate = "mutated-gate";
+  continuation.evidence.file = path.join(fixtureData.cwd, "missing-after-invocation.json");
+  continuation.evidence.authorityTraces[0] = "authority:mutated";
+  continuation.evidence.classifier.nested.value = "mutated";
+  continuation.evidence.diagnostics.nested.value = "mutated";
+  continuation.evidence.analytics.nested.value = "mutated";
+
+  const result = await pending;
+  assert.equal(result.committed, true);
+  assert.equal(result.evidence.gate_id, "verify-gate");
+  assert.equal(result.evidence.original_path, evidencePath);
+  assert.deepEqual(result.evidence.authority_traces, ["authority:original"]);
+  assert.deepEqual(result.evidence.classifier, { kind: "original", nested: { value: "original" } });
+  assert.deepEqual(result.evidence.diagnostics, { code: "original", nested: { value: "original" } });
+  assert.deepEqual(result.evidence.analytics, { loop_key: "original", nested: { value: "original" } });
+});
+
 test("AC2: prospective freshness and validation before staging leave the full run tree untouched", async () => {
   const freshness = await fixture("freshness");
   const oldBundle = path.join(freshness.cwd, "old-review.json");

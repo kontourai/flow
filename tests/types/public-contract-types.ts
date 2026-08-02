@@ -8,6 +8,7 @@ import type {
   FlowConsoleProjection,
   FlowDefinition,
   FlowDiagnostic,
+  FlowEvidenceAttachmentOptions,
   FlowEvidenceEntry,
   FlowExpectation,
   FlowGate,
@@ -18,6 +19,7 @@ import type {
   FlowRunRecoveryFenceWrite,
   FlowRunRecoveryFenceSnapshot,
   FlowRunState,
+  FlowPausedGateContinuationEvidence,
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
@@ -189,6 +191,20 @@ const evidenceEntryWithOpenBundle: FlowEvidenceEntry = {
   project_evidence_detail: "kept-open"
 };
 
+const attachmentOptions: FlowEvidenceAttachmentOptions = {
+  gate: "verify-gate",
+  file: "evidence.json",
+  authorityTraces: ["authority:one", "authority:two"]
+};
+const pausedContinuationEvidence: FlowPausedGateContinuationEvidence = {
+  file: "evidence.json",
+  authorityTraces: ["authority:one", "authority:two"]
+};
+// @ts-expect-error paused continuation evidence cannot supply an enclosing gate.
+const pausedContinuationEvidenceWithGate: FlowPausedGateContinuationEvidence = { file: "evidence.json", gate: "verify-gate" };
+// @ts-expect-error paused continuation evidence rejects unknown fields.
+const pausedContinuationEvidenceWithUnknownField: FlowPausedGateContinuationEvidence = { file: "evidence.json", unsupported: true };
+
 const diagnosticWithOpenRelated: FlowDiagnostic = {
   code: "flow.test",
   severity: "info",
@@ -264,6 +280,10 @@ void [
   gateWithUnknownRoutePolicyField,
   stepWithUnknownField,
   stepWithoutNext,
+  attachmentOptions,
+  pausedContinuationEvidence,
+  pausedContinuationEvidenceWithGate,
+  pausedContinuationEvidenceWithUnknownField,
   diagnosticWithOpenRelated,
   releaseResultWithOpenReportData,
   runStateWithOpenRuntimeMaps,

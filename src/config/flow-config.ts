@@ -51,6 +51,14 @@ function assertSafeConfigKey(segment) {
   if (UNSAFE_CONFIG_KEYS.has(segment)) throw new Error(`unsafe config path segment: ${segment}`);
 }
 
+function assertSafeConfigTree(value: any) {
+  if (!isObject(value) || Array.isArray(value)) return;
+  for (const [key, entry] of Object.entries(value)) {
+    assertSafeConfigKey(key);
+    assertSafeConfigTree(entry);
+  }
+}
+
 function validateResourceStringMap(value: any, path: string) {
   if (value === undefined) return;
   if (!isObject(value)) throw new Error(`${path} must be an object with string values`);
@@ -147,8 +155,12 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
 }
 
 export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeReport {
-  const local = { ...defaultFlowConfig(), ...(normalizeFlowConfig(localConfig) ?? {}) };
-  const proposed = { ...defaultFlowConfig(), ...(proposedConfigFromEnvelope(kitProposal) ?? {}) };
+  const normalizedLocal = normalizeFlowConfig(localConfig);
+  const normalizedProposed = proposedConfigFromEnvelope(kitProposal);
+  assertSafeConfigTree(normalizedLocal);
+  assertSafeConfigTree(normalizedProposed);
+  const local = validateFlatFlowConfig({ ...defaultFlowConfig(), ...(normalizedLocal ?? {}) });
+  const proposed = validateFlatFlowConfig({ ...defaultFlowConfig(), ...(normalizedProposed ?? {}) });
   const merged = cloneJson(local);
   const acceptedPaths = normalizeAcceptedConflictPaths(options.acceptConflicts ?? options.acceptedConflicts);
   const exceptionReason = options.exceptionReason;
@@ -244,6 +256,7 @@ export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowC
   }
 
   report.status = report.conflicts.length ? "conflicts" : "ready";
+  report.merged_config = validateFlatFlowConfig(report.merged_config) as FlowConfig;
   report.summary = configMergeSummary(report);
   return report;
 }
