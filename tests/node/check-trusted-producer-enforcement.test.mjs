@@ -253,6 +253,20 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
   });
   assert.equal(projection.gates.find((gate) => gate.id === "verify-gate").status, "pass", "Console projection must use the canonical state instant for the same authority decision");
 
+  const fractionalProjectionState = structuredClone(state);
+  fractionalProjectionState.updated_at = "2026-06-16T00:00:00.0001Z";
+  const fractionallyExpiredProjection = flow.projectFlowRun({
+    definition,
+    state: fractionalProjectionState,
+    manifest: await authorityFixture(authorityTrace({ validUntil: "2026-06-16T00:00:00.00005Z" })),
+    config
+  });
+  assert.equal(
+    fractionallyExpiredProjection.gates.find((gate) => gate.id === "verify-gate").status,
+    "route-back",
+    "Console projection must preserve fractional RFC3339 evaluation instants beyond Date precision"
+  );
+
   const intersection = configFor({
     trusted_producers: { "quality.tests": { authority_refs: ["authority:one"] } },
     gate_overrides: { "verify-gate": { expectations: { "tests-passed": { authority_refs: ["authority:two"] } } } }

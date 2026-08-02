@@ -711,7 +711,7 @@ export function projectFlowRun(
   const { dir, definition, state, manifest, config, report } = normalizeRunParts(runOrParts);
   const effectiveConfig = config ?? options.config;
   const evaluationNow = typeof state.updated_at === "string" && Number.isFinite(Date.parse(state.updated_at))
-    ? new Date(state.updated_at)
+    ? state.updated_at
     : undefined;
   const gateIds = Object.keys(definition.gates ?? {}).sort((left, right) => left.localeCompare(right));
   const gates = gateIds.map((gateId) => projectGate(definition, state, manifest, effectiveConfig, gateId, evaluationNow));
