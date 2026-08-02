@@ -231,6 +231,55 @@ test("pause and resume preserve Step state and restore the exact prior resumable
   }
 });
 
+test("lifecycle timestamps require strict RFC3339 and preserve the run tree on rejection", async () => {
+  const fixture = await runtimeRun("strict-timestamps");
+  const before = await snapshotRunTree(fixture.dir);
+
+  await assert.rejects(
+    pauseRun(fixture.runId, { cwd: fixture.cwd, ...request("request:non-rfc-at", { at: "2026-07-10 12:00:00Z" }) }),
+    /at must be an RFC3339 date-time/
+  );
+  assert.deepEqual(await snapshotRunTree(fixture.dir), before);
+
+  await assert.rejects(
+    pauseRun(fixture.runId, {
+      cwd: fixture.cwd,
+      ...request("request:non-rfc-authority", { authority: { requested_at: "2026-07-10 12:00:00Z" } })
+    }),
+    /authority\.requested_at must be an RFC3339 date-time/
+  );
+  assert.deepEqual(await snapshotRunTree(fixture.dir), before);
+});
+
+test("lifecycle ordering retains fractional RFC3339 precision and accepts equivalent offsets", async () => {
+  const fixture = await runtimeRun("fractional-ordering");
+  await pauseRun(fixture.runId, {
+    cwd: fixture.cwd,
+    ...request("request:fractional-pause", { at: "2026-07-10T12:00:00.00015Z" })
+  });
+  const beforeInvertedResume = await snapshotRunTree(fixture.dir);
+  await assert.rejects(
+    resumeRun(fixture.runId, {
+      cwd: fixture.cwd,
+      ...request("request:fractional-inverted-resume", { at: "2026-07-10T12:00:00.0001Z" })
+    }),
+    /precedes the prior event/
+  );
+  assert.deepEqual(await snapshotRunTree(fixture.dir), beforeInvertedResume);
+
+  const base = await validState();
+  const offsetPause = lifecycleEvent({ at: "2026-07-10T12:00:00.00015+01:00" });
+  const equivalentResume = lifecycleEvent({
+    action: "resume",
+    from_status: "paused",
+    to_status: "active",
+    prior_status: "active",
+    authority: { ...authority, request_ref: "request:offset-equivalent-resume" },
+    at: "2026-07-10T11:00:00.00015Z"
+  });
+  assert.equal(validateRunLifecycle({ ...base, status: "active", lifecycle: [offsetPause, equivalentResume] }).status, "active");
+});
+
 test("ordinary resumable status evolution between lifecycle events permits later blocked pause and cancellation", async () => {
   const fixture = await runtimeRun("intervening-blocked");
   await pauseRun(fixture.runId, { cwd: fixture.cwd, ...request("request:first-pause") });
@@ -397,7 +446,13 @@ test("canonical lifecycle validation rejects forged, incoherent, reversed, and m
     { ...base, status: "blocked", lifecycle: [pause, { ...resume, to_status: "blocked", prior_status: "active" }] },
     { ...base, status: "canceled", lifecycle: [pause, { ...cancel, from_status: "active" }] },
     { ...base, status: "active", lifecycle: [cancel, { ...pause, at: "2026-07-10T12:03:00.000Z" }] },
-    { ...base, status: "active", lifecycle: [pause, { ...resume, at: "2026-07-10T11:59:00.000Z" }] }
+    { ...base, status: "active", lifecycle: [pause, { ...resume, at: "2026-07-10T11:59:00.000Z" }] },
+    { ...base, status: "paused", lifecycle: [{ ...pause, at: "2026-07-10 12:00:00Z" }] },
+    { ...base, status: "paused", lifecycle: [{ ...pause, authority: { ...authority, requested_at: "2026-07-10 12:00:00Z" } }] },
+    { ...base, status: "active", lifecycle: [
+      { ...pause, at: "2026-07-10T12:00:00.00015Z" },
+      { ...resume, at: "2026-07-10T12:00:00.0001Z" }
+    ] }
   ];
   for (const state of invalid) {
     assert.throws(() => validateRunLifecycle(state), /flow\.lifecycle\.state\.invalid/);

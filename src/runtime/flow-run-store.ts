@@ -657,12 +657,12 @@ async function saveLifecycleState(run) {
 
 function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleAction) {
   const timestamp = options.at ?? new Date().toISOString();
-  if (!isNonEmptyString(timestamp) || !Number.isFinite(Date.parse(timestamp))) {
+  if (!isNonEmptyString(timestamp) || parseRfc3339Timestamp(timestamp) === null) {
     throw new FlowLifecycleError({
       code: "flow.lifecycle.request.invalid",
       severity: "error",
       path: "$.at",
-      message: "at must be a date-time when provided",
+      message: "at must be an RFC3339 date-time when provided",
       operation
     });
   }

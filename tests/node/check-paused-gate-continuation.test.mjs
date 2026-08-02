@@ -52,7 +52,7 @@ function authority(ref) {
   return { kind: "operator_request", actor: "operator:test", request_ref: ref, requested_at: TIME };
 }
 
-async function fixture(name, { priorStatus = "active", terminal = false, definitionValue, config } = {}) {
+async function fixture(name, { priorStatus = "active", terminal = false, definitionValue, config, pauseAt = TIME } = {}) {
   const cwd = await mkdtemp(path.join(tmpdir(), `flow-paused-gate-${name}-`));
   const definitionPath = path.join(cwd, "definition.json");
   const fixtureDefinition = structuredClone(definitionValue ?? definition);
@@ -67,7 +67,7 @@ async function fixture(name, { priorStatus = "active", terminal = false, definit
   const state = JSON.parse(await readFile(statePath, "utf8"));
   state.status = priorStatus;
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
-  await pauseRun(started.runId, { cwd, reason: "Wait for review evidence.", authority: authority(`request:pause:${name}`), at: TIME });
+  await pauseRun(started.runId, { cwd, reason: "Wait for review evidence.", authority: authority(`request:pause:${name}`), at: pauseAt });
   return { cwd, runId: started.runId, dir: started.dir, run: await loadRun(started.runId, cwd) };
 }
 
@@ -318,6 +318,25 @@ test("paused continuation compares resume ordering at full RFC3339 precision", a
       }
     })),
     /resume\.at must not follow evaluation now/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
+});
+
+test("paused continuation rejects resume before its pause at fractional RFC3339 precision without mutation", async () => {
+  const fixtureData = await fixture("fractional-lifecycle-order", { pauseAt: "2026-07-22T12:01:00.00015Z" });
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, {
+      now: "2026-07-22T12:01:00.0002Z",
+      resume: {
+        reason: "resume before the persisted pause",
+        authority: authority("request:fractional-lifecycle-order"),
+        at: "2026-07-22T12:01:00.0001Z"
+      }
+    })),
+    /precedes the prior event/
   );
   assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
 });
