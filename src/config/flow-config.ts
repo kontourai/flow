@@ -47,6 +47,13 @@ function publisherReceiptInvalidError() {
   return new ConfigMergePublisherReceiptInvalidError();
 }
 
+function publisherFailedError(cause: unknown) {
+  return new Error(
+    "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics",
+    { cause }
+  );
+}
+
 function configMergePublisher(options: FlowConfigMergeApplyOptions): FlowConfigMergePublisher {
   if (options.publisher === undefined) throw publisherUnavailableError();
   if (typeof options.publisher !== "function") throw publisherInvalidError();
@@ -69,19 +76,30 @@ async function loadFlowConfigMergeBase(configPath: string) {
 }
 
 function publisherReceipt(value: unknown, request: FlowConfigMergePublisherRequest): FlowConfigMergePublisherReceipt {
-  if (!isObject(value)) throw publisherReceiptInvalidError();
+  let objectLike: boolean;
+  try {
+    objectLike = isObject(value);
+  } catch (error) {
+    throw publisherFailedError(error);
+  }
+  if (!objectLike) throw publisherReceiptInvalidError();
   const receipt = value as MutableRecord;
   // Read every host-owned property exactly once. Accessor-backed objects and
   // proxies must not be able to present one value for validation and another
   // for the receipt Flow returns to callers.
-  const snapshot = Object.freeze({
-    api_version: receipt.api_version,
-    status: receipt.status,
-    publisher: receipt.publisher,
-    publication_id: receipt.publication_id,
-    config_path: receipt.config_path,
-    contents_sha256: receipt.contents_sha256
-  });
+  let snapshot;
+  try {
+    snapshot = Object.freeze({
+      api_version: receipt.api_version,
+      status: receipt.status,
+      publisher: receipt.publisher,
+      publication_id: receipt.publication_id,
+      config_path: receipt.config_path,
+      contents_sha256: receipt.contents_sha256
+    });
+  } catch (error) {
+    throw publisherFailedError(error);
+  }
   if (snapshot.api_version !== FLOW_CONFIG_MERGE_PUBLISHER_API_VERSION
     || snapshot.status !== "applied"
     || !isNonEmptyString(snapshot.publisher)
@@ -394,20 +412,16 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     contents,
     contents_sha256: sha256(contents)
   }) satisfies FlowConfigMergePublisherRequest;
-  let receipt: FlowConfigMergePublisherReceipt;
+  let response: unknown;
   try {
-    const response = await publisher(request);
-    receipt = publisherReceipt(response, request);
+    response = await publisher(request);
   } catch (error) {
-    if (error instanceof ConfigMergePublisherReceiptInvalidError) throw error;
-    // Publisher failures can contain credentials, internal paths, or other
-    // host-only diagnostics. Keep that value available to trusted embedders as
-    // the cause, but never reflect it through Flow's public/CLI error message.
-    throw new Error(
-      "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics",
-      { cause: error }
-    );
+    // Publisher code is a separate trust domain. Sanitize every value it
+    // throws—even one replaying an internal Flow error class recovered from a
+    // prior call. Host-only detail remains available solely as the cause.
+    throw publisherFailedError(error);
   }
+  const receipt = publisherReceipt(response, request);
   return { ...report, mode: "apply", status: "applied", publisher_receipt: receipt };
 }
 

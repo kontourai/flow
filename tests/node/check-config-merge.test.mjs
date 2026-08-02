@@ -344,10 +344,39 @@ test("config merge rejects invalid and failed publisher capabilities", async () 
   );
   assert.doesNotMatch(String(getterFailure), /getter-secret-1f97|\/host\/private\/receipt\.json/);
   assert.match(getterFailure.cause?.message, /getter-secret-1f97/);
-  await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => ({ status: "applied" }) }),
-    /flow\.config\.merge\.publisher\.receipt\.invalid/
+  let malformedReceiptFailure;
+  try {
+    await applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => ({ status: "applied" }) });
+  } catch (error) {
+    malformedReceiptFailure = error;
+  }
+  assert.ok(malformedReceiptFailure instanceof Error);
+  assert.equal(
+    malformedReceiptFailure.message,
+    "flow.config.merge.publisher.receipt.invalid: publisher must return an applied receipt bound to the requested config path and bytes"
   );
+
+  // A hostile host can retain the constructor/instance it observed from an
+  // earlier malformed response. Replaying that internal class from publisher
+  // execution must still cross the unconditional sanitized host boundary.
+  const RecoveredReceiptError = malformedReceiptFailure.constructor;
+  const replayedReceiptError = new RecoveredReceiptError();
+  replayedReceiptError.message = "replayed-internal-secret-83bd at /host/private/replay.json";
+  let replayFailure;
+  try {
+    await applyFlowConfigMerge(cwd, "proposal.json", {
+      publisher: async () => { throw replayedReceiptError; }
+    });
+  } catch (error) {
+    replayFailure = error;
+  }
+  assert.ok(replayFailure instanceof Error);
+  assert.equal(
+    replayFailure.message,
+    "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics"
+  );
+  assert.doesNotMatch(String(replayFailure), /replayed-internal-secret-83bd|\/host\/private\/replay\.json/);
+  assert.equal(replayFailure.cause, replayedReceiptError);
 });
 
 test("config merge rejects malformed producer mappings before preview or publication", async () => {
