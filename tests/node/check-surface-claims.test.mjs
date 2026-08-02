@@ -662,7 +662,11 @@ test("trust.bundle current-visit checks preserve fractional precision and reject
   const leapOutcome = evaluateGate(bundleDef, leapState, manifest, "verify-gate", defaultFlowConfig());
   assert.equal(leapOutcome.status, "route-back", "a leap-second claim cannot collapse onto the adjacent day and pass");
   assert.equal(leapOutcome.diagnostics.claim_evaluation[0].evidence_id, "ev.fractional-precision");
-  assert.equal(leapOutcome.diagnostics.claim_evaluation[0].reason, "claim_not_current");
+  assert.equal(
+    leapOutcome.diagnostics.claim_evaluation[0].reason,
+    "bundle_invalid",
+    "Surface validation rejects the non-RFC3339 bundle before current-visit comparison"
+  );
 });
 
 test("trust.bundle Hachure conformance: test vectors produce expected claim statuses via Surface", async () => {
