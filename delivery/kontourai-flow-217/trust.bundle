@@ -1,0 +1,1524 @@
+{
+  "schemaVersion": 5,
+  "source": "flow-agents/workflow-sidecar;statusFunctionVersion=2",
+  "claims": [
+    {
+      "id": "kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z",
+      "subjectType": "work-item",
+      "subjectId": "kontourai-flow-217/gate-claim-selected-work",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.pull-work.selected",
+      "fieldOrBehavior": "Work Item kontourai/flow#217 is durably assigned to the active workflow actor (assignment sha256:0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc).",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.pull-work.selected:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.pull-work",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "selected-work"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/assignment/kontourai-flow-217.json",
+            "summary": "Durable local assignment record for the selected Work Item and active actor; sha256:0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/assignment-provider-state.json",
+            "summary": "Provider assignment state confirming ownership before the local runtime lease was mirrored; sha256:93af7b518a15f1835dbbe3b98322879622b3cb27ed4a3ef8f3615c391fe8a0fd."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--pull-work.md",
+            "summary": "Concrete pull-work selection report for kontourai/flow#217."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "selected-work",
+          "claim_type": "builder.pull-work.selected",
+          "subject_type": "work-item",
+          "step_id": "pull-work",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:37:26Z",
+          "flow_run_head": "2f733a09b9c74976f9a9c8a0d417e5b54bf2e72b462f755794ff034e4e0e9653"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z",
+      "subjectType": "work-item",
+      "subjectId": "kontourai-flow-217/gate-claim-pickup-probe-readiness",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.design-probe.pickup-readiness",
+      "fieldOrBehavior": "Pickup probe records exact goal fit, corrected lifecycle scope, fresh base/head, provider ownership, risks, and planning readiness.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.design-probe.pickup-readiness:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.pickup-probe",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "pickup-probe"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--pull-work.md",
+            "summary": "Provider-grounded pickup readiness and exact-head lifecycle boundary."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "pickup-probe-readiness",
+          "claim_type": "builder.design-probe.pickup-readiness",
+          "subject_type": "work-item",
+          "step_id": "design-probe",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:38:24.446Z",
+          "flow_run_head": "c11a3ffd2ad83c69c57b34cfda74000ef62c7ddfc5ea30d74e3916077d2da311"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z",
+      "subjectType": "decision",
+      "subjectId": "kontourai-flow-217/gate-claim-probe-decisions-or-accepted-gaps",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.design-probe.decisions",
+      "fieldOrBehavior": "Probe decisions explicitly preserve the archived rejected contract and allocate verification, CI, delivery, and learning to their native gates with no waiver.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.design-probe.decisions:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.pickup-probe",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "pickup-probe"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--pull-work.md",
+            "summary": "Decisions, no accepted gaps, route reason, risks, and next action."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "probe-decisions-or-accepted-gaps",
+          "claim_type": "builder.design-probe.decisions",
+          "subject_type": "decision",
+          "step_id": "design-probe",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:38:25.749Z",
+          "flow_run_head": "c11a3ffd2ad83c69c57b34cfda74000ef62c7ddfc5ea30d74e3916077d2da311"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z",
+      "subjectType": "artifact",
+      "subjectId": "kontourai-flow-217/gate-claim-implementation-plan",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.plan.implementation",
+      "fieldOrBehavior": "Plan records exact-source accounting, seven lifecycle-correct criteria, immutable-head review and canonical verification, native release/CI/delivery/learning sequencing, rollback, and stop-short risks.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.plan.implementation:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.plan-work",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "implementation-plan"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--plan-work.md",
+            "summary": "Execution-ready Definition of Done, task-to-criterion evidence mapping, native gate order, and rollback boundary."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/acceptance.json",
+            "summary": "Seven stable lifecycle-correct acceptance criteria with command and source evidence plans."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/handoff.json",
+            "summary": "Exact-head execution handoff, route rationale, blockers, warnings, and next actions."
+          }
+        ],
+        "acceptance_contract": {
+          "version": 1,
+          "algorithm": "sha256",
+          "digest": "56f7c1a330d77a30bd81988195600a0f49b0b05c4043889141d802e7b013498c",
+          "criteria": [
+            {
+              "id": "AC1-trusted-producer-authority-enforcement",
+              "description": "Configured producer pins and active actor, authority-reference, subject, claim, and evidence-scope AuthorityTrace pins are enforced in canonical and pure evaluation."
+            },
+            {
+              "id": "AC2-precise-untrusted-diagnostics",
+              "description": "Pinned unattributed or unauthorized evidence fails with precise untrusted_producer diagnostics without relabeling unrelated evidence failures."
+            },
+            {
+              "id": "AC3-mutation-safe-publication",
+              "description": "Attachment and evaluation remain serialized and publish coherent state, manifest, report, and Console projections under contention."
+            },
+            {
+              "id": "AC4-bounded-fail-closed-config",
+              "description": "Malformed, hostile, removed, or deny-all config fails closed through bounded single-read snapshots; independent producer and authority scopes intersect."
+            },
+            {
+              "id": "AC5-async-input-snapshots",
+              "description": "Supported structured attachment, evaluation-time, and paused-continuation inputs are cloned and validated before asynchronous use, with removed opaque authority input rejected."
+            },
+            {
+              "id": "AC6-public-package-contract-parity",
+              "description": "Schemas, public types and exports, CLI, docs, Flow 5 migration, reducer identity, UI assets, dependency pins, lockfile, audits, and package contents agree."
+            },
+            {
+              "id": "AC7-exact-head-lifecycle-handoff",
+              "description": "Fresh critique and command-backed verification bind to exact repaired behavioral head 25227f0, and the handoff requires no-exemption CI, delivery, and learning completion in their native later gates."
+            }
+          ]
+        },
+        "gate_claim": {
+          "expectation_id": "implementation-plan",
+          "claim_type": "builder.plan.implementation",
+          "subject_type": "artifact",
+          "step_id": "plan",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:50:59.948Z",
+          "flow_run_head": "1ab2bc0778b10cbd26e6b34fb5faf06b3f5ab0013ff709d1981acb2cced9744f"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z",
+      "subjectType": "change",
+      "subjectId": "kontourai-flow-217/gate-claim-implementation-scope",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.execute.scope",
+      "fieldOrBehavior": "Replacement run adopted the exact 53-path implementation scope at base 4ac16b2 and head 25227f0 without claiming retroactive authorship, source mutation, scope deviation, or conflict; AC1-AC7 traceability and remaining native gates are recorded.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.execute.scope:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.execute-plan",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "implementation-scope"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+            "summary": "Exact base/head, grouped changed files, AC traceability, no-new-source execution boundary, rollback, and remaining work."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "implementation-scope",
+          "claim_type": "builder.execute.scope",
+          "subject_type": "change",
+          "step_id": "execute",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:51:47.963Z",
+          "flow_run_head": "1de2fac4ef5d0a7a2a1f4e7ad9b8f597bd2dc1736d4ebc449b7e4e49470a4215"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/gate-claim-acceptance-criteria",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "AC1-AC7 are lifecycle-correct, observable, mapped to exact command and source evidence, and satisfied at exact behavioral head 25227f0; future CI, delivery, and learning facts remain in native later gates.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.verify-work",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "acceptance-criteria",
+          "tests-evidence",
+          "policy-compliance"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/acceptance.json",
+            "summary": "Seven accepted criteria with command, source, artifact, and provider evidence plans."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+            "summary": "Exact implemented scope and AC1-AC7 traceability at head 25227f0."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "acceptance-criteria",
+          "claim_type": "workflow.acceptance.criterion",
+          "subject_type": "flow-step",
+          "step_id": "verify",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:52:59.473Z",
+          "flow_run_head": "564ab79a232ae280c5e0ca524cc5acefa0d6f81a61a2d8007374c708c9440398"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/gate-claim-tests-evidence",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.verify.tests",
+      "fieldOrBehavior": "Literal trust-reconcile manifest command passed 46 of 46 at exact head. The exact-head verifier also ran the hosted canonical chain successfully: 440 Node passes, 27 browser passes, 9 intentional skips, schema repetition, prepack typecheck/repetition, and a 166-file tarball; that chained observation stays in the summary because the public evidence validator and CI reconciliation accept only the manifest command as the claim command.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.verify.tests:test_output",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "command",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.verify-work",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "acceptance-criteria",
+          "tests-evidence",
+          "policy-compliance"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "command",
+            "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+            "summary": "Literal trust-reconcile manifest command passed 46 of 46 tests at exact head 25227f0."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/acceptance.json",
+            "summary": "Criterion-to-command and structured source evidence mapping; canonical-chain results are retained in this claim summary."
+          }
+        ],
+        "output_digest": {
+          "algorithm": "sha256",
+          "hex": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126"
+        },
+        "observed_commands": [
+          {
+            "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+            "exit_code": 0,
+            "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+            "test_count": 46,
+            "execution_proof": {
+              "kind": "local-process-exit",
+              "runner": "node --test",
+              "static_test_units": 52
+            }
+          }
+        ],
+        "verification_workspace_snapshot": {
+          "version": 1,
+          "kind": "git-worktree",
+          "algorithm": "sha256",
+          "digest": "dbeb9450c8da0666e89d2aa86fb184db454fe34355085072a7a49fc76abc0580",
+          "head_sha": "25227f0e4155a6fdf74f5d55d2325e9370a250fc"
+        },
+        "gate_claim": {
+          "expectation_id": "tests-evidence",
+          "claim_type": "builder.verify.tests",
+          "subject_type": "flow-step",
+          "step_id": "verify",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T19:56:07.262Z",
+          "flow_run_head": "564ab79a232ae280c5e0ca524cc5acefa0d6f81a61a2d8007374c708c9440398"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z",
+      "subjectType": "change",
+      "subjectId": "kontourai-flow-217/gate-claim-merge-readiness",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.merge-ready.readiness",
+      "fieldOrBehavior": "PASS for merge review: exact source scope, clean three-lane critique, command-backed acceptance, package evidence, and current required Veritas governance support publication. PR remote-head, delivery-bundle, hosted-CI, merge, and learning facts remain explicitly pending their native gates.",
+      "value": "pass",
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "updatedAt": "2026-08-02T20:02:03.875Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.merge-ready.readiness:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#217",
+        "expected_producer": "builder.evidence-gate",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "merge-readiness"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--evidence-gate.md",
+            "summary": "Scope integrity, AC1-AC7 coverage, Veritas promotion state, residual risks, and PASS route."
+          },
+          {
+            "kind": "artifact",
+            "file": ".kontourai/veritas/evidence/veritas-1785700758768.json",
+            "summary": "Veritas 1.5.2 governance state current, required requirements verified, promotion allowed, no override/bypass; non-required Guide advisory disclosed."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "merge-readiness",
+          "claim_type": "builder.merge-ready.readiness",
+          "subject_type": "change",
+          "step_id": "merge-ready",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T20:02:03.875Z",
+          "flow_run_head": "8f9a9a35640964e82ecf4ab6ca3c01c54f1ca16742b7160bf742ebd397cb85fa"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC1-trusted-producer-authority-enforcement",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Configured producer pins and active actor, authority-reference, subject, claim, and evidence-scope AuthorityTrace pins are enforced in canonical and pure evaluation.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC1-trusted-producer-authority-enforcement",
+          "description": "Configured producer pins and active actor, authority-reference, subject, claim, and evidence-scope AuthorityTrace pins are enforced in canonical and pure evaluation.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest command passed 46 tests; the exact-head canonical 440-test result is retained in the tests-evidence summary."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC2-precise-untrusted-diagnostics",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Pinned unattributed or unauthorized evidence fails with precise untrusted_producer diagnostics without relabeling unrelated evidence failures.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC2-precise-untrusted-diagnostics",
+          "description": "Pinned unattributed or unauthorized evidence fails with precise untrusted_producer diagnostics without relabeling unrelated evidence failures.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest command passed 46 tests; the exact-head canonical diagnostic result is retained in the tests-evidence summary."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC3-mutation-safe-publication",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Attachment and evaluation remain serialized and publish coherent state, manifest, report, and Console projections under contention.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC3-mutation-safe-publication",
+          "description": "Attachment and evaluation remain serialized and publish coherent state, manifest, report, and Console projections under contention.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest command includes immutable-state and concurrency coverage; full exact-head result is retained in summary."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC4-bounded-fail-closed-config",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Malformed, hostile, removed, or deny-all config fails closed through bounded single-read snapshots; independent producer and authority scopes intersect.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC4-bounded-fail-closed-config",
+          "description": "Malformed, hostile, removed, or deny-all config fails closed through bounded single-read snapshots; independent producer and authority scopes intersect.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest command passed; hostile-config canonical coverage is retained in summary and source evidence."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC5-async-input-snapshots",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Supported structured attachment, evaluation-time, and paused-continuation inputs are cloned and validated before asynchronous use, with removed opaque authority input rejected.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC5-async-input-snapshots",
+          "description": "Supported structured attachment, evaluation-time, and paused-continuation inputs are cloned and validated before asynchronous use, with removed opaque authority input rejected.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest command passed; canonical continuation/snapshot coverage is retained in summary and source evidence."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC6-public-package-contract-parity",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Schemas, public types and exports, CLI, docs, Flow 5 migration, reducer identity, UI assets, dependency pins, lockfile, audits, and package contents agree.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC6-public-package-contract-parity",
+          "description": "Schemas, public types and exports, CLI, docs, Flow 5 migration, reducer identity, UI assets, dependency pins, lockfile, audits, and package contents agree.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Manifest package/CLI/repo-hook command passed 46 tests; package/prepack result is retained in summary and critique."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z",
+      "subjectType": "flow-step",
+      "subjectId": "kontourai-flow-217/AC7-exact-head-lifecycle-handoff",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.acceptance.criterion",
+      "fieldOrBehavior": "Fresh critique and command-backed verification bind to exact repaired behavioral head 25227f0, and the handoff requires no-exemption CI, delivery, and learning completion in their native later gates.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "updatedAt": "2026-08-02T19:56:07.262Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:workflow.acceptance.criterion:test_output",
+      "metadata": {
+        "origin": "acceptance",
+        "criterion": {
+          "id": "AC7-exact-head-lifecycle-handoff",
+          "description": "Fresh critique and command-backed verification bind to exact repaired behavioral head 25227f0, and the handoff requires no-exemption CI, delivery, and learning completion in their native later gates.",
+          "status": "pass",
+          "evidence_refs": [
+            {
+              "kind": "command",
+              "excerpt": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "summary": "Literal reconcilable command passed 46 tests at exact head 25227f0."
+            },
+            {
+              "kind": "artifact",
+              "file": ".kontourai/flow-agents/kontourai-flow-217/handoff.json",
+              "summary": "No-exemption CI, delivery, and learning remain required in native later gates."
+            }
+          ],
+          "observed_commands": [
+            {
+              "command": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+              "exit_code": 0,
+              "output_sha256": "33f90bd7d7d8f780cdb4212cd7afa03ab15422e8494d7b52d82280bfe5048126",
+              "test_count": 46,
+              "execution_proof": {
+                "kind": "local-process-exit",
+                "runner": "node --test",
+                "static_test_units": 52
+              }
+            }
+          ],
+          "identity_version": 2,
+          "verified_at": "2026-08-02T19:56:07.262Z"
+        },
+        "workflow_subject_ref": "kontourai/flow#217"
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-217-review.flow-agents-workflow.exact-flow-head-25227f0e4155a6fdf74f5d55d2325e9370a250fc-remains-clean-after-corrected-run-reconfirmation-3-3-pass-review-lanes-with-zero-actionable-findings-across-code-architecture-hostile-input-correctness-and-package-public-contract-reviewed-2026-08-02t19-53-22-033z",
+      "subjectType": "workflow-critique",
+      "subjectId": "kontourai-flow-217/review",
+      "facet": "flow-agents.workflow",
+      "claimType": "workflow.critique.review",
+      "fieldOrBehavior": "Exact Flow HEAD 25227f0e4155a6fdf74f5d55d2325e9370a250fc remains clean after corrected-run reconfirmation: 3/3 PASS review lanes with zero actionable findings across code/architecture, hostile-input correctness, and package/public contract.",
+      "value": "pass",
+      "createdAt": "2026-08-02T19:53:22.033Z",
+      "updatedAt": "2026-08-02T19:53:22.033Z",
+      "impactLevel": "medium",
+      "verificationPolicyId": "policy:workflow.critique.review",
+      "metadata": {
+        "origin": "critique",
+        "reviewer": "codex:thread-a8d1182dbd8fe081f18022e3:Kontour",
+        "reviewed_at": "2026-08-02T19:53:22.033Z",
+        "identity_version": 2,
+        "critique_sequence": 1,
+        "critique_predecessor_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "critique_record_hash": "1db1d99473a10ac2df76684a2009a965e88317618da0223b530adf1093bfc7d7",
+        "findings": [],
+        "lanes": [
+          {
+            "id": "code-architecture",
+            "status": "pass",
+            "summary": "Reconfirmed at exact HEAD 25227f0e4155a6fdf74f5d55d2325e9370a250fc: code and architecture review remains PASS with zero actionable correctness, maintainability, or ownership-boundary findings.",
+            "evidence_refs": [
+              {
+                "kind": "artifact",
+                "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+                "summary": "Full corrected-run delivery report reviewed against the complete adopted exact-head source scope."
+              },
+              {
+                "kind": "source",
+                "file": "src/gates/flow-gates.ts",
+                "line_start": 259,
+                "line_end": 263,
+                "excerpt": "function exactResolutionAuthorizedForClaim(event: TimedEvent, trace: TimedTrace, claim: any, linkedEvidence: any[], evaluatedAt: ParsedRfc3339Timestamp): boolean {",
+                "summary": "Reconfirmed claim-scoped exact authority and chronology integration at the unchanged exact HEAD."
+              },
+              {
+                "kind": "source",
+                "file": "src/runtime/flow-run-store.ts",
+                "line_start": 2327,
+                "line_end": 2346,
+                "excerpt": "/** Atomically continue a paused current gate; every non-commit result is dry. */",
+                "summary": "Reconfirmed atomic paused-continuation and canonical mutation boundaries at the unchanged exact HEAD."
+              }
+            ]
+          },
+          {
+            "id": "hostile-input-correctness",
+            "status": "pass",
+            "summary": "Reconfirmed at exact HEAD: hostile-input correctness remains PASS with zero actionable findings across bounded single-view config snapshots, fail-closed bundle snapshots, and structured continuation inputs.",
+            "evidence_refs": [
+              {
+                "kind": "source",
+                "file": "src/config/flow-config-validator.ts",
+                "line_start": 39,
+                "line_end": 47,
+                "excerpt": "Materialize caller-owned config into a plain JSON-shaped tree before any normalization, cloning, or schema validation.",
+                "summary": "Reconfirmed bounded one-view materialization contract before downstream config processing."
+              },
+              {
+                "kind": "source",
+                "file": "src/config/flow-config-validator.ts",
+                "line_start": 67,
+                "line_end": 67,
+                "excerpt": "if (types.isProxy(value)) throw configInputInvalidError();",
+                "summary": "Reconfirmed Proxy rejection before hostile container enumeration."
+              },
+              {
+                "kind": "source",
+                "file": "src/gates/flow-gates.ts",
+                "line_start": 642,
+                "line_end": 647,
+                "excerpt": "snapshot = structuredClone(bundle);",
+                "summary": "Reconfirmed fail-closed TrustBundle snapshot and derivation-budget boundary."
+              },
+              {
+                "kind": "source",
+                "file": "src/runtime/flow-run-store.ts",
+                "line_start": 2162,
+                "line_end": 2164,
+                "excerpt": "requestOptions = structuredClone(options) as FlowPausedGateContinuationOptions;",
+                "summary": "Reconfirmed single structured snapshot and sanitized failure for paused-continuation inputs."
+              }
+            ]
+          },
+          {
+            "id": "package-public-contract",
+            "status": "pass",
+            "summary": "Reconfirmed at exact HEAD: package, migration, release signaling, and public-contract review remains PASS with zero actionable findings; Flow 5 boundaries are explicit and provider-neutral.",
+            "evidence_refs": [
+              {
+                "kind": "artifact",
+                "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+                "summary": "Full delivery artifact accounts for governance, package, schema, type, CLI, documentation, migration, reducer, Console, and verification source scope."
+              },
+              {
+                "kind": "source",
+                "file": "docs/migrations/5.0.0.md",
+                "line_start": 5,
+                "line_end": 15,
+                "excerpt": "Breaking: trusted-producer authority is embedded, scoped TrustBundle data",
+                "summary": "Reconfirmed the trusted-producer authority migration and deny-all policy semantics."
+              },
+              {
+                "kind": "source",
+                "file": "docs/migrations/5.0.0.md",
+                "line_start": 17,
+                "line_end": 25,
+                "excerpt": "Breaking: Flow no longer writes project config itself",
+                "summary": "Reconfirmed the trusted host publisher boundary and standalone preview fallback."
+              },
+              {
+                "kind": "source",
+                "file": "src/config/flow-config-validator.ts",
+                "line_start": 19,
+                "line_end": 27,
+                "excerpt": "export const FLOW_CONFIG_INPUT_LIMITS = Object.freeze({",
+                "summary": "Reconfirmed the bounded public config-input contract."
+              }
+            ]
+          }
+        ],
+        "review_target": {
+          "artifacts": [
+            {
+              "file": ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+              "sha256": "871fa3308a0d67f4e03f903ba81ecca3cb16c679ac554bc6413ef2cdd06aa1b0"
+            },
+            {
+              "file": "src/gates/flow-gates.ts",
+              "sha256": "f6ab0a17e327707091939e8e70d5743fc3ba155f2da2d169486c45eb88dd64c0"
+            },
+            {
+              "file": "src/config/flow-config-validator.ts",
+              "sha256": "16837c649d589985d1535b285c660123e38358a073fe4fe81bf2c3d9cd00d559"
+            },
+            {
+              "file": "src/runtime/flow-run-store.ts",
+              "sha256": "ce8d841856354e32f94ae1b73b02ffa12ac22b552cb514d77a19500b3ef837d4"
+            },
+            {
+              "file": "docs/migrations/5.0.0.md",
+              "sha256": "85a4a6b5be8d5c095bce6fc7bb72611579bca16900dec8706cccdc53bc658af6"
+            }
+          ],
+          "workspace_snapshot": {
+            "version": 1,
+            "kind": "git-worktree",
+            "algorithm": "sha256",
+            "digest": "dbeb9450c8da0666e89d2aa86fb184db454fe34355085072a7a49fc76abc0580",
+            "head_sha": "25227f0e4155a6fdf74f5d55d2325e9370a250fc"
+          }
+        },
+        "artifact_refs": [
+          ".kontourai/flow-agents/kontourai-flow-217/kontourai-flow-217--deliver.md",
+          "src/gates/flow-gates.ts",
+          "src/config/flow-config-validator.ts",
+          "src/runtime/flow-run-store.ts",
+          "docs/migrations/5.0.0.md"
+        ],
+        "workflow_subject_ref": "kontourai/flow#217",
+        "critique_record_id": "critique:1db1d99473a10ac2df76684a2009a965e88317618da0223b530adf1093bfc7d7"
+      },
+      "status": "verified"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z",
+      "claimId": "kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "Work Item kontourai/flow#217 is durably assigned to the active workflow actor (assignment sha256:0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc).",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z",
+      "claimId": "kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "Pickup probe records exact goal fit, corrected lifecycle scope, fresh base/head, provider ownership, risks, and planning readiness.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z",
+      "claimId": "kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "Probe decisions explicitly preserve the archived rejected contract and allocate verification, CI, delivery, and learning to their native gates with no waiver.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z",
+      "claimId": "kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "Plan records exact-source accounting, seven lifecycle-correct criteria, immutable-head review and canonical verification, native release/CI/delivery/learning sequencing, rollback, and stop-short risks.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z",
+      "claimId": "kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "Replacement run adopted the exact 53-path implementation scope at base 4ac16b2 and head 25227f0 without claiming retroactive authorship, source mutation, scope deviation, or conflict; AC1-AC7 traceability and remaining native gates are recorded.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z",
+      "claimId": "kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "AC1-AC7 are lifecycle-correct, observable, mapped to exact command and source evidence, and satisfied at exact behavioral head 25227f0; future CI, delivery, and learning facts remain in native later gates.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/command-log.jsonl",
+      "excerptOrSummary": "Literal trust-reconcile manifest command passed 46 of 46 at exact head. The exact-head verifier also ran the hosted canonical chain successfully: 440 Node passes, 27 browser passes, 9 intentional skips, schema repetition, prepack typecheck/repetition, and a 166-file tarball; that chained observation stays in the summary because the public evidence validator and CI reconciliation accept only the manifest command as the claim command.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/evidence-capture",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z",
+      "claimId": "kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-217/evidence.json",
+      "excerptOrSummary": "PASS for merge review: exact source scope, clean three-lane critique, command-backed acceptance, package evidence, and current required Veritas governance support publication. PR remote-head, delivery-bundle, hosted-CI, merge, and learning facts remain explicitly pending their native gates.",
+      "observedAt": "2026-08-02T20:02:03.875Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "ev:kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2",
+      "claimId": "kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z",
+      "evidenceType": "test_output",
+      "method": "validation",
+      "sourceRef": "kontourai-flow-217/observed-command",
+      "excerptOrSummary": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+      "observedAt": "2026-08-02T19:56:07.262Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true,
+      "execution": {
+        "runner": "bash",
+        "label": "node --test tests/node/check-flow-run-definition-amendment.test.mjs tests/node/check-cli-runtime.test.mjs tests/node/check-repo-hooks.test.mjs",
+        "isError": false,
+        "exitCode": 0
+      }
+    }
+  ],
+  "policies": [
+    {
+      "id": "policy:workflow.check.external:attestation",
+      "claimType": "workflow.check.external",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a workflow.check.external claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.pull-work.selected:attestation",
+      "claimType": "builder.pull-work.selected",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.pull-work.selected claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.design-probe.pickup-readiness:attestation",
+      "claimType": "builder.design-probe.pickup-readiness",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.design-probe.pickup-readiness claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.design-probe.decisions:attestation",
+      "claimType": "builder.design-probe.decisions",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.design-probe.decisions claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.plan.implementation:attestation",
+      "claimType": "builder.plan.implementation",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.plan.implementation claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.execute.scope:attestation",
+      "claimType": "builder.execute.scope",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.execute.scope claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:workflow.acceptance.criterion:attestation",
+      "claimType": "workflow.acceptance.criterion",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a workflow.acceptance.criterion claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:workflow.check.command:test_output",
+      "claimType": "workflow.check.command",
+      "requiredEvidence": [
+        "test_output"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a workflow.check.command claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.verify.tests:test_output",
+      "claimType": "builder.verify.tests",
+      "requiredEvidence": [
+        "test_output"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.verify.tests claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.merge-ready.readiness:attestation",
+      "claimType": "builder.merge-ready.readiness",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.merge-ready.readiness claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:workflow.acceptance.criterion:test_output",
+      "claimType": "workflow.acceptance.criterion",
+      "requiredEvidence": [
+        "test_output"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a workflow.acceptance.criterion claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:workflow.critique.review",
+      "claimType": "workflow.critique.review",
+      "requiredEvidence": [],
+      "acceptanceCriteria": [
+        "A verified verification event must support a workflow.critique.review claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "medium"
+    }
+  ],
+  "events": [
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z",
+      "claimId": "kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-217-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-0413d614e59e53ed45bbb17190cea58b05cdfc5f08d72bf560b2eace6eac30cc-gate-visit-2026-08-02t19-37-26z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z",
+      "claimId": "kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-pickup-probe-readiness.flow-agents-workflow.pickup-probe-records-exact-goal-fit-corrected-lifecycle-scope-fresh-base-head-provider-ownership-risks-and-planning-readiness-gate-visit-2026-08-02t19-38-24-446z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z",
+      "claimId": "kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.probe-decisions-explicitly-preserve-the-archived-rejected-contract-and-allocate-verification-ci-delivery-and-learning-to-their-native-gates-with-no-waiver-gate-visit-2026-08-02t19-38-25-749z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z",
+      "claimId": "kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-implementation-plan.flow-agents-workflow.plan-records-exact-source-accounting-seven-lifecycle-correct-criteria-immutable-head-review-and-canonical-verification-native-release-ci-delivery-learning-sequencing-rollback-and-stop-short-risks-gate-visit-2026-08-02t19-50-59-948z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z",
+      "claimId": "kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-implementation-scope.flow-agents-workflow.replacement-run-adopted-the-exact-53-path-implementation-scope-at-base-4ac16b2-and-head-25227f0-without-claiming-retroactive-authorship-source-mutation-scope-deviation-or-conflict-ac1-ac7-traceability-and-remaining-native-gates-are-recorded-gate-visit-2026-08-02t19-51-47-963z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z",
+      "claimId": "kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-acceptance-criteria.flow-agents-workflow.ac1-ac7-are-lifecycle-correct-observable-mapped-to-exact-command-and-source-evidence-and-satisfied-at-exact-behavioral-head-25227f0-future-ci-delivery-and-learning-facts-remain-in-native-later-gates-gate-visit-2026-08-02t19-52-59-473z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-tests-evidence.flow-agents-workflow.literal-trust-reconcile-manifest-command-passed-46-of-46-at-exact-head-the-exact-head-verifier-also-ran-the-hosted-canonical-chain-successfully-440-node-passes-27-browser-passes-9-intentional-skips-schema-repetition-prepack-typecheck-repetition-and-a-166-file-tarball-that-chained-observation-stays-in-the-summary-because-the-public-evidence-validator-and-ci-reconciliation-accept-only-the-manifest-command-as-the-claim-command-gate-visit-2026-08-02t19-56-07-262z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z",
+      "claimId": "kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-gate-claim-merge-readiness.flow-agents-workflow.pass-for-merge-review-exact-source-scope-clean-three-lane-critique-command-backed-acceptance-package-evidence-and-current-required-veritas-governance-support-publication-pr-remote-head-delivery-bundle-hosted-ci-merge-and-learning-facts-remain-explicitly-pending-their-native-gates-gate-visit-2026-08-02t20-02-03-875z"
+      ],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac1-trusted-producer-authority-enforcement.flow-agents-workflow.configured-producer-pins-and-active-actor-authority-reference-subject-claim-and-evidence-scope-authoritytrace-pins-are-enforced-in-canonical-and-pure-evaluation-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac2-precise-untrusted-diagnostics.flow-agents-workflow.pinned-unattributed-or-unauthorized-evidence-fails-with-precise-untrusted-producer-diagnostics-without-relabeling-unrelated-evidence-failures-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac3-mutation-safe-publication.flow-agents-workflow.attachment-and-evaluation-remain-serialized-and-publish-coherent-state-manifest-report-and-console-projections-under-contention-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac4-bounded-fail-closed-config.flow-agents-workflow.malformed-hostile-removed-or-deny-all-config-fails-closed-through-bounded-single-read-snapshots-independent-producer-and-authority-scopes-intersect-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac5-async-input-snapshots.flow-agents-workflow.supported-structured-attachment-evaluation-time-and-paused-continuation-inputs-are-cloned-and-validated-before-asynchronous-use-with-removed-opaque-authority-input-rejected-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac6-public-package-contract-parity.flow-agents-workflow.schemas-public-types-and-exports-cli-docs-flow-5-migration-reducer-identity-ui-assets-dependency-pins-lockfile-audits-and-package-contents-agree-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z",
+      "claimId": "kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-217-ac7-exact-head-lifecycle-handoff.flow-agents-workflow.fresh-critique-and-command-backed-verification-bind-to-exact-repaired-behavioral-head-25227f0-and-the-handoff-requires-no-exemption-ci-delivery-and-learning-completion-in-their-native-later-gates-verified-2026-08-02t19-56-07-262z:38f63b451babf1f2"
+      ],
+      "createdAt": "2026-08-02T19:56:07.262Z",
+      "verifiedAt": "2026-08-02T19:56:07.262Z"
+    },
+    {
+      "id": "evt:kontourai-flow-217-review.flow-agents-workflow.exact-flow-head-25227f0e4155a6fdf74f5d55d2325e9370a250fc-remains-clean-after-corrected-run-reconfirmation-3-3-pass-review-lanes-with-zero-actionable-findings-across-code-architecture-hostile-input-correctness-and-package-public-contract-reviewed-2026-08-02t19-53-22-033z",
+      "claimId": "kontourai-flow-217-review.flow-agents-workflow.exact-flow-head-25227f0e4155a6fdf74f5d55d2325e9370a250fc-remains-clean-after-corrected-run-reconfirmation-3-3-pass-review-lanes-with-zero-actionable-findings-across-code-architecture-hostile-input-correctness-and-package-public-contract-reviewed-2026-08-02t19-53-22-033z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [],
+      "createdAt": "2026-08-02T20:02:03.875Z",
+      "verifiedAt": "2026-08-02T20:02:03.875Z"
+    }
+  ]
+}
