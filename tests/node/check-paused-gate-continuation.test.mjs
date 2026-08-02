@@ -264,6 +264,64 @@ test("paused continuation enforces the same active scoped authority trace as can
   assert.deepEqual(rejected.outcomes[0].diagnostics.claim_evaluation[0].authority, { code: "no_trace" });
 });
 
+test("paused continuation retains fractional evaluation instants for authority, transition validation, and persistence", async () => {
+  const config = {
+    schema_version: "0.1",
+    trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } },
+    gate_overrides: {}
+  };
+  const evaluatedAt = "2026-07-22T12:01:00.0001Z";
+
+  const acceptedFixture = await fixture("fractional-authority-accepted", { config });
+  const acceptedEvidence = path.join(acceptedFixture.cwd, "accepted-review.json");
+  await writeFile(acceptedEvidence, `${JSON.stringify(bundle("work-42", undefined, reviewAuthorityTrace({ validUntil: "2026-07-22T12:01:00.0002Z" })))}\n`);
+  const accepted = await continuePausedGate(acceptedFixture.runId, request(acceptedFixture, acceptedEvidence, { now: evaluatedAt, ref: "fractional-authority-accepted" }));
+  assert.equal(accepted.committed, true);
+  const acceptedPersisted = await loadRun(acceptedFixture.runId, acceptedFixture.cwd);
+  assert.equal(acceptedPersisted.state.transitions.at(-1).at, evaluatedAt);
+  assert.equal(acceptedPersisted.state.updated_at, evaluatedAt);
+  assert.equal(acceptedPersisted.manifest.evidence.at(-1).attached_at, evaluatedAt);
+
+  const expiredFixture = await fixture("fractional-authority-expired", { config });
+  const expiredEvidence = path.join(expiredFixture.cwd, "expired-review.json");
+  await writeFile(expiredEvidence, `${JSON.stringify(bundle("work-42", undefined, reviewAuthorityTrace({ validUntil: "2026-07-22T12:01:00.00005Z" })))}\n`);
+  const expired = await continuePausedGate(expiredFixture.runId, request(expiredFixture, expiredEvidence, { now: evaluatedAt, ref: "fractional-authority-expired" }));
+  assert.equal(expired.committed, false);
+  assert.equal(expired.outcomes[0].status, "route-back", "an authority expired 50 microseconds before evaluation must not pass through Date truncation");
+  assert.deepEqual(expired.outcomes[0].diagnostics.claim_evaluation[0].authority, { code: "expired" });
+});
+
+test("paused continuation rejects Date-parseable non-RFC3339 now without mutation", async () => {
+  const fixtureData = await fixture("non-strict-now");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, { now: "2026-07-22 12:01:00Z", ref: "non-strict-now" })),
+    /now must be an RFC3339 date-time/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
+});
+
+test("paused continuation compares resume ordering at full RFC3339 precision", async () => {
+  const fixtureData = await fixture("fractional-resume-order");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, {
+      now: "2026-07-22T12:01:00.0001Z",
+      resume: {
+        reason: "too late by 50 microseconds",
+        authority: authority("request:fractional-resume-order"),
+        at: "2026-07-22T12:01:00.00015Z"
+      }
+    })),
+    /resume\.at must not follow evaluation now/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
+});
+
 test("AC2: prospective freshness and validation before staging leave the full run tree untouched", async () => {
   const freshness = await fixture("freshness");
   const oldBundle = path.join(freshness.cwd, "old-review.json");

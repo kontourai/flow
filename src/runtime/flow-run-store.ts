@@ -58,7 +58,7 @@ import { validateEvaluationTransition } from "../transition/flow-evaluation-tran
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
-import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import { compareRfc3339Timestamps, parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import {
   FlowLifecycleError,
@@ -740,9 +740,29 @@ export function cancelRun(runId: string, options: MutableRecord = {}) {
 }
 
 function multiCursorNow(options: MutableRecord = {}) {
-  const value = options.now ? new Date(options.now) : new Date();
-  if (!Number.isFinite(value.getTime())) throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be a valid date-time");
+  if (options.now !== undefined && (typeof options.now !== "string" || parseRfc3339Timestamp(options.now) === null)) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  const value = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(value.getTime())) throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
   return value;
+}
+
+/**
+ * Multi-cursor leases use Date arithmetic, but gate authority and durable audit
+ * records need the caller's full RFC3339 precision. Never reconstruct the
+ * latter from Date: JavaScript truncates fractions beyond milliseconds.
+ */
+function multiCursorEvaluationTime(options: MutableRecord = {}) {
+  const exact = options.now === undefined ? new Date().toISOString() : options.now;
+  if (typeof exact !== "string" || parseRfc3339Timestamp(exact) === null) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  const surfaceNow = new Date(exact);
+  if (!Number.isFinite(surfaceNow.getTime())) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  return { exact, surfaceNow };
 }
 
 function multiCursorActor(value: unknown): FlowStepClaimActor {
@@ -949,7 +969,8 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
   return withRunMutationLock(runId, cwd, async () => {
     const run = await loadRun(runId, cwd);
     assertLifecycleEligible("evaluate", run.state.status);
-    const now = multiCursorNow(options);
+    const evaluationTime = multiCursorEvaluationTime(options);
+    const now = evaluationTime.surfaceNow;
     expireMultiCursorClaims(run, now);
     invalidateStaleMultiCursorClaims(run, now);
     const cursor = ensureMultiCursorState(run.state);
@@ -961,7 +982,7 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     if (!gates.length) throw new FlowMultiCursorError("flow.multi_cursor.gate.required", `claimed step ${claim.step_id} has no gate to evaluate`);
     const outcomes: GateOutcome[] = [];
     for (const gateId of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config, now);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config, evaluationTime.exact);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -971,9 +992,9 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     cursor.active_claims.splice(index, 1);
     if (terminal.status === "pass" && outcomes.length === gates.length) {
       const next = getStep(run.definition, claim.step_id)?.next ?? null;
-      run.state.transitions.push({ from_step: claim.step_id, to_step: next, status: "allowed", reason: "required evidence present", at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      run.state.transitions.push({ from_step: claim.step_id, to_step: next, status: "allowed", reason: "required evidence present", at: evaluationTime.exact, gate_id: terminal.gate_id, claim_id: claim.claim_id });
       cursor.blocked_steps = cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id);
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString() });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact });
     } else if (terminal.status === "route-back") {
       const target = terminal.route_back_to;
       const invalidatedDescendants = invalidateDescendants(run.definition, run.state, target);
@@ -983,19 +1004,19 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
       // Keep the reserved route-back record byte-for-byte derivable from the
       // preceding transition history. Claim correlation stays in the separate
       // claim history ledger, not in this proof-carrying transition shape.
-      run.state.transitions.push({ type: "route_back", from_step: claim.step_id, to_step: target, status: "blocked", reason: terminal.reason ?? terminal.route_reason ?? terminal.summary, route_reason: terminal.route_reason, selected_route: terminal.selected_route, recovery_step: terminal.recovery_step, attempt: terminal.attempt, retry_epoch: terminal.retry_epoch, max_attempts: terminal.max_attempts, limit_exceeded: terminal.limit_exceeded, invalidated_steps: invalidatedDescendants.length ? invalidatedDescendants : undefined, evidence_refs: terminal.evidence_refs, expectation_ids: terminal.expectation_ids, classifier: terminal.classifier, diagnostics: terminal.diagnostics, analytics: terminal.analytics, analytics_loop_key: terminal.analytics_loop_key, at: now.toISOString(), gate_id: terminal.gate_id });
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "route-back" });
+      run.state.transitions.push({ type: "route_back", from_step: claim.step_id, to_step: target, status: "blocked", reason: terminal.reason ?? terminal.route_reason ?? terminal.summary, route_reason: terminal.route_reason, selected_route: terminal.selected_route, recovery_step: terminal.recovery_step, attempt: terminal.attempt, retry_epoch: terminal.retry_epoch, max_attempts: terminal.max_attempts, limit_exceeded: terminal.limit_exceeded, invalidated_steps: invalidatedDescendants.length ? invalidatedDescendants : undefined, evidence_refs: terminal.evidence_refs, expectation_ids: terminal.expectation_ids, classifier: terminal.classifier, diagnostics: terminal.diagnostics, analytics: terminal.analytics, analytics_loop_key: terminal.analytics_loop_key, at: evaluationTime.exact, gate_id: terminal.gate_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact, reason: "route-back" });
       run.state.current_step = target;
     } else {
-      cursor.blocked_steps = [...cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id), { step_id: claim.step_id, gate_id: terminal.gate_id, at: now.toISOString(), summary: terminal.summary }];
-      run.state.transitions.push({ from_step: claim.step_id, to_step: getStep(run.definition, claim.step_id)?.next ?? null, status: "blocked", reason: terminal.summary, evidence_refs: terminal.evidence_refs, at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "blocked" });
+      cursor.blocked_steps = [...cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id), { step_id: claim.step_id, gate_id: terminal.gate_id, at: evaluationTime.exact, summary: terminal.summary }];
+      run.state.transitions.push({ from_step: claim.step_id, to_step: getStep(run.definition, claim.step_id)?.next ?? null, status: "blocked", reason: terminal.summary, evidence_refs: terminal.evidence_refs, at: evaluationTime.exact, gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact, reason: "blocked" });
     }
     if (multiCursorTerminal(run.definition, run.state)) run.state.status = "completed";
     else if (cursor.active_claims.length || claimableMultiCursorSteps(run.definition, run.state).length) run.state.status = "active";
     else if (cursor.blocked_steps.length) run.state.status = "blocked";
     run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
-    run.state.updated_at = now.toISOString();
+    run.state.updated_at = evaluationTime.exact;
     await saveRun(run);
     return { ...run, outcomes, settled: true };
   });
@@ -2021,7 +2042,7 @@ async function attachEvidenceUnlocked(runId: string, options: FlowEvidenceAttach
     throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
   }
   assertRunMutationLifecycleEligible("attach_evidence", run);
-  const prepared = await prepareEvidenceAttachment(run, options, { normalizeBundle: normalizeTrustBundle, attachedAt: () => new Date() });
+  const prepared = await prepareEvidenceAttachment(run, options, { normalizeBundle: normalizeTrustBundle, attachedAt: () => new Date().toISOString() });
   await writeFile(prepared.storedPath, prepared.sourceBytes, { flag: "wx" });
   run.manifest = prepared.nextManifest;
   await saveRun(run);
@@ -2119,15 +2140,19 @@ type PreparedEvidenceAttachment = {
 
 type EvidencePreparation = {
   normalizeBundle: (raw: unknown) => { bundle: any; bundle_report: any };
-  attachedAt: () => Date;
+  attachedAt: () => string;
 };
 
 function continuationNow(value: unknown) {
-  if (value !== undefined && (typeof value !== "string" || !isNonEmptyString(value) || !Number.isFinite(Date.parse(value)))) {
-    throw new Error("flow.paused_gate_continuation.request.invalid: now must be a date-time when provided");
+  const exact = value === undefined ? new Date().toISOString() : value;
+  if (typeof exact !== "string" || parseRfc3339Timestamp(exact) === null) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: now must be an RFC3339 date-time when provided");
   }
-  const now = value === undefined ? new Date() : new Date(value as string);
-  return now;
+  const surfaceNow = new Date(exact);
+  if (!Number.isFinite(surfaceNow.getTime())) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: now must be an RFC3339 date-time when provided");
+  }
+  return { exact, surfaceNow };
 }
 
 function pausedGateContinuationRequest(options: FlowPausedGateContinuationOptions) {
@@ -2155,15 +2180,22 @@ function pausedGateContinuationRequest(options: FlowPausedGateContinuationOption
   if (!options.resumeOnPass && options.resume !== undefined) {
     throw new Error("flow.paused_gate_continuation.request.invalid: resume is only allowed when resumeOnPass is true");
   }
-  const now = continuationNow(options.now);
+  const evaluationTime = continuationNow(options.now);
   const resumeOptions = options.resumeOnPass && options.resume!.at === undefined
-    ? { ...options.resume!, at: now.toISOString() }
+    ? { ...options.resume!, at: evaluationTime.exact }
     : options.resume;
   const resume = options.resumeOnPass
     ? { request: validateLifecycleRequest("resume", { reason: resumeOptions!.reason, authority: resumeOptions!.authority }), at: lifecycleTimestamp(resumeOptions!, "resume") }
     : undefined;
-  if (resume && Date.parse(resume.at) > now.getTime()) {
-    throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
+  if (resume) {
+    const resumeAt = parseRfc3339Timestamp(resume.at);
+    const evaluationAt = parseRfc3339Timestamp(evaluationTime.exact)!;
+    if (resumeAt === null) {
+      throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must be an RFC3339 date-time");
+    }
+    if (compareRfc3339Timestamps(resumeAt, evaluationAt) > 0) {
+      throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
+    }
   }
   return {
     cwd,
@@ -2172,7 +2204,8 @@ function pausedGateContinuationRequest(options: FlowPausedGateContinuationOption
     evidence,
     resumeOnPass: options.resumeOnPass,
     resume,
-    now
+    now: evaluationTime.exact,
+    surfaceNow: evaluationTime.surfaceNow
   };
 }
 
@@ -2228,7 +2261,7 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
     original_path: options.file,
     stored_path: path.join(FLOW_RUN_EVIDENCE_DIR, storedName),
     sha256: sourceSha256,
-    attached_at: preparation.attachedAt().toISOString()
+    attached_at: preparation.attachedAt()
   };
   if (normalizedBundle) {
     evidence.kind = "trust.bundle";
@@ -2274,10 +2307,10 @@ function blockingFreshnessRechecks(definition: any, currentStep: string, recheck
 
 function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, state: FlowRunState, manifest: MutableRecord, request: ReturnType<typeof pausedGateContinuationRequest>) {
   const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config, request.now);
-  const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now.toISOString());
+  const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now);
   if (validation.status === "invalid" || (outcome.status === "pass" && validation.valid !== true)) throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
   outcome.transition_validation = validation;
-  applyEvaluation(run.definition, state, outcome, request.now.toISOString());
+  applyEvaluation(run.definition, state, outcome, request.now);
   return outcome;
 }
 
@@ -2287,9 +2320,9 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
   return withRunMutationLock(runId, request.cwd, async () => {
     const run = await loadRun(runId, request.cwd);
     assertPausedContinuation(run, request);
-    const prepared = await prepareEvidenceAttachment(run, request.evidence, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
+    const prepared = await prepareEvidenceAttachment(run, request.evidence, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now, FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
     const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
-    const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
+    const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.surfaceNow), run.config));
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };
     const { nextState, event } = resumedContinuationState(run.state, request);
     if (request.resumeOnPass) validateRunStateConsistency(run.startDefinition, nextState, { runId });
