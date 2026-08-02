@@ -101,6 +101,30 @@ export interface FlowEvidenceManifest extends MutableRecord {
   evidence: FlowEvidenceEntry[];
 }
 
+/** Public, provider-neutral input accepted by `attachEvidence`. */
+export interface FlowEvidenceAttachmentOptions {
+  cwd?: string;
+  gate: string;
+  file: string;
+  kind?: string;
+  bundle?: boolean;
+  trustArtifact?: boolean;
+  expectedRunHead?: string;
+  expectedSha256?: string;
+  status?: string;
+  supersede?: string | string[];
+  producer?: string;
+  /** Legacy one-value convenience form; persisted as `authority_trace`. */
+  authorityTrace?: string;
+  /** Repeatable authority references; the first also becomes `authority_trace`. */
+  authorityTraces?: string[];
+  route_reason?: string;
+  expectation_ids?: string[];
+  classifier?: MutableRecord;
+  diagnostics?: MutableRecord;
+  analytics?: MutableRecord;
+}
+
 export type FlowRunStatus =
   | "active"
   | "blocked"

@@ -5,7 +5,10 @@ import path from "node:path";
 import { test } from "node:test";
 
 import * as flow from "../../dist/index.js";
+import { execFile } from "./helpers/cli.mjs";
 import { surfaceClaimEvidenceFixture, surfaceClaimFixture } from "./helpers/fixtures.mjs";
+
+const cliPath = new URL("../../dist/cli.js", import.meta.url).pathname;
 
 const configFor = (overrides = {}) => ({
   schema_version: flow.FLOW_SCHEMA_VERSION,
@@ -54,6 +57,41 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
   assert.equal(trusted.status, "pass");
   assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report" }]);
   assert.equal(trusted.diagnostics, undefined);
+});
+
+test("producer policy rejects malformed config and treats explicitly empty lists as deny-all", async () => {
+  const { definition, state } = await gateState("producer-config-validation");
+  const validManifest = await passingFixture("ci/trusted");
+  const malformedConfigs = [
+    configFor({ trusted_producers: { "quality.tests": { producers: "ci/trusted" } } }),
+    configFor({ trusted_producers: { "quality.tests": { producers: ["ci/trusted", 42] } } }),
+    configFor({ trusted_producers: { "quality.tests": { authority_traces: {} } } })
+  ];
+  for (const config of malformedConfigs) {
+    assert.throws(
+      () => flow.evaluateGate(definition, structuredClone(state), validManifest, "verify-gate", config),
+      /flow config does not satisfy flow-config\.schema\.json/
+    );
+  }
+
+  for (const mapping of [{ producers: [] }, { authority_traces: [] }, { producers: [], authority_traces: [] }]) {
+    const outcome = flow.evaluateGate(definition, structuredClone(state), validManifest, "verify-gate", configFor({
+      trusted_producers: { "quality.tests": mapping }
+    }));
+    assert.equal(outcome.status, "route-back");
+    assert.equal(claimDiagnostic(outcome)?.reason, "untrusted_producer", JSON.stringify(mapping));
+  }
+});
+
+test("loadFlowConfig validates normalized authored config before evaluation", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-invalid-project-config-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify({
+    schema_version: flow.FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.tests": { producers: ["ci/trusted", false] } },
+    gate_overrides: {}
+  })}\n`);
+  await assert.rejects(() => flow.loadFlowConfig(cwd), /flow config does not satisfy flow-config\.schema\.json/);
 });
 
 test("expectation-level producer and authority-trace pins apply through the same evaluator", async () => {
@@ -263,4 +301,65 @@ test("attachEvidence preserves plural authority traces for evaluator policy", as
   const outcome = await flow.evaluateRun("plural-authority-traces", { cwd });
   assert.equal(outcome.outcomes[0].status, "pass");
   assert.deepEqual((await flow.loadRun("plural-authority-traces", cwd)).manifest.evidence[0].authority_traces, ["authority:unrelated", "authority:trusted"]);
+});
+
+test("attachEvidence validates its public options and preserves singular compatibility", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-attachment-options-"));
+  const definition = {
+    id: "attachment-options", version: "1", steps: [{ id: "verify", next: null }],
+    gates: { "verify-gate": { step: "verify", expects: [] } }
+  };
+  const definitionPath = path.join(cwd, "definition.json");
+  const evidencePath = path.join(cwd, "evidence.txt");
+  await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
+  await writeFile(evidencePath, "evidence\n");
+  await flow.startRun(definitionPath, { cwd, runId: "attachment-options" });
+  assert.throws(
+    () => flow.attachEvidence("attachment-options", { cwd, gate: "verify-gate", file: evidencePath, authorityTraces: "authority:not-an-array" }),
+    /flow\.attach_evidence\.options\.invalid: authorityTraces must be an array/
+  );
+  assert.throws(
+    () => flow.attachEvidence("attachment-options", { cwd, gate: "verify-gate", file: evidencePath, unsupported: true }),
+    /flow\.attach_evidence\.options\.invalid: unsupported option unsupported/
+  );
+  const attached = await flow.attachEvidence("attachment-options", {
+    cwd, gate: "verify-gate", file: evidencePath, authorityTrace: "authority:legacy"
+  });
+  assert.equal(attached.authority_trace, "authority:legacy");
+  assert.equal(attached.authority_traces, undefined);
+});
+
+test("CLI repeatable authority traces satisfy independently configured producer scopes", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-authority-traces-"));
+  const definition = {
+    id: "cli-authority-traces", version: "1", steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [{
+          id: "tests-passed", kind: "trust.bundle", required: true, description: "Trace-authorized tests passed.",
+          bundle_claim: { claimType: "quality.tests", subjectType: "flow-step", subjectId: "builder.verify", accepted_statuses: ["verified"] }
+        }]
+      }
+    }
+  };
+  const evidence = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const definitionPath = path.join(cwd, "definition.json");
+  const evidencePath = path.join(cwd, "evidence.json");
+  await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
+  await writeFile(evidencePath, `${JSON.stringify(evidence.evidence[0].bundle)}\n`);
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(configFor({
+    trusted_producers: { "quality.tests": { authority_traces: ["authority:one"] } },
+    gate_overrides: { "verify-gate": { expectations: { "tests-passed": { authority_traces: ["authority:two"] } } } }
+  }))}\n`);
+  await flow.startRun(definitionPath, { cwd, runId: "cli-authority-traces" });
+  await execFile(process.execPath, [
+    cliPath, "attach-evidence", "cli-authority-traces", "--gate", "verify-gate", "--file", evidencePath,
+    "--kind", "trust.bundle", "--authority-trace", "authority:one", "--authority-trace", "authority:two", "--cwd", cwd
+  ]);
+  const entry = (await flow.loadRun("cli-authority-traces", cwd)).manifest.evidence[0];
+  assert.equal(entry.authority_trace, "authority:one");
+  assert.deepEqual(entry.authority_traces, ["authority:one", "authority:two"]);
+  assert.equal((await flow.evaluateRun("cli-authority-traces", { cwd })).outcomes[0].status, "pass");
 });

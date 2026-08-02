@@ -1,5 +1,6 @@
 import type { GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { defaultFlowConfig } from "../config/flow-config.js";
+import { validateFlatFlowConfig } from "../config/flow-config-validator.js";
 import {
   acceptedExceptionFor,
   attachedEvidenceFor,
@@ -190,7 +191,9 @@ function trustedProducerPolicy(expectation: any, config: MutableRecord) {
     const allowedProducers = new Set(strings(producers));
     const allowedAuthorityTraces = new Set(strings(authorityTraces));
     return {
-      configured: allowedProducers.size > 0 || allowedAuthorityTraces.size > 0,
+      // `{}` is deliberately an unpinned reservation, while an explicitly
+      // authored empty list is a deny-all authority boundary.
+      configured: producers !== undefined || authorityTraces !== undefined,
       producers: allowedProducers,
       authorityTraces: allowedAuthorityTraces
     };
@@ -253,6 +256,7 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
 }
 
 export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig()): GateOutcome {
+  validateFlatFlowConfig(config);
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 

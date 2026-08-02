@@ -5,6 +5,7 @@
 ### Features
 
 * Add an `attach-only` trust attachment reducer mode for provenance synchronization that must not evaluate a gate, mutate run state, or consume route-back budget.
+* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.2.0.
 
 ### ⚠ BREAKING CHANGES
 

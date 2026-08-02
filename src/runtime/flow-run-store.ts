@@ -26,7 +26,7 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -99,7 +99,7 @@ export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerD
   hachure: { package: "hachure", version: "0.15.0", validate: validateTrustBundleSchema },
   surface: {
     package: "@kontourai/surface",
-    version: "2.12.0",
+    version: "2.14.0",
     validate: (bundle) => validateTrustBundle(bundle) as MutableRecord,
     buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord
   }
@@ -2029,7 +2029,7 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
   return normalizeTrustAttachmentBundle(raw, new Date().toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES);
 }
 
-async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
+async function attachEvidenceUnlocked(runId: string, options: FlowEvidenceAttachmentOptions): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
   if (options.expectedRunHead !== undefined && flowRunHead(run.state) !== options.expectedRunHead) {
     throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
@@ -2063,17 +2063,60 @@ async function preflightRunMutationLifecycle(runId: string, cwd: string, operati
   assertRunMutationLifecycleEligible(operation, run);
 }
 
-export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
-  const cwd = path.resolve(options.cwd ?? process.cwd());
+const ATTACH_EVIDENCE_OPTION_KEYS = new Set([
+  "cwd", "gate", "file", "kind", "bundle", "trustArtifact", "expectedRunHead", "expectedSha256", "status", "supersede",
+  "producer", "authorityTrace", "authorityTraces", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"
+]);
+
+function attachmentOptionString(options: any, key: string, required = false) {
+  const value = options[key];
+  if (value === undefined && !required) return;
+  if (!isNonEmptyString(value)) throw new Error(`flow.attach_evidence.options.invalid: ${key} must be a non-empty string`);
+}
+
+function attachmentOptionStrings(options: any, key: string) {
+  const value = options[key];
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.some((entry) => !isNonEmptyString(entry))) {
+    throw new Error(`flow.attach_evidence.options.invalid: ${key} must be an array of non-empty strings`);
+  }
+}
+
+/** Reject malformed or silently ignored public attachment options before I/O. */
+export function validateEvidenceAttachmentOptions(options: unknown): FlowEvidenceAttachmentOptions {
+  if (!isObject(options) || Array.isArray(options)) throw new Error("flow.attach_evidence.options.invalid: options must be an object");
+  const candidate = options as MutableRecord;
+  for (const key of Object.keys(candidate)) {
+    if (!ATTACH_EVIDENCE_OPTION_KEYS.has(key)) throw new Error(`flow.attach_evidence.options.invalid: unsupported option ${key}`);
+  }
+  attachmentOptionString(candidate, "gate", true);
+  attachmentOptionString(candidate, "file", true);
+  for (const key of ["cwd", "kind", "expectedRunHead", "expectedSha256", "status", "producer", "authorityTrace", "route_reason"]) attachmentOptionString(candidate, key);
+  for (const key of ["authorityTraces", "expectation_ids"]) attachmentOptionStrings(candidate, key);
+  for (const key of ["bundle", "trustArtifact"]) {
+    if (candidate[key] !== undefined && typeof candidate[key] !== "boolean") throw new Error(`flow.attach_evidence.options.invalid: ${key} must be a boolean`);
+  }
+  if (candidate.supersede !== undefined && (!isNonEmptyString(candidate.supersede) && (!Array.isArray(candidate.supersede) || candidate.supersede.some((entry) => !isNonEmptyString(entry))))) {
+    throw new Error("flow.attach_evidence.options.invalid: supersede must be a non-empty string or an array of non-empty strings");
+  }
+  for (const key of ["classifier", "diagnostics", "analytics"]) {
+    if (candidate[key] !== undefined && (!isObject(candidate[key]) || Array.isArray(candidate[key]))) throw new Error(`flow.attach_evidence.options.invalid: ${key} must be an object`);
+  }
+  return candidate as FlowEvidenceAttachmentOptions;
+}
+
+export function attachEvidence(runId: string, options: FlowEvidenceAttachmentOptions): Promise<FlowEvidenceEntry> {
+  const validatedOptions = validateEvidenceAttachmentOptions(options);
+  const cwd = path.resolve(validatedOptions.cwd ?? process.cwd());
   let expectedRunHead: string | undefined;
-  if (options.expectedRunHead !== undefined) {
-    if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+  if (validatedOptions.expectedRunHead !== undefined) {
+    if (typeof validatedOptions.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(validatedOptions.expectedRunHead)) {
       throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
     }
-    expectedRunHead = options.expectedRunHead.toLowerCase();
+    expectedRunHead = validatedOptions.expectedRunHead.toLowerCase();
   }
   return preflightRunMutationLifecycle(runId, cwd, "attach_evidence")
-    .then(() => withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd, expectedRunHead })));
+    .then(() => withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...validatedOptions, cwd, expectedRunHead })));
 }
 
 type PreparedEvidenceAttachment = {
@@ -2170,7 +2213,7 @@ function normalizedEvidenceBundle(sourceBytes: Buffer, options: MutableRecord, p
   return preparation.normalizeBundle(raw);
 }
 
-async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: MutableRecord, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
+async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: FlowEvidenceAttachmentOptions, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
   if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
   const { source, sourceBytes, sourceSha256 } = await readEvidenceSource(options);
   const kind = normalizeEvidenceKind(options.kind);
@@ -2198,7 +2241,10 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
   }
   if (options.producer) evidence.producer = options.producer;
   if (options.authorityTrace) evidence.authority_trace = options.authorityTrace;
-  if (options.authorityTraces) evidence.authority_traces = options.authorityTraces;
+  if (options.authorityTraces) {
+    evidence.authority_traces = [...options.authorityTraces];
+    evidence.authority_trace ??= evidence.authority_traces[0];
+  }
   if (options.route_reason) evidence.route_reason = options.route_reason;
   if (options.expectation_ids) evidence.expectation_ids = options.expectation_ids;
   if (options.classifier) evidence.classifier = options.classifier;
@@ -2249,7 +2295,7 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
   return withRunMutationLock(runId, request.cwd, async () => {
     const run = await loadRun(runId, request.cwd);
     assertPausedContinuation(run, request);
-    const prepared = await prepareEvidenceAttachment(run, { ...request.evidence, cwd: request.cwd, gate: request.gate }, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
+    const prepared = await prepareEvidenceAttachment(run, validateEvidenceAttachmentOptions({ ...request.evidence, cwd: request.cwd, gate: request.gate }), { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
     const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
     const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };

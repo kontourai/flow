@@ -69,9 +69,9 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.1.0");
+  assert.equal(result.identity.version, "1.2.0");
   assert.equal(result.evaluation_mode, "evaluate");
-  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.12.0" });
+  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   assert.match(result.identity.hash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(result.evidence.kind, "trust.bundle");
   assert.equal(result.next_manifest.evidence.length, 1);
@@ -170,6 +170,45 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
   );
 });
 
+test("trust attachment reducer enforces producer pins and preserves authority traces like the canonical evaluator", () => {
+  const trustedConfig = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.review": { producers: ["review/trusted"], authority_traces: ["authority:review"] } },
+    gate_overrides: {}
+  };
+  const trustedRun = runInput();
+  trustedRun.config = trustedConfig;
+  const trusted = reduceTrustAttachment({
+    run: trustedRun, bundle: bundle(), attachment: attachment("ev.trusted", { producer: "review/trusted" }), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(trusted.evaluation.status, "pass");
+
+  for (const attachmentInput of [attachment("ev.missing"), attachment("ev.untrusted", { producer: "review/other" })]) {
+    const rejected = reduceTrustAttachment({
+      run: trustedRun, bundle: bundle({ id: attachmentInput.id }), attachment: attachmentInput, now: NOW,
+      dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+    });
+    assert.equal(rejected.evaluation.status, "route-back");
+    assert.equal(rejected.evaluation.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
+  }
+
+  const authority = reduceTrustAttachment({
+    run: trustedRun, bundle: bundle({ id: "claim.authority" }), attachment: attachment("ev.authority", {
+      authority_trace: "authority:review", authority_traces: ["authority:other", "authority:review"]
+    }), now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(authority.evaluation.status, "pass");
+  assert.deepEqual(authority.evidence.authority_traces, ["authority:other", "authority:review"]);
+
+  const malformedRun = runInput();
+  malformedRun.config = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { producers: "review/trusted" } }, gate_overrides: {} };
+  assert.throws(
+    () => reduceTrustAttachment({ run: malformedRun, bundle: bundle(), attachment: attachment("ev.bad-config"), now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES }),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+});
+
 test("trust attachment reducer matches the canonical attachEvidence manifest projection", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-trust-reducer-parity-"));
   const definitionPath = path.join(cwd, "definition.json");
@@ -180,12 +219,16 @@ test("trust attachment reducer matches the canonical attachEvidence manifest pro
   const before = runInput();
   before.state = started.state;
   before.manifest.run_id = started.state.run_id;
-  const attached = await attachEvidence(started.runId, { cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle" });
+  const attached = await attachEvidence(started.runId, {
+    cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle",
+    authorityTraces: ["authority:one", "authority:two"]
+  });
   const reduced = reduceTrustAttachment({
     run: before, bundle: bundle(), now: attached.attached_at,
     attachment: attachment(attached.id, {
       status: attached.status, attached_at: attached.attached_at, original_path: attached.original_path,
-      stored_path: attached.stored_path, sha256: attached.sha256
+      stored_path: attached.stored_path, sha256: attached.sha256,
+      authority_trace: attached.authority_trace, authority_traces: attached.authority_traces
     }), dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
   assert.deepEqual(

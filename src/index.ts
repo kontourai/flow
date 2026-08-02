@@ -25,6 +25,7 @@ export type {
   FlowMultiCursorBlockedStep,
   FlowDefinition,
   FlowDiagnostic,
+  FlowEvidenceAttachmentOptions,
   FlowEvidenceEntry,
   FlowEvidenceManifest,
   FlowExpectation,
@@ -147,6 +148,7 @@ export {
   renderConfigMergeMarkdown,
   renderConfigMergeSummary
 } from "./config/flow-config.js";
+export { validateFlatFlowConfig } from "./config/flow-config-validator.js";
 export {
   acceptedExceptionFor,
   attachedEvidenceFor,
@@ -271,6 +273,7 @@ export {
   renewStepClaim,
   reopenMultiCursorStep,
   validateRunStateConsistency,
+  validateEvidenceAttachmentOptions,
   writeRunRecoveryFence
 } from "./runtime/flow-run-store.js";
 export {

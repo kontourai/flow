@@ -226,7 +226,7 @@ responsibilities.
 flow attach-evidence <run-id> --gate <gate> --file <file>
   [--expected-run-head <sha256>]
   [--kind <kind>] [--bundle] [--status failed] [--supersede <evidence-id> ...]
-  [--producer <id>] [--authority-trace <trace>]
+  [--producer <id>] [--authority-trace <trace> ...]
   [--route-reason <reason>] [--expectation-id <id> ...]
   [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>]
   [--analytics-loop-key <key>] [--route-metadata <json-file>]
@@ -243,6 +243,7 @@ Copies the file into the run's `evidence/` directory and records it in the manif
 - `--bundle` (or `--kind trust.bundle`) parses the file as a Hachure TrustBundle, validates it against the Hachure schema, and stores the bundle plus its derived trust report on the evidence entry. See [Trust artifacts](evidence.md#trust-artifacts).
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).
 - `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
+- `--authority-trace <trace>` is repeatable. One value retains the compatible `authority_trace` manifest field; repeated values are also recorded as `authority_traces`, so independently configured producer-pin scopes can be satisfied by distinct authority references.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
 
 `--trust-artifact` is a deprecated alias for `--bundle` / `--kind trust.bundle`: using it attaches the file through the same trust.bundle path and prints a deprecation warning to stderr. Prefer `--bundle` (or `--kind trust.bundle`) directly.

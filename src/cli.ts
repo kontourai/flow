@@ -54,7 +54,7 @@ function usage() {
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
   flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--expected-run-head <sha256>] [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--expected-run-head <sha256>] [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace> ...] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
@@ -86,7 +86,7 @@ function parseArgs(argv: string[]) {
       }
       continue;
     }
-    if (key === "expectation-id" || key === "accept-conflict" || key === "supersede") {
+    if (key === "expectation-id" || key === "accept-conflict" || key === "supersede" || key === "authority-trace") {
       flags[key] ??= [];
       const next = argv[i + 1];
       if (!next || next.startsWith("--")) throw new Error(`--${key} requires a value`);
@@ -516,11 +516,9 @@ async function main() {
       expectedRunHead: flags["expected-run-head"],
       status: flags.status,
       supersede: flags.supersede,
-      claimType: flags["claim-type"],
-      claimSubject: flags["claim-subject"],
-      claimStatus: flags["claim-status"],
       producer: flags.producer,
-      authorityTrace: flags["authority-trace"],
+      authorityTrace: flags["authority-trace"]?.[0],
+      authorityTraces: flags["authority-trace"],
       route_reason: routeMetadata.route_reason,
       expectation_ids: routeMetadata.expectation_ids,
       classifier: routeMetadata.classifier,

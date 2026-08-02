@@ -5,6 +5,7 @@ import { flowConfigPath, readJson, writeJson } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { ConfigMergeReport, FlowConfig, MutableRecord } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
+import { validateFlatFlowConfig } from "./flow-config-validator.js";
 
 const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";
@@ -328,5 +329,5 @@ export function renderConfigMergeSummary(report) {
 export async function loadFlowConfig(cwd = process.cwd()) {
   const file = flowConfigPath(cwd);
   if (!existsSync(file)) return defaultFlowConfig();
-  return { ...defaultFlowConfig(), ...normalizeFlowConfig(await readJson(file)) };
+  return validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(await readJson(file)) }) as FlowConfig;
 }

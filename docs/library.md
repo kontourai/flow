@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.1.0` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.2.0` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -295,12 +295,18 @@ attaches the bundle, derives reports, and deliberately leaves run state and
 route-back accounting unchanged; its write set therefore omits `state.json`.
 
 The reducer does not embed Hachure schema or Surface trust semantics. A caller
-supplies the `hachure@0.15.0` schema validator and `@kontourai/surface@2.12.0`
+supplies the `hachure@0.15.0` schema validator and `@kontourai/surface@2.14.0`
 validator/report builder as explicit dependencies; `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`
 is Flow's adapter for those locked package versions. Pin the published package
 integrity plus `trustAttachmentReducerIdentity()` when a privileged coordinator
 needs a stable reducer contract. The identity hash binds the reducer API version
 and dependency versions, while package integrity binds the artifact bytes.
+
+`attachEvidence()` accepts the typed `FlowEvidenceAttachmentOptions` contract.
+Use `authorityTrace` for the compatible one-value form, or `authorityTraces`
+for multiple authority references; Flow persists the first as `authority_trace`
+and the full list as `authority_traces`. Unknown option keys and malformed
+trace lists reject before evidence I/O.
 
 ### Authorized definition amendment
 

@@ -227,6 +227,9 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | `attachment_not_current` | the evidence attachment predates the current gate visit |
 
 Trusted producer mappings and gate overrides live in `.flow/config.json` — see [Project Config](project-config.md).
+`flow attach-evidence --authority-trace` is repeatable; library callers use the
+typed `authorityTrace` or `authorityTraces` attachment options. Unknown or
+malformed attachment option shapes reject before evidence is copied.
 
 ## Failed evidence and route metadata
 

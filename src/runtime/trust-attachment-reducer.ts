@@ -8,7 +8,7 @@ import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.1.0";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.2.0";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 

@@ -28,17 +28,92 @@
         disputed: "Disputed",
         superseded: "Superseded",
         rejected: "Rejected",
+        revoked: "Revoked",
     };
     const STATUS_KIND = {
         verified: "positive",
         stale: "caution",
         disputed: "negative",
         rejected: "negative",
+        revoked: "negative",
         superseded: "neutral",
         unknown: "neutral",
         proposed: "neutral",
         assumed: "caution",
     };
+    function supportFacet(value) {
+        if (value === "entails")
+            return { state: "entails", label: "Entails the claim", kind: "positive" };
+        if (value === "cited")
+            return { state: "cited", label: "Cited only", kind: "caution" };
+        if (value === undefined || value === null) {
+            return { state: "unstated", label: "Support strength not stated", kind: "neutral" };
+        }
+        return { state: String(value), label: `Support: ${String(value)}`, kind: "neutral" };
+    }
+    function resultFacet(passing, blocking) {
+        const blocks = blocking === true;
+        if (passing === true)
+            return { state: "passed", label: "Passed", kind: "positive" };
+        if (passing === false) {
+            return {
+                state: blocks ? "failed-blocking" : "failed",
+                label: blocks ? "Failed — blocking" : "Failed",
+                kind: "negative",
+            };
+        }
+        // Absent `passing` is NOT a pass. It means the evidence carries no result
+        // of its own, which a reader must be able to tell apart from one that
+        // passed its check.
+        return { state: "not-evaluated", label: "Not evaluated", kind: "neutral" };
+    }
+    function visibilityFacet(item) {
+        const raw = item.metadata?.visibility ?? item.metadata?.disclosure?.visibility;
+        if (raw === undefined || raw === null || raw === "") {
+            // Per docs/specs/disclosure-requirements.md, private/permissioned/
+            // redacted/unavailable evidence must not read as missing — so an
+            // undeclared visibility is reported as undeclared, not as "public".
+            return { state: "unstated", label: "Visibility not stated", kind: "neutral" };
+        }
+        const value = String(raw);
+        const hidden = ["private", "redacted", "permissioned", "unavailable"].includes(value);
+        return { state: value, label: `Visibility: ${value}`, kind: hidden ? "caution" : "neutral" };
+    }
+    function integrityFacet(item) {
+        const anchor = item.integrityAnchor;
+        if (!anchor) {
+            if (item.integrityRef === undefined || item.integrityRef === null)
+                return null;
+            return { state: "ref-only", label: `Integrity ref: ${String(item.integrityRef)}`, kind: "neutral" };
+        }
+        const status = anchor.verificationStatus === undefined ? "unverified" : String(anchor.verificationStatus);
+        const kind = status === "verified" ? "positive" : status === "failed" ? "negative" : status === "unverified" ? "caution" : "neutral";
+        const anchorKind = anchor.kind === undefined ? "anchor" : String(anchor.kind);
+        return { state: status, label: `Integrity ${anchorKind}: ${status}`, kind };
+    }
+    function observedLabel(value) {
+        if (value === undefined || value === null || value === "")
+            return "Observed time not supplied";
+        return `Observed ${String(value)}`;
+    }
+    function facetChip(item, field) {
+        return `<span class="ev-flag" data-field="${escapeHtml(field)}" data-kind="${escapeHtml(item.kind)}" data-state="${escapeHtml(item.state)}">${escapeHtml(item.label)}</span>`;
+    }
+    function renderEvidenceItem(item) {
+        const support = supportFacet(item.supportStrength);
+        const result = resultFacet(item.passing, item.blocking);
+        const visibility = visibilityFacet(item);
+        const integrity = integrityFacet(item);
+        const flags = [facetChip(support, "supportStrength"), facetChip(result, "result"), facetChip(visibility, "visibility")];
+        if (integrity)
+            flags.push(facetChip(integrity, "integrity"));
+        return `<li class="evidence" data-support="${escapeHtml(support.state)}" data-result="${escapeHtml(result.state)}" data-blocking="${item.blocking === true ? "true" : "false"}" data-visibility="${escapeHtml(visibility.state)}"${integrity ? ` data-integrity="${escapeHtml(integrity.state)}"` : ""}>
+        <span class="ev-head"><strong>${escapeHtml(asText(item.evidenceType, "evidence"))}</strong> via ${escapeHtml(asText(item.method, "unknown method"))}</span>
+        <span class="ev-flags">${flags.join("")}</span>
+        <span class="ev-summary">${escapeHtml(asText(item.excerptOrSummary ?? item.sourceRef))}</span>
+        <span class="ev-meta">${escapeHtml(asText(item.sourceRef, "no source reference"))} · ${escapeHtml(observedLabel(item.observedAt))}</span>
+      </li>`;
+    }
     const PANEL_CSS = `
     :host {
       display: block;
@@ -93,6 +168,20 @@
     h3 { margin: 0.7rem 0 0.25rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--k-text-muted, #657267); }
     ul { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.85rem; }
     li { margin: 0.25rem 0; overflow-wrap: anywhere; }
+    li.evidence { display: flex; flex-direction: column; gap: 0.2rem; margin: 0.5rem 0; }
+    .ev-flags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .ev-flag {
+      border: 1px solid var(--k-line, rgba(36, 68, 52, 0.16));
+      border-radius: 999px;
+      padding: 0.05rem 0.5rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--k-text-muted, #657267);
+    }
+    .ev-flag[data-kind="positive"] { color: var(--k-positive, #0f8f66); }
+    .ev-flag[data-kind="caution"] { color: var(--k-caution, #a86612); }
+    .ev-flag[data-kind="negative"] { color: var(--k-negative, #c24141); }
+    .ev-meta { color: var(--k-text-muted, #657267); font-size: 0.78rem; }
     .gap { color: var(--k-negative, #c24141); }
     .gap[data-severity="low"], .gap[data-severity="medium"] { color: var(--k-caution, #a86612); }
     .empty, .error { padding: 0.5rem 0; color: var(--k-text-muted, #657267); font-size: 0.9rem; }
@@ -187,9 +276,7 @@
             const status = typeof claim.status === "string" ? claim.status : "unknown";
             const evidence = asArray(report.evidence).filter((item) => item.claimId === claim.id);
             const gaps = asArray(report.transparencyGaps).filter((item) => item.claimId === claim.id);
-            const evidenceList = evidence
-                .map((item) => `<li><strong>${escapeHtml(asText(item.evidenceType, "evidence"))}</strong> via ${escapeHtml(asText(item.method, "unknown method"))} — ${escapeHtml(asText(item.excerptOrSummary ?? item.sourceRef))}</li>`)
-                .join("");
+            const evidenceList = evidence.map((item) => renderEvidenceItem(item)).join("");
             const gapList = gaps
                 .map((item) => `<li class="gap" data-severity="${escapeHtml(asText(item.severity))}">${escapeHtml(asText(item.type, "gap"))} — ${escapeHtml(asText(item.message))}</li>`)
                 .join("");
