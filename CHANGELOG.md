@@ -19,6 +19,20 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [4.0.0](https://github.com/kontourai/flow/compare/v3.12.0...v4.0.0) (2026-08-02)
+
+
+### Fixes
+
+* **reports:** roll the run-output bundle up honestly ([#203](https://github.com/kontourai/flow/issues/203)) ([#213](https://github.com/kontourai/flow/issues/213)) ([7a3f58b](https://github.com/kontourai/flow/commit/7a3f58ba71b868b932fe67fb1b7cba5b8c876000))
+* **runtime:** evaluate a named gate against the run's real cursor ([#202](https://github.com/kontourai/flow/issues/202)) ([#210](https://github.com/kontourai/flow/issues/210)) ([d6172c0](https://github.com/kontourai/flow/commit/d6172c0a18631383755c272788c5e21e15ca68a6))
+* **runtime:** publish run artifacts atomically ([#201](https://github.com/kontourai/flow/issues/201)) ([#208](https://github.com/kontourai/flow/issues/208)) ([8038d13](https://github.com/kontourai/flow/commit/8038d131b785001849af376e149e6ad2d6e6e285))
+
+
+### Documentation
+
+* migration note for the 4.0.0 breaking changes ([#216](https://github.com/kontourai/flow/issues/216)) ([943a33a](https://github.com/kontourai/flow/commit/943a33a7ec862183dcfb403e3c8528c661e23cf8))
+
 ## [3.12.0](https://github.com/kontourai/flow/compare/v3.11.0...v3.12.0) (2026-07-28)
 
 
