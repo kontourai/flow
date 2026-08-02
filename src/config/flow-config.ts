@@ -37,8 +37,14 @@ function publisherInvalidError() {
   return new Error("flow.config.merge.publisher.invalid: publisher must be a function");
 }
 
+class ConfigMergePublisherReceiptInvalidError extends Error {
+  constructor() {
+    super("flow.config.merge.publisher.receipt.invalid: publisher must return an applied receipt bound to the requested config path and bytes");
+  }
+}
+
 function publisherReceiptInvalidError() {
-  return new Error("flow.config.merge.publisher.receipt.invalid: publisher must return an applied receipt bound to the requested config path and bytes");
+  return new ConfigMergePublisherReceiptInvalidError();
 }
 
 function configMergePublisher(options: FlowConfigMergeApplyOptions): FlowConfigMergePublisher {
@@ -65,23 +71,27 @@ async function loadFlowConfigMergeBase(configPath: string) {
 function publisherReceipt(value: unknown, request: FlowConfigMergePublisherRequest): FlowConfigMergePublisherReceipt {
   if (!isObject(value)) throw publisherReceiptInvalidError();
   const receipt = value as MutableRecord;
-  if (receipt.api_version !== FLOW_CONFIG_MERGE_PUBLISHER_API_VERSION
-    || receipt.status !== "applied"
-    || !isNonEmptyString(receipt.publisher)
-    || !isNonEmptyString(receipt.publication_id)
-    || receipt.config_path !== request.config_path
-    || receipt.contents_sha256 !== request.contents_sha256
-  ) {
-    throw publisherReceiptInvalidError();
-  }
-  return {
-    api_version: FLOW_CONFIG_MERGE_PUBLISHER_API_VERSION,
-    status: "applied",
+  // Read every host-owned property exactly once. Accessor-backed objects and
+  // proxies must not be able to present one value for validation and another
+  // for the receipt Flow returns to callers.
+  const snapshot = Object.freeze({
+    api_version: receipt.api_version,
+    status: receipt.status,
     publisher: receipt.publisher,
     publication_id: receipt.publication_id,
     config_path: receipt.config_path,
     contents_sha256: receipt.contents_sha256
-  };
+  });
+  if (snapshot.api_version !== FLOW_CONFIG_MERGE_PUBLISHER_API_VERSION
+    || snapshot.status !== "applied"
+    || !isNonEmptyString(snapshot.publisher)
+    || !isNonEmptyString(snapshot.publication_id)
+    || snapshot.config_path !== request.config_path
+    || snapshot.contents_sha256 !== request.contents_sha256
+  ) {
+    throw publisherReceiptInvalidError();
+  }
+  return snapshot as FlowConfigMergePublisherReceipt;
 }
 
 export function defaultFlowConfig(): FlowConfig {
@@ -384,10 +394,12 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     contents,
     contents_sha256: sha256(contents)
   }) satisfies FlowConfigMergePublisherRequest;
-  let response: unknown;
+  let receipt: FlowConfigMergePublisherReceipt;
   try {
-    response = await publisher(request);
+    const response = await publisher(request);
+    receipt = publisherReceipt(response, request);
   } catch (error) {
+    if (error instanceof ConfigMergePublisherReceiptInvalidError) throw error;
     // Publisher failures can contain credentials, internal paths, or other
     // host-only diagnostics. Keep that value available to trusted embedders as
     // the cause, but never reflect it through Flow's public/CLI error message.
@@ -396,7 +408,7 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
       { cause: error }
     );
   }
-  return { ...report, mode: "apply", status: "applied", publisher_receipt: publisherReceipt(response, request) };
+  return { ...report, mode: "apply", status: "applied", publisher_receipt: receipt };
 }
 
 function renderConfigMergeBucket(title, entries) {

@@ -40,8 +40,10 @@ proposal: /work/project/kit-flow-config.json
 
 ## Apply: a trusted host publishes accepted bytes
 
-```sh
-flow config apply ./kit-flow-config.json
+```ts
+await applyFlowConfigMerge("./kit-flow-config.json", {
+  publisher: trustedHostPublisher
+});
 ```
 
 The standalone CLI intentionally cannot publish config. It fails closed with
@@ -61,7 +63,7 @@ The merge rules are deliberately conservative:
 
 - **Additive** proposals (the local path is absent) are accepted.
 - **Matching** values are recorded as unchanged.
-- **Differing** trusted producer mappings or gate overrides are conflicts — rejected by default, and the command exits non-zero:
+- **Differing** trusted producer mappings or gate overrides are conflicts — rejected by default, and the host receives a blocked report without invoking its publisher:
 
 ```text
 flow config merge: blocked
@@ -72,11 +74,13 @@ proposed: 2; accepted: 0; rejected: 1; conflicts: 1; exceptions: 0
 
 Overriding local authority requires naming the exact conflict path (or a parent path), a reason, and an authority:
 
-```sh
-flow config apply ./kit-flow-config.json \
-  --accept-conflict '$.trusted_producers.quality.tests' \
-  --exception-reason 'platform team rotated the producer' \
-  --authority 'platform-lead'
+```ts
+await applyFlowConfigMerge("./kit-flow-config.json", {
+  publisher: trustedHostPublisher,
+  acceptConflicts: ["$.trusted_producers.quality.tests"],
+  exceptionReason: "platform team rotated the producer",
+  authority: "platform-lead"
+});
 ```
 
 The exception is part of the merge report, so a host install log shows exactly which project authority was overridden, why, and by whom. A successful host publication also adds a structured `publisher_receipt`; this is an acknowledgement from that trusted host, not Flow I/O evidence.

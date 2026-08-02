@@ -232,6 +232,69 @@ test("config merge hands canonical immutable bytes to a trusted publisher and va
   assert.equal(await readFile(configPath, "utf8"), original, "only the host capability may publish bytes");
 });
 
+test("config merge snapshots every accessor-backed receipt field exactly once", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-hostile-receipt-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } }, gate_overrides: {} }, null, 2)}\n`)
+  ]);
+
+  const reads = Object.create(null);
+  const applied = await applyFlowConfigMerge(cwd, "proposal.json", {
+    publisher: async (request) => {
+      const values = {
+        api_version: ["flow.kontourai.io/v1alpha1", "host.invalid/v9"],
+        status: ["applied", "rejected"],
+        publisher: ["host/accessor", "host/swapped"],
+        publication_id: ["publication-accessor-1", "publication-swapped"],
+        config_path: [request.config_path, "/outside/swapped/config.json"],
+        contents_sha256: [request.contents_sha256, "0".repeat(64)]
+      };
+      return Object.defineProperties({}, Object.fromEntries(Object.entries(values).map(([field, fieldValues]) => [field, {
+        enumerable: true,
+        get() {
+          reads[field] = (reads[field] ?? 0) + 1;
+          return fieldValues[Math.min(reads[field] - 1, fieldValues.length - 1)];
+        }
+      }])));
+    }
+  });
+
+  assert.deepEqual({ ...reads }, {
+    api_version: 1,
+    status: 1,
+    publisher: 1,
+    publication_id: 1,
+    config_path: 1,
+    contents_sha256: 1
+  });
+  assert.equal(applied.publisher_receipt.publisher, "host/accessor");
+  assert.equal(applied.publisher_receipt.publication_id, "publication-accessor-1");
+  assert.equal(applied.publisher_receipt.config_path, path.join(cwd, ".flow", "config.json"));
+  assert.notEqual(applied.publisher_receipt.contents_sha256, "0".repeat(64));
+  assert.ok(Object.isFrozen(applied.publisher_receipt));
+
+  let publicationIdReads = 0;
+  await assert.rejects(
+    () => applyFlowConfigMerge(cwd, "proposal.json", {
+      publisher: async (request) => ({
+        api_version: "flow.kontourai.io/v1alpha1",
+        status: "applied",
+        publisher: "host/accessor",
+        get publication_id() {
+          publicationIdReads += 1;
+          return publicationIdReads === 1 ? "" : "would-bypass-on-second-read";
+        },
+        config_path: request.config_path,
+        contents_sha256: request.contents_sha256
+      })
+    }),
+    /flow\.config\.merge\.publisher\.receipt\.invalid/
+  );
+  assert.equal(publicationIdReads, 1, "a second accessor read must not turn an invalid snapshot into a valid receipt");
+});
+
 test("config merge rejects invalid and failed publisher capabilities", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-invalid-publisher-"));
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
@@ -259,6 +322,28 @@ test("config merge rejects invalid and failed publisher capabilities", async () 
   );
   assert.doesNotMatch(String(publisherFailure), /publisher-secret-9fd5|\/internal\/publisher\/tenant-42/);
   assert.match(publisherFailure.cause?.message, /publisher-secret-9fd5/);
+
+  const getterSecret = "getter-secret-1f97";
+  let getterFailure;
+  try {
+    await applyFlowConfigMerge(cwd, "proposal.json", {
+      publisher: async () => new Proxy({}, {
+        get(_target, field) {
+          if (field === "api_version") throw new Error(`receipt getter leaked ${getterSecret} at /host/private/receipt.json`);
+          return undefined;
+        }
+      })
+    });
+  } catch (error) {
+    getterFailure = error;
+  }
+  assert.ok(getterFailure instanceof Error);
+  assert.equal(
+    getterFailure.message,
+    "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics"
+  );
+  assert.doesNotMatch(String(getterFailure), /getter-secret-1f97|\/host\/private\/receipt\.json/);
+  assert.match(getterFailure.cause?.message, /getter-secret-1f97/);
   await assert.rejects(
     () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => ({ status: "applied" }) }),
     /flow\.config\.merge\.publisher\.receipt\.invalid/
