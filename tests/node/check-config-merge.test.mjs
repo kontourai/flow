@@ -794,6 +794,73 @@ test("config preflight rejects cyclic and oversized sparse inputs before recursi
   assert.equal(elementReads, 0, "array length must be bounded before any sparse or Proxy element read");
 });
 
+test("config snapshot reads an access-varying trusted_producers getter once and never reaches its late hostile value", () => {
+  const local = localConfigFixture();
+  const localBefore = JSON.stringify(local);
+  const safe = proposedConfigFixture();
+  const privateMarker = "late-trusted-producers-secret-2026";
+  let getterReads = 0;
+  let lateTouches = 0;
+  const lateCycle = {};
+  lateCycle.self = lateCycle;
+  const lateHostile = new Proxy(lateCycle, {
+    get() {
+      lateTouches += 1;
+      throw new Error(privateMarker);
+    },
+    ownKeys() {
+      lateTouches += 1;
+      throw new Error(privateMarker);
+    }
+  });
+  const proposal = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    gate_overrides: safe.gate_overrides,
+    get trusted_producers() {
+      getterReads += 1;
+      return getterReads === 1 ? safe.trusted_producers : lateHostile;
+    }
+  };
+
+  const report = previewFlowConfigMerge(local, proposal);
+  assert.equal(getterReads, 1);
+  assert.equal(lateTouches, 0, "the late cyclic Proxy must never reach normalization or merge consumers");
+  assert.doesNotMatch(JSON.stringify(report), /late-trusted-producers-secret-2026/);
+  assert.equal(JSON.stringify(local), localBefore, "a snapshotted preview must not mutate its source config");
+});
+
+test("config snapshot rejects Proxy ownKeys before enumeration and bounds aggregate array work", () => {
+  const privateMarker = "config-own-keys-secret-2026";
+  let ownKeysCalls = 0;
+  const hostile = new Proxy({}, {
+    ownKeys() {
+      ownKeysCalls += 1;
+      return Array.from({ length: 100_000 }, (_, index) => `key_${index}`);
+    }
+  });
+  const proxyProposal = proposedConfigFixture();
+  proxyProposal.trusted_producers = hostile;
+  let proxyFailure;
+  try {
+    previewFlowConfigMerge(localConfigFixture(), proxyProposal);
+  } catch (error) {
+    proxyFailure = error;
+  }
+  assert.ok(proxyFailure instanceof Error);
+  assert.equal(proxyFailure.message, "flow.config.input.invalid: config input must be a bounded acyclic JSON value");
+  assert.doesNotMatch(String(proxyFailure), /config-own-keys-secret-2026/);
+  assert.equal(ownKeysCalls, 0, "Proxy detection must precede any ownKeys enumeration");
+
+  const aggregateProposal = proposedConfigFixture();
+  aggregateProposal.trusted_producers = Object.fromEntries(
+    Array.from({ length: 128 }, (_, index) => [`quality.aggregate.${index}`, Array(32).fill("ci/aggregate")])
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), aggregateProposal),
+    /flow\.config\.input\.invalid: config input must be a bounded acyclic JSON value/
+  );
+});
+
 test("config merge bounds accepted conflict aliases before copy, publisher invocation, or mutation", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-conflict-bounds-"));
   const configPath = path.join(cwd, ".flow", "config.json");

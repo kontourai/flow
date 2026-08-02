@@ -178,9 +178,9 @@ function canonicalJson(value: unknown): string {
 
 /**
  * A coordinator can pin this identity alongside the package integrity for the
- * reducer artifact. The hash intentionally covers only the public reducer
- * contract and its explicit dependency versions; it never reads package files
- * or ambient process state.
+ * reducer artifact. The hash covers the public reducer contract, its explicit
+ * dependency versions, and the integrity of every dependency helper the
+ * reducer invokes. It never reads package files or ambient process state.
  */
 export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerIdentity {
   return trustAttachmentReducerIdentityFor(resolveSupportedReducerDependencies(dependencies));

@@ -18,7 +18,7 @@ import type {
   MutableRecord
 } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
-import { FLOW_CONFIG_INPUT_LIMITS, preflightFlowConfigInput, validateFlatFlowConfig } from "./flow-config-validator.js";
+import { FLOW_CONFIG_INPUT_LIMITS, snapshotFlowConfigInput, validateFlatFlowConfig } from "./flow-config-validator.js";
 
 const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";
@@ -175,7 +175,7 @@ async function loadFlowConfigMergeBase(configPath: string) {
   return {
     config: contents === undefined
       ? defaultFlowConfig()
-      : validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(JSON.parse(contents)) }) as FlowConfig,
+      : validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(snapshotFlowConfigInput(JSON.parse(contents))) }) as FlowConfig,
     expectedConfigSha256: contents === undefined ? null : sha256(contents)
   };
 }
@@ -238,7 +238,6 @@ function isFlowProjectConfigResource(config: any) {
 }
 
 function normalizeFlowConfig(config: any) {
-  preflightFlowConfigInput(config);
   if (!isFlowProjectConfigResource(config)) return config;
   if (config.apiVersion !== FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION) {
     throw new Error(`config.apiVersion must be ${FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION}`);
@@ -329,8 +328,8 @@ function collectMergePaths(value: any, segments: string[] = []): string[][] {
 }
 
 function proposedConfigFromEnvelope(proposal) {
-  preflightFlowConfigInput(proposal);
-  return normalizeFlowConfig(proposal?.flow_config ?? proposal?.config ?? proposal);
+  const snapshot = snapshotFlowConfigInput(proposal) as MutableRecord;
+  return normalizeFlowConfig(snapshot.flow_config ?? snapshot.config ?? snapshot);
 }
 
 function normalizeAcceptedConflictPaths(values: readonly string[] | undefined) {
@@ -377,7 +376,7 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
 }
 
 function mergeFlowConfigPreview(localConfig: MutableRecord, kitProposal: MutableRecord, options: FlowConfigMergeInternalOptions): ConfigMergeUnpublishedReport {
-  const normalizedLocal = normalizeFlowConfig(localConfig);
+  const normalizedLocal = normalizeFlowConfig(snapshotFlowConfigInput(localConfig));
   const normalizedProposed = proposedConfigFromEnvelope(kitProposal);
   assertSafeConfigTree(normalizedLocal);
   assertSafeConfigTree(normalizedProposed);
@@ -605,5 +604,5 @@ export function renderConfigMergeSummary(report) {
 export async function loadFlowConfig(cwd = process.cwd()) {
   const file = flowConfigPath(cwd);
   if (!existsSync(file)) return defaultFlowConfig();
-  return validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(await readJson(file)) }) as FlowConfig;
+  return validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(snapshotFlowConfigInput(await readJson(file))) }) as FlowConfig;
 }

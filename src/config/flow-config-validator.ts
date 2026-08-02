@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { types } from "node:util";
 import path from "node:path";
 
 import { moduleRoot } from "../runtime/flow-files.js";
@@ -36,46 +37,72 @@ function configInputInvalidError() {
 }
 
 /**
- * Bound hostile config-shaped values before recursive normalization, cloning,
- * or schema validation. Array lengths are checked before element reads, so a
- * sparse array or Proxy cannot turn a cheap invalid request into unbounded
- * work. Config is JSON-shaped data, so repeated object identities are
- * rejected alongside cycles instead of being silently duplicated by cloning.
+ * Materialize caller-owned config into a plain JSON-shaped tree before any
+ * normalization, cloning, or schema validation. Array lengths are checked
+ * before element reads; Proxy and non-plain containers are rejected before
+ * enumeration; and one aggregate work budget covers every object property
+ * and array slot. Repeated object identities are rejected alongside cycles.
  */
-export function preflightFlowConfigInput(input: unknown): void {
-  const stack: Array<{ value: unknown; depth: number }> = [{ value: input, depth: 0 }];
+export function snapshotFlowConfigInput(input: unknown): unknown {
+  const stack: Array<{ value: unknown; depth: number; assign: (snapshot: unknown) => void }> = [{ value: input, depth: 0, assign: (snapshot) => { result = snapshot; } }];
   const visited = new WeakSet<object>();
   let nodes = 0;
-  let properties = 0;
+  let work = 0;
+  let result: unknown;
 
   try {
     while (stack.length) {
-      const { value, depth } = stack.pop()!;
+      const { value, depth, assign } = stack.pop()!;
       if (typeof value === "string") {
         if (value.length > FLOW_CONFIG_INPUT_LIMITS.stringLength) throw configInputInvalidError();
+        assign(value);
         continue;
       }
-      if (value === null || typeof value === "boolean" || typeof value === "number") continue;
+      if (value === null || typeof value === "boolean" || typeof value === "number") {
+        assign(value);
+        continue;
+      }
       if (typeof value !== "object") throw configInputInvalidError();
       if (depth > FLOW_CONFIG_INPUT_LIMITS.depth || visited.has(value)) throw configInputInvalidError();
+      if (types.isProxy(value)) throw configInputInvalidError();
       visited.add(value);
       nodes += 1;
       if (nodes > FLOW_CONFIG_INPUT_LIMITS.nodes) throw configInputInvalidError();
 
-      if (Array.isArray(value)) {
+      const array = Array.isArray(value);
+      const prototype = Object.getPrototypeOf(value);
+      if ((array && prototype !== Array.prototype) || (!array && prototype !== Object.prototype && prototype !== null)) {
+        throw configInputInvalidError();
+      }
+      if (array) {
         const length = value.length;
         if (!Number.isSafeInteger(length) || length < 0 || length > FLOW_CONFIG_INPUT_LIMITS.arrayLength) throw configInputInvalidError();
-        for (let index = 0; index < length; index += 1) stack.push({ value: value[index], depth: depth + 1 });
+        work += length;
+        if (work > FLOW_CONFIG_INPUT_LIMITS.properties) throw configInputInvalidError();
+        const snapshot = new Array(length);
+        assign(snapshot);
+        for (let index = length - 1; index >= 0; index -= 1) {
+          const entry = value[index];
+          stack.push({ value: entry, depth: depth + 1, assign: (child) => { snapshot[index] = child; } });
+        }
         continue;
       }
 
+      const snapshot: Record<string, unknown> = Object.create(null);
+      assign(snapshot);
+      const entries: Array<[string, unknown]> = [];
       for (const key in value as Record<string, unknown>) {
         if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-        properties += 1;
-        if (properties > FLOW_CONFIG_INPUT_LIMITS.properties || key.length > FLOW_CONFIG_INPUT_LIMITS.stringLength) throw configInputInvalidError();
-        stack.push({ value: (value as Record<string, unknown>)[key], depth: depth + 1 });
+        work += 1;
+        if (work > FLOW_CONFIG_INPUT_LIMITS.properties || key.length > FLOW_CONFIG_INPUT_LIMITS.stringLength) throw configInputInvalidError();
+        entries.push([key, (value as Record<string, unknown>)[key]]);
+      }
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const [key, entry] = entries[index];
+        stack.push({ value: entry, depth: depth + 1, assign: (child) => { snapshot[key] = child; } });
       }
     }
+    return result;
   } catch (error) {
     if (error instanceof ConfigInputInvalidError) throw error;
     throw configInputInvalidError();
@@ -129,9 +156,9 @@ function schemaError(validate: any) {
 
 /** Validate the normalized, flat runtime config used by every evaluator. */
 export function validateFlatFlowConfig(config: unknown) {
-  preflightFlowConfigInput(config);
-  rejectLegacyAuthorityTraces(config);
+  const snapshot = snapshotFlowConfigInput(config);
+  rejectLegacyAuthorityTraces(snapshot);
   const validate = flatConfigValidator();
-  if (validate(config)) return config;
+  if (validate(snapshot)) return snapshot;
   throw schemaError(validate);
 }
