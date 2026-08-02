@@ -29,6 +29,11 @@ before the protocol. Malformed records, unknown protocols, and unknown states
 fail closed. Every persisted generation must be a canonical UUID v4.
 `writeRunRecoveryFence()` accepts only `active` records; Flow creates a unique
 generation for every atomic write and rejects a caller-supplied generation.
+`writeRunRecoveryFenceWithExpectedGeneration()` is the explicit coordinator
+boundary: it requires a canonical UUID v4 chosen and durably bound by the
+caller's authority boundary before delegation, then atomically publishes that
+exact generation. Flow validates and serializes the write but does not
+authenticate the coordinator.
 Every newly finalized `open` record also names the exact active
 `previous_generation` it succeeded; legacy open records remain readable but
 cannot prove this succession to a queued mutation.
@@ -68,6 +73,8 @@ The exported active-only fence writer publishes under Flow's native per-run
 mutation ticket and atomically replaces only `recovery-fence.json`. Active and
 open publication therefore cannot overwrite one another across processes.
 Recovery coordinators own authorization, durability, and postimages.
+The coordinator-bound writer uses the same publication path and ticket; its
+expected generation is an identity, not bearer authority.
 `withRunRecoveryLock()` is the recovery-only entry to Flow's native mutation
 ticket: it requires the exact active `recovery_id` both before waiting and after
 the ticket is held, then verifies the same active generation again after the

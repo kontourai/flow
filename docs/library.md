@@ -54,7 +54,8 @@ import {
   finalizeRunRecoveryFence,
   inspectRunRecoveryFence,
   withRunRecoveryLock,
-  writeRunRecoveryFence
+  writeRunRecoveryFence,
+  writeRunRecoveryFenceWithExpectedGeneration
 } from "@kontourai/flow";
 
 console.log(FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN);
@@ -67,6 +68,16 @@ const activeFence = await writeRunRecoveryFence("dev-1847", {
   updated_at: new Date().toISOString()
 }, process.cwd());
 console.log(activeFence.fence.generation); // Flow-generated UUID
+
+const coordinatorFence = await writeRunRecoveryFenceWithExpectedGeneration("dev-1848", {
+  protocol: FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
+  run_id: "dev-1848",
+  recovery_id: "recovery-02",
+  status: "active",
+  updated_at: new Date().toISOString(),
+  expected_generation: "8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f"
+}, process.cwd());
+console.log(coordinatorFence.fence.generation); // exact expected UUID
 
 await withRunRecoveryLock(
   "dev-1847",
@@ -91,7 +102,7 @@ await finalizeRunRecoveryFence("dev-1847", {
 console.log(await inspectRunRecoveryFence("dev-1847", process.cwd()));
 ```
 
-The caller never supplies `generation`; Flow adds a canonical UUID v4 on every durable
+The ordinary writer never accepts `generation`; Flow adds a canonical UUID v4 on every durable
 temp-file `fsync` → rename → parent-directory `fsync` publication. Inspection
 returns the exact-byte fingerprint and fixed run-directory device/inode with
 the persisted fence. Newly finalized open records include the exact active
@@ -112,6 +123,11 @@ ticket, and a same-ticket replacement during the assertion makes the stale
 finalizer reject. Callers validating external inputs must keep their own
 mutation guard held across the complete finalizer call when those inputs have
 writers outside Flow's native ticket.
+`writeRunRecoveryFenceWithExpectedGeneration()` is reserved for coordinators
+that durably bind a generation before delegating the Flow write. It requires a
+canonical UUID v4 as `expected_generation` and publishes that exact value under
+the same native mutation ticket. Flow does not authenticate that caller; the
+generation is correlation identity rather than mutation authority.
 
 Absence and a stable `open` record allow supported access. `active`, malformed,
 or unknown records fail closed. Exact bytes, generation, and directory identity

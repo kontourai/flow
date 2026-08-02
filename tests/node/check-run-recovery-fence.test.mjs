@@ -36,7 +36,8 @@ import {
   withRunMutationLock,
   withRunRecoveryLock,
   withRunRecoveryFenceRead,
-  writeRunRecoveryFence
+  writeRunRecoveryFence,
+  writeRunRecoveryFenceWithExpectedGeneration
 } from "../../dist/index.js";
 import { projectFlowRunFromResolvedRun } from "../../dist/console/console-projection.js";
 import { readConsoleArtifact } from "../../dist/console/console-server.js";
@@ -122,6 +123,88 @@ test("recovery fence absence and a stable open record allow supported reads", as
     ),
     /flow\.run_recovery\.malformed/
   );
+});
+
+test("coordinator-bound publication atomically persists the exact expected generation", async () => {
+  const { cwd, run } = await fixture("coordinator-bound-generation");
+  for (const malformed of [
+    fence(run.runId, "active"),
+    { ...fence(run.runId, "active"), expected_generation: undefined }
+  ]) {
+    await assert.rejects(
+      () => writeRunRecoveryFenceWithExpectedGeneration(run.runId, malformed, cwd),
+      /expected recovery generation must be a canonical UUID v4/
+    );
+    assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "absent");
+  }
+  await assert.rejects(
+    () => writeRunRecoveryFenceWithExpectedGeneration(
+      run.runId,
+      { ...fence(run.runId, "active"), expected_generation: "caller-chosen" },
+      cwd
+    ),
+    /expected recovery generation must be a canonical UUID v4/
+  );
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "absent");
+  for (const invalid of [
+    { toString: () => "8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f" },
+    new String("8aa8c1c4-07d1-4bd9-bd0b-5e473ce0b50f"),
+    null
+  ]) {
+    await assert.rejects(
+      () => writeRunRecoveryFenceWithExpectedGeneration(
+        run.runId,
+        { ...fence(run.runId, "active"), expected_generation: invalid },
+        cwd
+      ),
+      /expected recovery generation must be a canonical UUID v4/
+    );
+    assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).status, "absent");
+  }
+
+  const expectedGeneration = randomUUID();
+  let renamedGeneration = null;
+  const active = await writeRunRecoveryFenceWithExpectedGeneration(
+    run.runId,
+    { ...fence(run.runId, "active"), expected_generation: expectedGeneration },
+    cwd,
+    {
+      afterRename: async () => {
+        renamedGeneration = (await inspectRunRecoveryFence(run.runId, cwd)).fence.generation;
+      }
+    }
+  );
+  assert.equal(renamedGeneration, expectedGeneration);
+  assert.equal(active.fence.generation, expectedGeneration);
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).fence.generation, expectedGeneration);
+
+  const replacementGeneration = randomUUID();
+  await assert.rejects(
+    () => withRunRecoveryLock(run.runId, "recovery-1", cwd, () =>
+      writeRunRecoveryFenceWithExpectedGeneration(
+        run.runId,
+        { ...fence(run.runId, "active"), expected_generation: replacementGeneration },
+        cwd
+      )),
+    /flow\.run_recovery\.coordinator_fence_mismatch/
+  );
+  assert.equal((await inspectRunRecoveryFence(run.runId, cwd)).fence.generation, replacementGeneration);
+  await assert.rejects(
+    () => finalizeRunRecoveryFence(run.runId, {
+      recovery_id: "recovery-1",
+      expected_generation: expectedGeneration,
+      updated_at: "2026-07-23T12:01:00.000Z"
+    }, cwd),
+    /flow\.run_recovery\.coordinator_fence_mismatch/
+  );
+  await finalizeRunRecoveryFence(run.runId, {
+    recovery_id: "recovery-1",
+    expected_generation: replacementGeneration,
+    updated_at: "2026-07-23T12:02:00.000Z"
+  }, cwd);
+  const opened = await inspectRunRecoveryFence(run.runId, cwd);
+  assert.equal(opened.status, "open");
+  assert.equal(opened.fence.previous_generation, replacementGeneration);
 });
 
 test("recovery fence inspection rejects oversized and writable records before parsing", async () => {

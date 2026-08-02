@@ -199,7 +199,8 @@ test("package root exports stay stable across source-domain splits", () => {
     "withRunRecoveryFenceRead",
     "withRunRecoveryLock",
     "writeJson",
-    "writeRunRecoveryFence"
+    "writeRunRecoveryFence",
+    "writeRunRecoveryFenceWithExpectedGeneration"
   ];
   assert.deepEqual(Object.keys(flowRuntime).sort(), expectedRuntimeExports);
   assert.equal(Object.hasOwn(flowRuntime, "evaluateGate"), true);
