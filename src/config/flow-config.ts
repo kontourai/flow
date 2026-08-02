@@ -28,6 +28,10 @@ function projectDirectoryChangedError() {
   return new Error("flow.config.merge.project.changed: the project directory changed during project config merge");
 }
 
+function configMergeLockLostError() {
+  return new Error("flow.config.merge.lock.lost: the project config merge lock was replaced during project config merge");
+}
+
 function configPathInvalidError() {
   return new Error("flow.config.merge.path.invalid: project config must be a real file");
 }
@@ -68,6 +72,24 @@ async function assertProjectDirectoryIdentity(projectDirectory: string, expected
   }
 }
 
+async function assertConfigMergeLockOwnership(
+  lockPath: string,
+  expected: ConfigDirectoryIdentity,
+  projectDirectory: string,
+  projectDirectoryIdentity: ConfigDirectoryIdentity
+) {
+  await assertProjectDirectoryIdentity(projectDirectory, projectDirectoryIdentity);
+  let entry;
+  try {
+    entry = await lstat(lockPath);
+  } catch {
+    throw configMergeLockLostError();
+  }
+  if (entry.isSymbolicLink() || !entry.isFile() || entry.dev !== expected.dev || entry.ino !== expected.ino) {
+    throw configMergeLockLostError();
+  }
+}
+
 async function inspectBoundConfigFile(configPath: string, configDirectory: string, directoryIdentity: ConfigDirectoryIdentity) {
   await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
   try {
@@ -94,7 +116,8 @@ async function stageBoundConfigArtifact(
   configPath: string,
   contents: string,
   configDirectory: string,
-  directoryIdentity: ConfigDirectoryIdentity
+  directoryIdentity: ConfigDirectoryIdentity,
+  assertLockOwnership: () => Promise<void>
 ) {
   const existing = await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
   const temporary = path.join(configDirectory, `.${path.basename(configPath)}.${randomUUID()}.tmp`);
@@ -117,8 +140,24 @@ async function stageBoundConfigArtifact(
   await handle.close();
   return {
     commit: async () => {
+      // Publishing a staged file without still owning the coordination lock
+      // could overwrite a merge that acquired a replacement lock meanwhile.
+      // Check at the publication boundary, not just before staging. Also
+      // verify the target file still has the same inode we observed before
+      // staging, or a replacement writer could slip in and be overwritten.
+      await assertLockOwnership();
       await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
-      await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
+      const current = await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
+      if (
+        (existing === undefined && current !== undefined)
+        || (existing !== undefined && (
+          current === undefined
+          || current.dev !== existing.dev
+          || current.ino !== existing.ino
+        ))
+      ) {
+        throw configMergeLockLostError();
+      }
       await rename(temporary, configPath);
       await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
     },
@@ -424,7 +463,7 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
   const lockPath = path.join(projectDirectory, ".flow.config.merge.lock");
   const deadline = Date.now() + 30_000;
   let lock;
-  let lockIdentity;
+  let lockIdentity: ConfigDirectoryIdentity | undefined;
   for (;;) {
     try {
       await assertProjectDirectoryIdentity(projectDirectory, projectDirectoryIdentity);
@@ -456,12 +495,17 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     });
     if (report.conflicts.length) return { ...report, status: "blocked" };
     await invokeConfigMergeFault(options, "before_stage");
+    // A lock pathname can be atomically replaced while the original file
+    // descriptor remains open. Do not stage or publish a merge once the
+    // pathname no longer identifies the inode this invocation acquired.
+    await assertConfigMergeLockOwnership(lockPath, lockIdentity!, projectDirectory, projectDirectoryIdentity);
     await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
     const staged = await stageBoundConfigArtifact(
       localConfigPath,
       `${JSON.stringify(report.merged_config, null, 2)}\n`,
       configDirectory,
-      directoryIdentity
+      directoryIdentity,
+      () => assertConfigMergeLockOwnership(lockPath, lockIdentity!, projectDirectory, projectDirectoryIdentity)
     );
     try {
       await staged.commit();
