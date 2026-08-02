@@ -252,7 +252,7 @@ flowchart TD
   Producer --> Integrity["Check local integrity metadata when present"]
   Integrity --> Decision{"All checks satisfied?"}
   Decision -->|yes| Trusted["Expectation satisfied"]
-  Decision -->|no| Diagnostic["Report reason code: stale, rejected, untrusted_producer, authority_gap, integrity_mismatch, or subject_mismatch"]
+  Decision -->|no| Diagnostic["Report reason code: stale, rejected, untrusted_producer, integrity_mismatch, or subject_mismatch"]
 ```
 
 Current implementation: a copied Hachure TrustBundle backs a `trust.bundle` evidence entry. Flow consumes neutral bundle fields such as `source`, `claims`, `evidence`, `policies`, and `events`. Flow matches `bundle_claim` selectors against bundle claims and events to produce normal diagnostics.

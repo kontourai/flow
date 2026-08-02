@@ -117,7 +117,7 @@ Attempt counting is derived from persisted transitions, so neither the producer 
 - `evidence/` — *copies* of the actual evidence files, not links that rot
 - `report.md` / `report.json` — the human- and machine-readable explanation
 
-The evidence manifest records integrity metadata, and gate evaluation reports precise diagnostic reason codes (`stale`, `untrusted_producer`, `authority_gap`, `integrity_mismatch`, …) instead of hiding weak evidence as a generic pass. For versioned releases, `flow version-release-report` projects the changeset, verification evidence, release readiness result, accepted exceptions, and risks into one deterministic artifact — and missing required evidence becomes an explicit `gap` with `decision: "hold"`, never a summarized "ready."
+The evidence manifest records integrity metadata, and gate evaluation reports precise diagnostic reason codes (`stale`, `untrusted_producer`, `integrity_mismatch`, …) instead of hiding weak evidence as a generic pass. For versioned releases, `flow version-release-report` projects the changeset, verification evidence, release readiness result, accepted exceptions, and risks into one deterministic artifact — and missing required evidence becomes an explicit `gap` with `decision: "hold"`, never a summarized "ready."
 
 **What they get:** audits answered with `report.json` instead of a screenshot hunt, and an evidence trail that was produced by the process rather than reconstructed after it.
 

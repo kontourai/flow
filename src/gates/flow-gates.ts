@@ -165,40 +165,83 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   return null;
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, _config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null) {
-  if (expectation.kind !== "trust.bundle") return false;
-  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
-  if (entry.status === "failed") return false;
-
-  const bundle = entry.bundle;
-  if (!bundle) return false;
-
-  // Schema validation
-  const schemaResult = validateTrustBundleSchema(bundle);
-  if (!schemaResult.valid) return false;
-
-  // Use cached bundle_report when present, otherwise derive
-  let report = entry.bundle_report;
-  if (!report) {
-    const derived = deriveBundleReport(bundle);
-    if (!derived.report) return false;
-    report = derived.report;
-  }
-
+/**
+ * Resolve the producer and authority pins which apply to one expectation.
+ *
+ * Claim-type pins are the project-wide baseline. An expectation may add a
+ * narrower, gate-specific pin through the project config override that
+ * `expectationsForGate` already applies. Every configured scope must allow an
+ * attachment; a gate-specific override can therefore never broaden the
+ * project-wide authority boundary.
+ *
+ * Empty mappings are intentionally not pins: config authors can reserve a
+ * claim type without making every existing attachment unattributed.
+ */
+function trustedProducerPolicy(expectation: any, config: MutableRecord) {
   const selector = expectation.bundle_claim ?? expectation.claim;
-  if (!selector) return false;
-
-  const accepted = selector.accepted_statuses ?? ["verified"];
-  return findClaimsInReport(report, selector).some((claim: any) => {
-    if (!accepted.includes(claim.status ?? "unknown")) return false;
-    return enteredAt === null || claimIsCurrentForVisit(bundle, claim, enteredAt);
-  });
+  const claimType = selector?.claimType;
+  const claimMapping = typeof claimType === "string"
+    ? config.trusted_producers?.[claimType]
+    : undefined;
+  const strings = (value: unknown): string[] => Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    : [];
+  const policy = (producers: unknown, authorityTraces: unknown) => {
+    const allowedProducers = new Set(strings(producers));
+    const allowedAuthorityTraces = new Set(strings(authorityTraces));
+    return {
+      configured: allowedProducers.size > 0 || allowedAuthorityTraces.size > 0,
+      producers: allowedProducers,
+      authorityTraces: allowedAuthorityTraces
+    };
+  };
+  return [
+    policy(claimMapping?.producers, claimMapping?.authority_traces),
+    policy(expectation.trusted_producers, expectation.authority_traces)
+  ].filter((entry) => entry.configured);
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, _config: MutableRecord = defaultFlowConfig(), visit: GateVisit) {
+function evidenceAuthorityTraces(entry: any): string[] {
+  const traces = [entry?.authority_trace, ...(Array.isArray(entry?.authority_traces) ? entry.authority_traces : [])];
+  return traces.filter((trace): trace is string => typeof trace === "string" && trace.length > 0);
+}
+
+/**
+ * Pins are evaluated only after the bundle has otherwise satisfied the
+ * expectation. That keeps a malformed or non-matching bundle diagnostic
+ * honest while ensuring an unattributed or untrusted otherwise-valid claim
+ * can never advance a gate.
+ */
+function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null): string | null {
+  // An unrelated file, malformed bundle, or non-matching claim has its own
+  // established diagnostic (or no claim diagnostic at all). Producer policy
+  // applies only to a bundle candidate that otherwise satisfies this selector.
+  if (expectation.kind !== "trust.bundle") return null;
+  if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") return null;
+  if (evidenceBundleDiagnostic(entry, expectation, enteredAt) !== null) return null;
+  const policies = trustedProducerPolicy(expectation, config);
+  const traces = evidenceAuthorityTraces(entry);
+  const trusted = policies.every((policy) => (
+    (typeof entry?.producer === "string" && policy.producers.has(entry.producer))
+    || traces.some((trace) => policy.authorityTraces.has(trace))
+  ));
+  return trusted ? null : "untrusted_producer";
+}
+
+export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null) {
+  if (expectation.kind !== "trust.bundle") return false;
+  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
+  return evidenceBundleDiagnostic(entry, expectation, enteredAt) === null
+    && evidenceProducerDiagnostic(entry, expectation, config, enteredAt) === null;
+}
+
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
-    const reason = evidenceVisitDiagnostic(entry, visit) ?? evidenceBundleDiagnostic(entry, expectation, visit.enteredAt);
+    const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt);
+    const reason = evidenceVisitDiagnostic(entry, visit)
+      ?? bundleReason
+      ?? evidenceProducerDiagnostic(entry, expectation, config, visit.enteredAt);
     if (!reason) continue;
     diagnostics.push({
       expectation_id: expectation.id,

@@ -2198,6 +2198,7 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
   }
   if (options.producer) evidence.producer = options.producer;
   if (options.authorityTrace) evidence.authority_trace = options.authorityTrace;
+  if (options.authorityTraces) evidence.authority_traces = options.authorityTraces;
   if (options.route_reason) evidence.route_reason = options.route_reason;
   if (options.expectation_ids) evidence.expectation_ids = options.expectation_ids;
   if (options.classifier) evidence.classifier = options.classifier;

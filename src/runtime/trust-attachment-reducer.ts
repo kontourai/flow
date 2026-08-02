@@ -142,7 +142,7 @@ function attachmentMetadata(attachment: MutableRecord): MutableRecord {
     sha256: attachment.sha256,
     attached_at: attachment.attached_at
   };
-  for (const key of ["producer", "authority_trace", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"]) {
+  for (const key of ["producer", "authority_trace", "authority_traces", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"]) {
     if (attachment[key] !== undefined) evidence[key] = structuredClone(attachment[key]);
   }
   return evidence;

@@ -217,8 +217,7 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | --- | --- |
 | `stale` | the artifact expired or fails freshness checks |
 | `rejected` | the claim status is not an accepted status |
-| `untrusted_producer` | the producer is not trusted for this claim type |
-| `authority_gap` | no trusted producer mapping or authority trace covers the claim |
+| `untrusted_producer` | an otherwise matching claim has no producer or authority trace admitted by every configured producer pin |
 | `integrity_mismatch` | the copied artifact no longer matches its recorded integrity metadata |
 | `subject_mismatch` | the claim subject does not match the expectation |
 | `claim_not_current` | the matching claim predates the current gate visit, or has no valid current timestamp |
