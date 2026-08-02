@@ -7,6 +7,7 @@ export type {
   FlowPausedGateContinuationOptions,
   FlowPausedGateContinuationResult,
   FlowConfigMergeApplyOptions,
+  FlowConfigMergePreviewOptions,
   FlowConfigMergePublisher,
   FlowConfigMergePublisherReceipt,
   FlowConfigMergePublisherRequest,

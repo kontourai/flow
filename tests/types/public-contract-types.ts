@@ -1,5 +1,6 @@
 import {
-  finalizeRunRecoveryFence
+  finalizeRunRecoveryFence,
+  previewFlowConfigMerge
 } from "../../src/index.js";
 import type {
   ConfigMergeAppliedReport,
@@ -7,6 +8,7 @@ import type {
   ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowConfigMergeApplyOptions,
+  FlowConfigMergePreviewOptions,
   FlowConfigMergePublisher,
   FlowConfigMergePublisherRequest,
   FlowConfigMergePublisherReceipt,
@@ -40,6 +42,13 @@ const configMergePublisher: FlowConfigMergePublisher = async (request: Readonly<
   contents_sha256: request.contents_sha256
 });
 const configMergeOptions: FlowConfigMergeApplyOptions = { publisher: configMergePublisher };
+const configMergePreviewOptions: FlowConfigMergePreviewOptions = { cwd: "/project" };
+// @ts-expect-error preview callers cannot request apply mode.
+const previewApplyMode: FlowConfigMergePreviewOptions = { mode: "apply" };
+// @ts-expect-error preview callers cannot provide arbitrary result modes.
+const previewUnsupportedMode: FlowConfigMergePreviewOptions = { mode: "unsupported" };
+// @ts-expect-error preview callers cannot inject apply mode through the public function.
+previewFlowConfigMerge({}, {}, { mode: "apply" });
 const configMergeRequest: FlowConfigMergePublisherRequest = {
   api_version: "flow.kontourai.io/v1alpha1",
   project_directory: "/project",
@@ -91,6 +100,9 @@ const previewWithPublisherReceipt: ConfigMergeReport = { ...configMergeReportFie
 const appliedPreviewReport: ConfigMergeReport = { ...configMergeReportFields, status: "applied", publisher_receipt: configMergeReceipt };
 void [
   configMergeOptions,
+  configMergePreviewOptions,
+  previewApplyMode,
+  previewUnsupportedMode,
   configMergeRequest,
   configMergeReceipt,
   unpublishedConfigMergeReport,

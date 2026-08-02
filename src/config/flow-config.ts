@@ -10,6 +10,7 @@ import type {
   ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowConfigMergeApplyOptions,
+  FlowConfigMergePreviewOptions,
   FlowConfigMergePublisher,
   FlowConfigMergePublisherReceipt,
   FlowConfigMergePublisherRequest,
@@ -37,6 +38,10 @@ function publisherInvalidError() {
   return new Error("flow.config.merge.publisher.invalid: publisher must be a function");
 }
 
+function configMergeOptionsInvalidError() {
+  return new Error("flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+}
+
 class ConfigMergePublisherReceiptInvalidError extends Error {
   constructor() {
     super("flow.config.merge.publisher.receipt.invalid: publisher must return an applied receipt bound to the requested config path and bytes");
@@ -56,12 +61,29 @@ function publisherFailedError(cause: unknown) {
 
 type FlowConfigMergeApplyOptionsSnapshot = Readonly<{
   publisher: unknown;
-  acceptConflicts: FlowConfigMergeApplyOptions["acceptConflicts"];
-  acceptedConflicts: FlowConfigMergeApplyOptions["acceptedConflicts"];
+  acceptConflicts: readonly string[] | undefined;
+  acceptedConflicts: readonly string[] | undefined;
   exceptionReason: FlowConfigMergeApplyOptions["exceptionReason"];
   authority: FlowConfigMergeApplyOptions["authority"];
   cwd: FlowConfigMergeApplyOptions["cwd"];
 }>;
+
+type FlowConfigMergeInternalOptions = Readonly<{
+  mode: "preview" | "apply";
+  acceptConflicts?: readonly string[];
+  acceptedConflicts?: readonly string[];
+  exceptionReason?: string;
+  authority?: string;
+  cwd?: string;
+  localConfigPath?: string;
+  proposalPath?: string | null;
+}>;
+
+function snapshotConflictPaths(paths: unknown): readonly string[] | undefined {
+  if (paths === undefined) return undefined;
+  if (!Array.isArray(paths) || !paths.every(isNonEmptyString)) throw configMergeOptionsInvalidError();
+  return Object.freeze([...paths]);
+}
 
 /**
  * Copy every option Flow consumes before any merge work begins. The options
@@ -73,8 +95,8 @@ function snapshotConfigMergeApplyOptions(options: FlowConfigMergeApplyOptions | 
   try {
     return Object.freeze({
       publisher: source.publisher,
-      acceptConflicts: source.acceptConflicts,
-      acceptedConflicts: source.acceptedConflicts,
+      acceptConflicts: snapshotConflictPaths(source.acceptConflicts),
+      acceptedConflicts: snapshotConflictPaths(source.acceptedConflicts),
       exceptionReason: source.exceptionReason,
       authority: source.authority,
       cwd: source.cwd
@@ -83,6 +105,31 @@ function snapshotConfigMergeApplyOptions(options: FlowConfigMergeApplyOptions | 
     // Reading a host capability crosses the same trust boundary as invoking
     // it. Preserve private detail exclusively on the cause.
     throw publisherFailedError(error);
+  }
+}
+
+/**
+ * Public preview calls are always previews, including from untyped JavaScript
+ * callers. Do not read a caller-provided `mode`: ignoring it keeps a hostile
+ * field from changing the named operation's result or violating its schema.
+ */
+function snapshotConfigMergePreviewOptions(options: FlowConfigMergePreviewOptions | undefined): FlowConfigMergeInternalOptions {
+  const source = options ?? {};
+  try {
+    return Object.freeze({
+      mode: "preview",
+      acceptConflicts: snapshotConflictPaths(source.acceptConflicts),
+      acceptedConflicts: snapshotConflictPaths(source.acceptedConflicts),
+      exceptionReason: source.exceptionReason,
+      authority: source.authority,
+      cwd: source.cwd,
+      localConfigPath: source.localConfigPath,
+      proposalPath: source.proposalPath
+    });
+  } catch {
+    // Preview has no host capability boundary, but caller-owned accessors must
+    // still never turn private getter or iteration details into public output.
+    throw configMergeOptionsInvalidError();
   }
 }
 
@@ -259,9 +306,20 @@ function proposedConfigFromEnvelope(proposal) {
   return normalizeFlowConfig(proposal?.flow_config ?? proposal?.config ?? proposal);
 }
 
-function normalizeAcceptedConflictPaths(values: any[] | any = []) {
-  const paths = Array.isArray(values) ? values : [values];
-  return new Set(paths.filter(Boolean));
+function normalizeAcceptedConflictPaths(values: readonly string[] | undefined) {
+  if (values === undefined) return new Set<string>();
+  return new Set(values.filter(Boolean));
+}
+
+function acceptedConflictPaths(options: Pick<FlowConfigMergeInternalOptions, "acceptConflicts" | "acceptedConflicts">) {
+  return normalizeAcceptedConflictPaths(options.acceptConflicts ?? options.acceptedConflicts);
+}
+
+function assertConfigMergeExceptionMetadata(acceptedPaths: Set<string>, exceptionReason: unknown, exceptionAuthority: unknown): asserts exceptionReason is string {
+  if (!acceptedPaths.size) return;
+  if (!isNonEmptyString(exceptionReason) || !isNonEmptyString(exceptionAuthority)) {
+    throw new Error("accepting config merge conflicts requires exception reason and authority");
+  }
 }
 
 function conflictAccepted(pathValue, acceptedPaths) {
@@ -291,7 +349,7 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
   };
 }
 
-export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeUnpublishedReport {
+function mergeFlowConfigPreview(localConfig: MutableRecord, kitProposal: MutableRecord, options: FlowConfigMergeInternalOptions): ConfigMergeUnpublishedReport {
   const normalizedLocal = normalizeFlowConfig(localConfig);
   const normalizedProposed = proposedConfigFromEnvelope(kitProposal);
   assertSafeConfigTree(normalizedLocal);
@@ -299,12 +357,10 @@ export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowC
   const local = validateFlatFlowConfig({ ...defaultFlowConfig(), ...(normalizedLocal ?? {}) });
   const proposed = validateFlatFlowConfig({ ...defaultFlowConfig(), ...(normalizedProposed ?? {}) });
   const merged = cloneJson(local);
-  const acceptedPaths = normalizeAcceptedConflictPaths(options.acceptConflicts ?? options.acceptedConflicts);
+  const acceptedPaths = acceptedConflictPaths(options);
   const exceptionReason = options.exceptionReason;
   const exceptionAuthority = options.authority;
-  if (acceptedPaths.size && (!exceptionReason || !exceptionAuthority)) {
-    throw new Error("accepting config merge conflicts requires exception reason and authority");
-  }
+  assertConfigMergeExceptionMetadata(acceptedPaths, exceptionReason, exceptionAuthority);
 
   const report: ConfigMergeUnpublishedReport = {
     schema_version: FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION,
@@ -398,16 +454,21 @@ export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowC
   return report;
 }
 
-export async function previewFlowConfigMergeFile(proposalPath: string, options: MutableRecord = {}) {
-  const cwd = options.cwd ?? process.cwd();
+export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: FlowConfigMergePreviewOptions = {}): ConfigMergeUnpublishedReport {
+  return mergeFlowConfigPreview(localConfig, kitProposal, snapshotConfigMergePreviewOptions(options));
+}
+
+export async function previewFlowConfigMergeFile(proposalPath: string, options: FlowConfigMergePreviewOptions = {}): Promise<ConfigMergeUnpublishedReport> {
+  const previewOptions = snapshotConfigMergePreviewOptions(options);
+  const cwd = previewOptions.cwd ?? process.cwd();
   const resolvedProposalPath = path.resolve(cwd, proposalPath);
   const localConfigPath = flowConfigPath(cwd);
   const [localConfig, proposedConfig] = await Promise.all([
     loadFlowConfig(cwd),
     readJson(resolvedProposalPath)
   ]);
-  return previewFlowConfigMerge(localConfig, proposedConfig, {
-    ...options,
+  return mergeFlowConfigPreview(localConfig, proposedConfig, {
+    ...previewOptions,
     mode: "preview",
     localConfigPath,
     proposalPath: resolvedProposalPath
@@ -435,7 +496,7 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     loadFlowConfigMergeBase(localConfigPath),
     readJson(resolvedProposalPath)
   ]);
-  const report = previewFlowConfigMerge(local.config, proposedConfig, {
+  const report = mergeFlowConfigPreview(local.config, proposedConfig, {
     acceptConflicts: options.acceptConflicts,
     acceptedConflicts: options.acceptedConflicts,
     exceptionReason: options.exceptionReason,

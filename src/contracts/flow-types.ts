@@ -648,6 +648,24 @@ export type FlowConfigMergePublisher = (
   request: Readonly<FlowConfigMergePublisherRequest>
 ) => Promise<FlowConfigMergePublisherReceipt> | FlowConfigMergePublisherReceipt;
 
+/**
+ * Options shared by a read-only config merge preview and the host-owned apply
+ * path. Preview deliberately has no mode selector: its report is always a
+ * preview, while apply mode is an internal implementation detail of the
+ * separately named `applyFlowConfigMerge` operation.
+ */
+export interface FlowConfigMergePreviewOptions extends MutableRecord {
+  /** The preview API always emits `mode: "preview"`; callers cannot override it. */
+  mode?: never;
+  acceptConflicts?: string[];
+  acceptedConflicts?: string[];
+  exceptionReason?: string;
+  authority?: string;
+  cwd?: string;
+  localConfigPath?: string;
+  proposalPath?: string | null;
+}
+
 export interface FlowConfigMergeApplyOptions extends MutableRecord {
   publisher?: FlowConfigMergePublisher;
   acceptConflicts?: string[];

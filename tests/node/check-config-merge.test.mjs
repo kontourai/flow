@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -12,6 +13,9 @@ import {
   renderConfigMergeMarkdown
 } from "../../dist/index.js";
 import { localConfigFixture, proposedConfigFixture, resourceConfigFixture } from "./helpers/config-fixtures.mjs";
+
+const require = createRequire(import.meta.url);
+const Ajv = require("ajv/dist/2020");
 
 test("config merge preview reports accepted, rejected, conflicts, unchanged without mutating inputs", () => {
   const local = localConfigFixture();
@@ -33,6 +37,43 @@ test("config merge preview reports accepted, rejected, conflicts, unchanged with
   assert.deepEqual(report.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
   assert.equal(report.merged_config.gate_overrides["verify-gate"].expectations["tests-passed"].required, true);
   assert.deepEqual(Object.keys(report.summary), ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"]);
+});
+
+test("config merge preview ignores hostile mode injection and remains schema-valid", async () => {
+  const [reportSchema, configSchema] = await Promise.all([
+    readFile(new URL("../../schemas/flow-config-merge-report.schema.json", import.meta.url), "utf8"),
+    readFile(new URL("../../schemas/flow-config.schema.json", import.meta.url), "utf8")
+  ]);
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  ajv.addSchema(JSON.parse(configSchema));
+  const validate = ajv.compile(JSON.parse(reportSchema));
+
+  for (const mode of ["apply", "unsupported"]) {
+    const report = previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), { mode });
+    assert.equal(report.mode, "preview");
+    assert.notEqual(report.status, "applied");
+    assert.equal("publisher_receipt" in report, false);
+    assert.equal(validate(report), true, JSON.stringify(validate.errors));
+  }
+});
+
+test("config merge preview rejects hostile option accessors without leaking their detail", () => {
+  const getterSecret = "preview-option-getter-secret-2026";
+  const hostileOptions = Object.defineProperty({}, "acceptConflicts", {
+    get() {
+      throw new Error(`private preview option failed: ${getterSecret}`);
+    }
+  });
+
+  let failure;
+  try {
+    previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), hostileOptions);
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.equal(failure.message, "flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+  assert.doesNotMatch(String(failure), /preview-option-getter-secret-2026/);
 });
 
 test("Resource-shaped project config normalizes for load and merge workflows", async () => {
@@ -146,6 +187,22 @@ test("config merge accepts conflicting authority only with explicit exception re
   assert.throws(
     () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), {
       acceptConflicts: ["$.trusted_producers.quality.tests"]
+    }),
+    /requires exception reason and authority/
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), {
+      acceptConflicts: ["$.trusted_producers.quality.tests"],
+      exceptionReason: 42,
+      authority: "owner@example.com"
+    }),
+    /requires exception reason and authority/
+  );
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), {
+      acceptConflicts: ["$.trusted_producers.quality.tests"],
+      exceptionReason: "approved",
+      authority: { id: "owner@example.com" }
     }),
     /requires exception reason and authority/
   );
@@ -391,6 +448,43 @@ test("config merge snapshots caller options before selecting a publisher capabil
   );
   assert.doesNotMatch(String(failure), /publisher-option-getter-secret-2026/);
   assert.match(failure.cause?.message, /publisher-option-getter-secret-2026/);
+
+  await assert.rejects(
+    () => applyFlowConfigMerge(cwd, "proposal.json", {
+      acceptedConflicts: "$.trusted_producers.quality.tests",
+      publisher: firstPublisher
+    }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /flow\.config\.merge\.publisher\.failed/);
+      assert.equal(error.cause?.message, "flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+      return true;
+    }
+  );
+});
+
+test("config merge snapshots accepted conflict paths before asynchronous reads", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-conflict-snapshot-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`)
+  ]);
+
+  const acceptedConflicts = [];
+  const result = applyFlowConfigMerge(cwd, "proposal.json", {
+    acceptedConflicts,
+    exceptionReason: "must not be observed after apply begins",
+    authority: "test-authority",
+    publisher: async () => {
+      throw new Error("publisher must not run for a conflict introduced after snapshot");
+    }
+  });
+  acceptedConflicts.push("$.trusted_producers.quality.tests");
+
+  const report = await result;
+  assert.equal(report.status, "blocked");
+  assert.ok(report.conflicts.some((change) => change.path.startsWith("$.trusted_producers.quality.tests")));
 });
 
 test("config merge rejects invalid and failed publisher capabilities", async () => {
