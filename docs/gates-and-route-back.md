@@ -14,6 +14,46 @@ For the current step, `flow evaluate` applies the v0.1 rules in order:
 | all required typed expectations are satisfied | `pass` |
 | no authored expectations and no decision | `wait` |
 
+### Reported gate status vs gate outcome
+
+A gate's *outcome* (`pass`, `block`, `route-back`, `wait`) is what an evaluation
+produced. A gate that has never been evaluated, or whose outcome a route-back
+invalidated, has no outcome at all, and the report says so with `unknown` rather
+than collapsing it into `wait`.
+
+| Reported status | Means | Hachure `status-function.md` |
+| --- | --- | --- |
+| `pass` | evaluated and satisfied | `verified` |
+| `block` / `route-back` | evaluated, and the run cannot proceed on it | appraised, not affirming |
+| `wait` | evaluated, present, no verdict yet | `proposed` |
+| `unknown` | no recorded outcome — nothing to appraise | `unknown` |
+
+Before this distinction existed, a gate the run had walked past without checking
+rendered byte-identically to a gate that was legitimately waiting on evidence.
+
+### Evaluating a gate that is not on the current step
+
+`flow evaluate --gate <id>` names a specific gate. Flow evaluates it against the
+run's real cursor — it never synthesises a state in which the request would be
+legal — so a request that would carry the run forward past a gate it never
+evaluated is refused with `flow.evaluate.gate.not_current`, naming the gates it
+would have skipped. Nothing is written.
+
+Two off-current requests remain legal:
+
+- **Leaving a step that has no gate.** A gateless step imposes no check, so Flow
+  walks the cursor forward through it and records that step's completion as its
+  own `allowed` transition — the run really moves, rather than the record
+  claiming it was already there. This is the only way such a step is ever left.
+- **Re-appraising a step the run already occupied**, for example a downstream
+  gate failing closed on a pending re-entry. That can hold the cursor or move it
+  backwards, never forward.
+
+A persisted transition may never name a `from_step` the run was not on; this is
+asserted at write time, not only at request time. If a gate genuinely cannot be
+satisfied, the supported way past it is an accepted exception, which records a
+reason and an accepting authority on the run.
+
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory — the blocked expectation, its `explore_hint`, and the next action all land in the run state and reports.
 
 How `trust.bundle` expectations are matched (claim type, subject, status, freshness, producer trust, integrity) is covered in [Evidence](evidence.md).

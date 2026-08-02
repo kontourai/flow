@@ -111,8 +111,16 @@ export function reportJson(definition: any, state: any, manifest: any) {
       const evidence = attachedEvidenceFor(manifest, gateId);
       const summary: MutableRecord = {
         gate_id: gateId,
-        status: outcome?.status ?? "wait",
-        summary: outcome?.summary ?? `${slugLabel(gateId)} waiting`,
+        // flow#202 — a gate with no outcome at all was rendered "wait", byte
+        // identical to a gate that was evaluated and is legitimately waiting on
+        // evidence. An operator could not tell "waiting for evidence" from
+        // "never checked, and the run moved past it". `unknown` is the status
+        // function's own token for "nothing to appraise"
+        // (hachure status-function.md), which covers both never-evaluated and
+        // evaluated-then-invalidated; Flow's `wait` remains the
+        // evaluated-and-unsatisfied case the spec calls `proposed`.
+        status: outcome?.status ?? "unknown",
+        summary: outcome?.summary ?? `${slugLabel(gateId)} has no recorded outcome`,
         evidence_refs: evidence.map((entry) => entry.id),
         missing: outcome?.missing ?? [],
         optional_missing: outcome?.optional_missing ?? [],
@@ -252,9 +260,9 @@ export function renderSummary(definition, state, reportPath = `.kontourai/flow/r
   for (const [gateId] of Object.entries(definition.gates)) {
     const gate = findGate(definition, gateId);
     const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gateId);
-    const status = outcome?.status ?? "wait";
-    const statusLabel = status === "pass" ? "PASS" : status === "block" ? "BLOCK" : status === "route-back" ? "ROUTE-BACK" : "WAIT";
-    lines.push(`${statusLabel.padEnd(5)} ${slugLabel(gateId)}: ${outcome?.summary ?? `${slugLabel(gateId)} waiting`}`);
+    const status = outcome?.status ?? "unknown";
+    const statusLabel = status === "pass" ? "PASS" : status === "block" ? "BLOCK" : status === "route-back" ? "ROUTE-BACK" : status === "wait" ? "WAIT" : "UNKNOWN";
+    lines.push(`${statusLabel.padEnd(5)} ${slugLabel(gateId)}: ${outcome?.summary ?? `${slugLabel(gateId)} has no recorded outcome`}`);
     if (outcome?.missing?.length) {
       const required = expectationsForGate(gate).filter((entry) => entry.required);
       lines.push(`      expected: ${required.map(expectationLabel).join(", ")}`);

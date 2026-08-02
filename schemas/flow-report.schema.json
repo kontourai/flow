@@ -76,7 +76,7 @@
         "additionalProperties": false,
         "properties": {
           "gate_id": { "type": "string" },
-          "status": { "type": "string", "enum": ["pass", "block", "route-back", "wait"] },
+          "status": { "type": "string", "enum": ["pass", "block", "route-back", "wait", "unknown"], "description": "Gate appraisal. `unknown` means the gate has no outcome at all (hachure status-function.md: nothing to appraise); `wait` means it was evaluated and is unsatisfied (the spec\u0027s `proposed`)." },
           "summary": { "type": "string" },
           "evidence_refs": { "type": "array", "items": { "type": "string" } },
           "route_back_to": { "type": "string" },

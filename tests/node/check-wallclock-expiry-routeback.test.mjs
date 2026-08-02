@@ -21,7 +21,7 @@ import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { startRun, loadRun, evaluateRun, reDeriveBundleReports } from "../../dist/index.js";
+import { startRun, loadRun, evaluateRun, evaluateGate, reDeriveBundleReports } from "../../dist/index.js";
 import { hashRunTree } from "./helpers/run-tree.mjs";
 
 const T0 = "2026-06-10T00:00:00.000Z";
@@ -329,17 +329,34 @@ test("explicit evaluation of a pending downstream revisit fails closed before th
   });
   await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
 
-  const result = await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
-  const outcome = result.outcomes[0];
-  assert.equal(outcome.status, "route-back", "the explicit off-current evaluation cannot reuse verify evidence");
+  const pending = await loadRun(runId, cwd);
+  const stateBefore = await readFile(path.join(pending.dir, "state.json"), "utf8");
+
+  // The gate itself still refuses to reuse the pending evidence. That is the
+  // protection this test exists for, and appraising a gate is pure.
+  const outcome = evaluateGate(pending.definition, pending.state, pending.manifest, "verify-gate", pending.config);
+  assert.equal(outcome.status, "route-back", "the pending re-entry cannot reuse verify evidence");
   assert.deepEqual(outcome.evidence_refs, ["ev.approval"], "the pending outcome retains the evidence named by its diagnostic");
   assert.equal(outcome.diagnostics.claim_evaluation[0].evidence_id, "ev.approval");
   assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "gate_reentry_pending");
 
+  // flow#202: naming a gate that is not on the current step no longer
+  // synthesises a cursor at that gate's step. Validated against the run's real
+  // state, the proposed transition does not start where the run is, so the
+  // request is refused outright instead of being persisted as a transition
+  // from a step the run is not on.
+  await assert.rejects(
+    evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 }),
+    /proposed transition starts from verify, but current state is prepare/
+  );
+
   const after = await loadRun(runId, cwd);
   assert.equal(after.state.current_step, "prepare", "the stale explicit evaluation cannot advance the run past the route-back target");
-  const verifyRouteBack = after.state.transitions.findLast((transition) => transition.gate_id === "verify-gate" && transition.type === "route_back");
-  assert.deepEqual(verifyRouteBack?.evidence_refs, ["ev.approval"], "the persisted route-back keeps the diagnostic evidence id");
+  assert.equal(
+    await readFile(path.join(after.dir, "state.json"), "utf8"),
+    stateBefore,
+    "a refused evaluation leaves the record byte-identical"
+  );
 });
 
 test("T1 evaluateRun automatically re-evaluates selected stale upstream evidence and invalidates descendants", async () => {

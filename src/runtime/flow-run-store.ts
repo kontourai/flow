@@ -30,7 +30,9 @@ import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, Flow
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
+  gatesForStep,
   getStep,
+  occupiedSteps,
   initialState,
   normalizeRunStateLifecycle,
   openGates,
@@ -2363,6 +2365,116 @@ function staleGateRechecks(definition: any, state: any, manifest: any, freshness
   return [...candidates.values()];
 }
 
+/**
+ * flow#202 — an explicitly requested gate is evaluated from the step the run is
+ * actually on, never from a synthesised cursor.
+ *
+ * `evaluate --gate <g>` used to synthesise `{...state, current_step: g.step}`
+ * before validating, so `validateRunTransition` compared the gate against
+ * itself and the `jump.invalid` guard could never fire for the case it exists
+ * to catch. The real cursor then advanced, and the run persisted a transition
+ * naming a `from_step` it had never been on.
+ *
+ * Two off-current requests are legitimate and both are preserved:
+ *
+ *  - **Leaving a gateless step.** Flow allows steps with no gate, and
+ *    `openGates` only ever returns the current step's gates, so naming a later
+ *    gate is the ONLY way such a step is ever left
+ *    (`examples/adversarial-pass-flow.json` is built this way). A gateless step
+ *    imposes no check, so Flow walks the cursor forward through it and records
+ *    that step's completion as its own honest `allowed` transition — the run
+ *    really does move, rather than the record pretending it was already there.
+ *  - **Re-appraising a step the run has already occupied.** A downstream gate
+ *    can be explicitly re-evaluated to fail closed (a pending re-entry, a stale
+ *    claim). That re-appraisal can only hold the cursor or move it backwards.
+ *
+ * What is refused is the request that would move the run FORWARD past a gate it
+ * never evaluated. Flow does not offer a second way past such a gate:
+ * `flow except` already records a bypass with a reason and an accepting
+ * authority, and an unauthenticated jump would be strictly weaker than the
+ * mechanism that already exists.
+ */
+function prepareOffCurrentGateEvaluation(definition: any, state: any, gate: any, at: string) {
+  advanceThroughGatelessSteps(definition, state, gate, at);
+  if (gate.step === state.current_step) return;
+  if (occupiedSteps(definition, state).has(gate.step)) return;
+  throw gateNotCurrentError(definition, state, gate);
+}
+
+/** Walk the cursor forward while only gateless steps separate it from `gate.step`. */
+function advanceThroughGatelessSteps(definition: any, state: any, gate: any, at: string) {
+  if (gate.step === state.current_step) return;
+  const traversed: string[] = [];
+  let cursor: string | null = state.current_step;
+  const seen = new Set<string>();
+  while (cursor && cursor !== gate.step && !seen.has(cursor)) {
+    // A real gate stands between the cursor and the request. Do not advance;
+    // the caller decides whether the request is a re-appraisal or a skip.
+    if (gatesForStep(definition, cursor).length) return;
+    seen.add(cursor);
+    traversed.push(cursor);
+    cursor = getStep(definition, cursor)?.next ?? null;
+  }
+  if (cursor !== gate.step) return;
+  for (const step of traversed) {
+    const next = getStep(definition, step)?.next ?? null;
+    state.transitions.push({ from_step: step, to_step: next, status: "allowed", reason: "step has no gate", at });
+    state.current_step = next;
+  }
+}
+
+/**
+ * A pass at an off-current gate would move the cursor to that gate's next edge,
+ * carrying the run past every gate between here and there without evaluating
+ * one of them. That is the #202 skip, and it is refused at the point the
+ * outcome is known rather than guessed at beforehand.
+ */
+function assertOffCurrentOutcomeCannotAdvance(definition: any, state: any, gate: any, outcome: GateOutcome) {
+  if (gate.step === state.current_step) return;
+  if (outcome.status !== "pass") return;
+  throw gateNotCurrentError(definition, state, gate);
+}
+
+function gateNotCurrentError(definition: any, state: any, gate: any) {
+  const skipped = gatedStepsBetween(definition, state.current_step, gate.step);
+  const detail = skipped.length
+    ? `evaluating it would carry the run past the unevaluated gate(s) on: ${skipped.join(", ")}`
+    : `"${gate.step}" is not a step this run has reached`;
+  const error = new Error(
+    `flow.evaluate.gate.not_current: gate "${gate.id}" belongs to step "${gate.step}" but the run is on "${state.current_step}"; ${detail}. `
+    + `Evaluate the current step's gates, or record an accepted exception with "flow except" if a gate cannot be satisfied.`
+  );
+  (error as Error & { code?: string }).code = "flow.evaluate.gate.not_current";
+  (error as Error & { skipped_steps?: string[] }).skipped_steps = skipped;
+  return error;
+}
+
+/** Gated steps strictly between `from` and `to` along the definition's next edges. */
+function gatedStepsBetween(definition: any, from: string, to: string): string[] {
+  const between: string[] = [];
+  let cursor: string | null = from;
+  const seen = new Set<string>();
+  while (cursor && cursor !== to && !seen.has(cursor)) {
+    seen.add(cursor);
+    if (gatesForStep(definition, cursor).length) between.push(cursor);
+    cursor = getStep(definition, cursor)?.next ?? null;
+  }
+  return cursor === to ? between : [];
+}
+
+/**
+ * The bounded ancestor-recheck cursor. Asserts the ancestry it depends on so
+ * this helper cannot be reused to manufacture a forward jump.
+ */
+function ancestorRecheckState(definition: any, state: any, gate: any) {
+  if (!descendantsOf(definition, gate.step).includes(state.current_step)) {
+    throw new Error(
+      `flow.transition.recheck.not_ancestor: gate "${gate.id}" at step "${gate.step}" is not an ancestor of the current step "${state.current_step}"`
+    );
+  }
+  return { ...state, current_step: gate.step };
+}
+
 async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
   assertRunMutationLifecycleEligible("evaluate", run);
@@ -2394,7 +2506,13 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
-    const validationState = { ...run.state, current_step: gate.step };
+    // The ONLY place Flow validates against a cursor other than the real one,
+    // and it is bounded: `gate.step` is a proven ancestor of `current_step`
+    // (asserted above), the run genuinely occupied it, and the transition this
+    // produces moves the cursor BACK to that ancestor. It is a re-appraisal of
+    // a stage the run already passed, never a forward jump. `applyEvaluation`
+    // re-checks the ancestry at write time.
+    const validationState = ancestorRecheckState(run.definition, run.state, gate);
     const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
     if (transitionValidation.status === "invalid") {
       const first = transitionValidation.diagnostics[0];
@@ -2420,12 +2538,13 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   if (!outcomes.length) {
     const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
     if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
+    if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], now.toISOString());
     for (const gate of gates) {
       const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
-      const validationState = options.gate && gate.step !== run.state.current_step
-        ? { ...run.state, current_step: gate.step }
-        : run.state;
-      const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
+      if (options.gate) assertOffCurrentOutcomeCannotAdvance(run.definition, run.state, gate, outcome);
+      // No synthesised cursor: the jump guard in `validateRunTransition` sees
+      // the run's real state and can fire for the case it exists to catch.
+      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, now.toISOString());
       if (transitionValidation.status === "invalid") {
         const first = transitionValidation.diagnostics[0];
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
