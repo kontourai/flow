@@ -10,8 +10,10 @@ const THEME_STORAGE_KEY = "flow-console-theme";
 // ---------------------------------------------------------------------------
 
 let _liveIndicatorEl: HTMLElement | null = null;
+let _liveConnected = false;
 
 function setLiveStatus(connected: boolean) {
+  _liveConnected = connected;
   if (!_liveIndicatorEl) return;
   _liveIndicatorEl.dataset.connected = connected ? "true" : "false";
   const dot = _liveIndicatorEl.querySelector<HTMLElement>(".live-dot");
@@ -25,9 +27,9 @@ function createLiveIndicator(): HTMLElement {
   const el = document.createElement("div");
   el.className = "live-indicator";
   el.dataset.testid = "live-indicator";
-  el.dataset.connected = "false";
+  el.dataset.connected = _liveConnected ? "true" : "false";
   el.setAttribute("aria-live", "polite");
-  el.setAttribute("title", "Connecting…");
+  el.setAttribute("title", _liveConnected ? "Live updates active" : "Connecting…");
 
   const dot = document.createElement("span");
   dot.className = "live-dot live-dot-off";
@@ -35,7 +37,7 @@ function createLiveIndicator(): HTMLElement {
 
   const label = document.createElement("span");
   label.className = "live-label";
-  label.textContent = "disconnected";
+  label.textContent = _liveConnected ? "live" : "disconnected";
 
   el.append(dot, label);
   _liveIndicatorEl = el;
