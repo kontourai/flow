@@ -43,6 +43,21 @@ Do not ignore `.flow/`. Current runtime commands read authored config and defini
 
 The `runDir()` change is semver-major. There is no public or internal dual-root resolver and no runtime legacy support.
 
+## Run artifact publication
+
+Every canonical run artifact — `state.json`, `evidence/manifest.json`,
+`report.json`, `report.md` — is published atomically: the new contents are
+written to a sibling temp file, `fsync`ed, and moved into place with
+`rename(2)`, followed by a parent-directory `fsync`. A reader that does not
+hold the run mutation ticket (`flow status`, the console watcher, a downstream
+consumer) therefore never observes a partial file, and a crash mid-write cannot
+leave a truncated canonical record behind.
+
+Within one publication the commit order is derived projections, then the
+evidence manifest, then `state.json` last. `state.json` is the commit point: it
+may reference evidence, so it must never become visible ahead of the manifest
+carrying that evidence. The prior file mode is preserved across a publication.
+
 ## Supported recovery coordination
 
 An external recovery coordinator closes a run by atomically writing the

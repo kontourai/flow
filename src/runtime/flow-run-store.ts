@@ -20,6 +20,7 @@ import {
   flowConfigPath,
   flowRuntimeRoot,
   flowRoot,
+  publishRunArtifacts,
   readJson,
   runDir,
   writeJson
@@ -543,20 +544,16 @@ async function writeRunReportsIfChanged(run: any) {
       contents: renderMarkdownReport(run.definition, run.state, run.manifest)
     }
   ];
+  const stale: Array<{ path: string; contents: string }> = [];
   for (const target of targets) {
     try {
       if (await readExistingFileNoFollow(target.path) === target.contents) continue;
-      await writeExistingFileNoFollow(target.path, target.contents);
     } catch (error) {
       if (!isMissingPathError(error)) throw error;
-      try {
-        await createFileNoFollow(target.path, target.contents);
-      } catch (createError) {
-        if ((createError as NodeJS.ErrnoException).code !== "EEXIST") throw createError;
-        await writeExistingFileNoFollow(target.path, target.contents);
-      }
     }
+    stale.push(target);
   }
+  if (stale.length) await publishRunArtifacts(run.dir, stale);
 }
 
 async function readExistingFileNoFollow(file: string) {
@@ -565,15 +562,6 @@ async function readExistingFileNoFollow(file: string) {
     const target = await handle.stat();
     if (!target.isFile()) throw new Error(`flow.run_location.invalid_artifact_path: ${file} is not a regular file`);
     return await handle.readFile("utf8");
-  } finally {
-    await handle.close();
-  }
-}
-
-async function createFileNoFollow(file: string, contents: string) {
-  const handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try {
-    await handle.writeFile(contents, "utf8");
   } finally {
     await handle.close();
   }
@@ -641,27 +629,27 @@ async function saveRun(run) {
   validateRetryAuthorizationHistory(run.definition, run.state);
   validateMultiCursorState(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
-  await Promise.all([
+  const [statePath, manifestPath, reportJsonPath, reportMarkdownPath] = await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH),
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson),
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown)
   ]);
-  await writeJson(path.join(run.dir, FLOW_RUN_STATE_FILE), run.state);
-  await writeJson(path.join(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), run.manifest);
-  await renderAndWriteReport(run.definition, run.state, run.manifest, run.dir);
+  // Commit order is load-bearing: derived projections, then the evidence
+  // manifest, then state.json last. `state.json` is the canonical record and
+  // may reference evidence, so it must never become visible ahead of the
+  // manifest that carries it.
+  await publishRunArtifacts(run.dir, [
+    { path: reportJsonPath, contents: serializeJson(reportJson(run.definition, run.state, run.manifest)) },
+    { path: reportMarkdownPath, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
+    { path: manifestPath, contents: serializeJson(run.manifest) },
+    { path: statePath, contents: serializeJson(run.state) }
+  ]);
 }
 
-async function writeExistingFileNoFollow(file: string, contents: string) {
-  const handle = await open(file, constants.O_WRONLY | constants.O_NOFOLLOW);
-  try {
-    const target = await handle.stat();
-    if (!target.isFile()) throw new Error(`flow.run_location.invalid_artifact_path: ${file} is not a regular file`);
-    await handle.truncate(0);
-    await handle.writeFile(contents, "utf8");
-  } finally {
-    await handle.close();
-  }
+/** Canonical on-disk JSON encoding for run artifacts. */
+function serializeJson(value: unknown) {
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 async function saveLifecycleState(run) {
@@ -672,13 +660,11 @@ async function saveLifecycleState(run) {
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
   const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
-  const projectedJson = reportJson(run.definition, run.state, run.manifest);
-  const projectedMarkdown = renderMarkdownReport(run.definition, run.state, run.manifest);
-  const serializedState = `${JSON.stringify(run.state, null, 2)}\n`;
-  const serializedReport = `${JSON.stringify(projectedJson, null, 2)}\n`;
-  await writeExistingFileNoFollow(statePath, serializedState);
-  await writeExistingFileNoFollow(reportJsonPath, serializedReport);
-  await writeExistingFileNoFollow(reportMarkdownPath, projectedMarkdown);
+  await publishRunArtifacts(run.dir, [
+    { path: reportJsonPath, contents: serializeJson(reportJson(run.definition, run.state, run.manifest)) },
+    { path: reportMarkdownPath, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
+    { path: statePath, contents: serializeJson(run.state) }
+  ]);
 }
 
 function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleAction) {
@@ -1748,7 +1734,7 @@ async function saveRetryAuthorizationState(run: any) {
       // A normal I/O failure before the state commit restores both derived
       // projections to the prior authoritative state. Crash recovery still
       // treats state.json as the commit point and regenerates projections.
-      await Promise.all(priorReports.map((entry) => writeExistingFileNoFollow(entry.target, entry.contents)));
+      await publishRunArtifacts(run.dir, priorReports.map((entry) => ({ path: entry.target, contents: entry.contents })));
     }
     throw error;
   } finally {
@@ -1803,7 +1789,7 @@ async function saveDefinitionAmendmentState(run: any, options: MutableRecord) {
       if (entry.stage === "state") stateCommitted = true;
     }
   } catch (error) {
-    if (!stateCommitted) await Promise.all(priorReports.map((entry) => writeExistingFileNoFollow(entry.target, entry.contents)));
+    if (!stateCommitted) await publishRunArtifacts(run.dir, priorReports.map((entry) => ({ path: entry.target, contents: entry.contents })));
     throw error;
   } finally {
     await Promise.all(staged.map((entry) => rm(entry.temp, { force: true }).catch(() => undefined)));

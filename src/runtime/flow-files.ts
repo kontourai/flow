@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { constants as fsConstants, existsSync } from "node:fs";
+import { lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -141,6 +142,96 @@ export async function readJson(file) {
 export async function writeJson(file, value) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Default mode for a freshly published run artifact when no prior file exists. */
+const RUN_ARTIFACT_DEFAULT_MODE = 0o600;
+
+async function existingFileMode(file: string): Promise<number | undefined> {
+  try {
+    const entry = await lstat(file);
+    if (entry.isSymbolicLink() || !entry.isFile()) return undefined;
+    return entry.mode & 0o7777;
+  } catch (error) {
+    if (isMissingPathError(error)) return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Stage one run artifact for an atomic publication.
+ *
+ * `writeFile` publishes by truncate-then-write, so any concurrent reader — a
+ * `flow status`, the console server's watcher, a downstream consumer — can
+ * observe an empty or half-written `state.json`, and a crash mid-write leaves
+ * one behind permanently. Every run artifact is therefore written to a sibling
+ * temp file, fsynced, and moved into place with `rename(2)`, which is atomic
+ * for a reader on POSIX. The prior mode is preserved so publishing atomically
+ * does not silently narrow who can read a run.
+ */
+export async function stageRunArtifact(target: string, contents: string) {
+  const temporary = path.join(
+    path.dirname(target),
+    `.${path.basename(target)}.${randomUUID()}.tmp`
+  );
+  const mode = await existingFileMode(target);
+  let handle;
+  try {
+    handle = await open(
+      temporary,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW,
+      RUN_ARTIFACT_DEFAULT_MODE
+    );
+    await handle.writeFile(contents, "utf8");
+    if (mode !== undefined && mode !== RUN_ARTIFACT_DEFAULT_MODE) await handle.chmod(mode);
+    // Durability: the temp file's bytes must reach the disk before the rename
+    // publishes it, otherwise a crash can expose an empty file under the
+    // canonical name.
+    await handle.sync();
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+  await handle.close();
+  return {
+    target,
+    temporary,
+    commit: () => rename(temporary, target),
+    discard: () => rm(temporary, { force: true }).catch(() => undefined)
+  };
+}
+
+/** fsync a directory so a completed rename survives a crash. */
+export async function syncDirectory(dir: string) {
+  const handle = await open(dir, fsConstants.O_RDONLY);
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Publish a set of run artifacts so no reader ever observes a partial file.
+ *
+ * Entries are staged in order, then committed in order: callers put derived
+ * projections first and the canonical record (`state.json`) last, so a failure
+ * between renames leaves the canonical record on its previous, coherent value.
+ */
+export async function publishRunArtifacts(
+  dir: string,
+  entries: Array<{ path: string; contents: string }>
+) {
+  const staged: Array<Awaited<ReturnType<typeof stageRunArtifact>>> = [];
+  try {
+    for (const entry of entries) staged.push(await stageRunArtifact(entry.path, entry.contents));
+    for (const entry of staged) await entry.commit();
+  } catch (error) {
+    await Promise.all(staged.map((entry) => entry.discard()));
+    throw error;
+  }
+  await syncDirectory(dir);
 }
 
 export function moduleRoot() {
