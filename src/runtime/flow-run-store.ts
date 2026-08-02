@@ -59,8 +59,7 @@ import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../repor
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
 import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
-import { buildTrustReport, checkAuthorityActive, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
-import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
+import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import {
   FlowLifecycleError,
   assertLifecycleEligible,
@@ -76,7 +75,7 @@ import {
   validateRetryAuthorizationRequest
 } from "./flow-run-retry-authorization.js";
 import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
-import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type TrustAttachmentReducerDependencies } from "./trust-attachment-reducer.js";
+import { FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES, normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest } from "./trust-attachment-reducer.js";
 import {
   assertRunRecoveryFenceOpen,
   assertActiveRunRecoveryFenceWrite,
@@ -91,20 +90,6 @@ import {
   withRunRecoveryFenceRead
 } from "./flow-run-recovery-fence.js";
 
-/**
- * Flow's adapter for the exact locked dependency APIs. The pure reducer accepts
- * this as data so a coordinator can pin its own artifact and dependencies.
- */
-export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerDependencies = {
-  hachure: { package: "hachure", version: "0.15.0", validate: validateTrustBundleSchema },
-  surface: {
-    package: "@kontourai/surface",
-    version: "2.14.0",
-    validate: (bundle) => validateTrustBundle(bundle) as MutableRecord,
-    buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord,
-    checkAuthorityActive: (actorRef, traces, now) => checkAuthorityActive(actorRef, traces as any, now)
-  }
-};
 import {
   FlowDefinitionAmendmentError,
   amendmentRequestReplayExists,

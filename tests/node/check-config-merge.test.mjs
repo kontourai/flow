@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -209,6 +209,27 @@ test("concurrent config applies serialize disjoint authority additions and publi
   const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
   assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/tests"]);
   assert.deepEqual(stored.trusted_producers["quality.review"].authority_refs, ["authority:review"]);
+});
+
+test("config merge rejects a symlinked .flow project boundary without mutating its target", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-symlink-project-"));
+  const outside = await mkdtemp(path.join(tmpdir(), "flow-config-merge-symlink-outside-"));
+  const original = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`;
+  await Promise.all([
+    writeFile(path.join(outside, "config.json"), original),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
+      schema_version: FLOW_SCHEMA_VERSION,
+      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
+      gate_overrides: {}
+    }, null, 2)}\n`)
+  ]);
+  await symlink(outside, path.join(cwd, ".flow"));
+
+  await assert.rejects(
+    () => applyFlowConfigMerge(cwd, "proposal.json"),
+    /flow\.run_location\.unsafe_directory/
+  );
+  assert.equal(await readFile(path.join(outside, "config.json"), "utf8"), original);
 });
 
 test("config merge rejects malformed producer mappings before preview or publication", async () => {

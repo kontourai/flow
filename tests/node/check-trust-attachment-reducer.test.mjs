@@ -85,7 +85,7 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.2");
+  assert.equal(result.identity.version, "1.3.3");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   for (const integrity of [
@@ -237,17 +237,14 @@ test("trust attachment reducer enforces validated producer identity and gives op
       checkAuthorityActive: () => "revoked"
     }
   };
-  const injectedAuthority = reduceTrustAttachment({
-    run: { ...trustedRun, config: authorityOnlyConfig },
-    bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }), attachment: attachment("ev.injected-authority"), now: NOW,
-    dependencies: revokedDependencies
-  });
-  assert.equal(injectedAuthority.evaluation.status, "route-back", "reducer evaluation must execute the authority helper named by its injected dependency identity");
-  assert.deepEqual(injectedAuthority.evaluation.diagnostics.claim_evaluation[0].authority, { code: "revoked" });
-  assert.notEqual(injectedAuthority.identity.hash, richAuthority.identity.hash, "changing an injected helper must change the reducer identity");
-  assert.notEqual(
-    injectedAuthority.identity.dependency_integrities.surface.checkAuthorityActive,
-    richAuthority.identity.dependency_integrities.surface.checkAuthorityActive
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: { ...trustedRun, config: authorityOnlyConfig },
+      bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }), attachment: attachment("ev.injected-authority"), now: NOW,
+      dependencies: revokedDependencies
+    }),
+    /unsupported trust attachment reducer dependency adapter/,
+    "callers cannot substitute closure behavior while retaining Flow's reducer identity"
   );
 
   const malformedRun = runInput();

@@ -5,7 +5,7 @@
 ### Features
 
 * Add an `attach-only` trust attachment reducer mode for provenance synchronization that must not evaluate a gate, mutate run state, or consume route-back budget.
-* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.3.2, evaluates rich Surface authority traces through its explicit dependency adapter at the supplied instant, and fingerprints every injected helper in its published identity.
+* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.3.3, evaluates rich Surface authority traces through its explicit dependency adapter at the supplied instant, fingerprints every supported helper in its published identity, and rejects substituted helper closures.
 
 ### ⚠ BREAKING CHANGES
 

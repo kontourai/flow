@@ -3,12 +3,14 @@ import { createHash } from "node:crypto";
 import { defaultFlowConfig } from "../config/flow-config.js";
 import type { FlowEvidenceEntry, MutableRecord } from "../contracts/flow-types.js";
 import { findGate } from "../definition/flow-definition.js";
+import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
 import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.2";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.3";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -25,6 +27,42 @@ export interface TrustAttachmentReducerDependencies {
     buildReport(bundle: MutableRecord, options: { now: Date }): MutableRecord;
     checkAuthorityActive(actorRef: string, traces: MutableRecord[], now: Date): string;
   };
+}
+
+const reducerSurfaceValidate = (bundle: unknown) => validateTrustBundle(bundle) as MutableRecord;
+const reducerSurfaceBuildReport = (bundle: MutableRecord, options: { now: Date }) => buildTrustReport(bundle as any, options) as MutableRecord;
+const reducerSurfaceCheckAuthority = (actorRef: string, traces: MutableRecord[], now: Date) => checkAuthorityActive(actorRef, traces as any, now);
+
+/**
+ * The one supported reducer adapter. Exact helper references are part of the
+ * trusted boundary: callers may pin and pass this object, but cannot substitute
+ * closure state while retaining Flow's reducer identity.
+ */
+export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerDependencies = Object.freeze({
+  hachure: Object.freeze({ package: "hachure" as const, version: "0.15.0", validate: validateTrustBundleSchema }),
+  surface: Object.freeze({
+    package: "@kontourai/surface" as const,
+    version: "2.14.0",
+    validate: reducerSurfaceValidate,
+    buildReport: reducerSurfaceBuildReport,
+    checkAuthorityActive: reducerSurfaceCheckAuthority
+  })
+});
+
+function assertSupportedReducerDependencies(dependencies: TrustAttachmentReducerDependencies) {
+  const supported = FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES;
+  if (
+    dependencies?.hachure?.package !== supported.hachure.package
+    || dependencies.hachure.version !== supported.hachure.version
+    || dependencies.hachure.validate !== supported.hachure.validate
+    || dependencies?.surface?.package !== supported.surface.package
+    || dependencies.surface.version !== supported.surface.version
+    || dependencies.surface.validate !== supported.surface.validate
+    || dependencies.surface.buildReport !== supported.surface.buildReport
+    || dependencies.surface.checkAuthorityActive !== supported.surface.checkAuthorityActive
+  ) {
+    throw new Error("unsupported trust attachment reducer dependency adapter: use FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES");
+  }
 }
 
 export interface TrustAttachmentReducerIdentity {
@@ -110,6 +148,7 @@ function canonicalJson(value: unknown): string {
  * or ambient process state.
  */
 export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerIdentity {
+  assertSupportedReducerDependencies(dependencies);
   const dependency_versions = { hachure: dependencies.hachure.version, surface: dependencies.surface.version };
   const helperIntegrity = (helper: Function) => `sha256:${createHash("sha256").update(Function.prototype.toString.call(helper)).digest("hex")}`;
   const dependency_integrities = {
@@ -127,6 +166,7 @@ export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentRedu
 }
 
 export function normalizeTrustAttachmentBundle(bundle: unknown, now: string, dependencies: TrustAttachmentReducerDependencies): { bundle: MutableRecord; bundle_report: MutableRecord } {
+  assertSupportedReducerDependencies(dependencies);
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("trust bundle must be a JSON object");
   const validationView = surfaceTimestampValidationView(bundle);
   const schemaResult = dependencies.hachure.validate(validationView);

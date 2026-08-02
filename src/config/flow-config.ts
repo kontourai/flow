@@ -1,9 +1,9 @@
 import { constants, existsSync } from "node:fs";
-import { mkdir, open, unlink } from "node:fs/promises";
+import { lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { flowConfigPath, readJson, stageRunArtifact, syncDirectory } from "../runtime/flow-files.js";
+import { ensureDirectoryPathWithoutSymlinks, flowConfigPath, readJson, stageRunArtifact, syncDirectory } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { ConfigMergeReport, FlowConfig, MutableRecord } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
@@ -285,7 +285,16 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
   const options = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
   const resolvedProposalPath = path.resolve(cwd, proposalPath);
   const localConfigPath = flowConfigPath(cwd);
-  await mkdir(path.dirname(localConfigPath), { recursive: true });
+  const configDirectory = await ensureDirectoryPathWithoutSymlinks(cwd, ".flow");
+  if (path.resolve(configDirectory) !== path.dirname(localConfigPath)) {
+    throw new Error("flow.config.merge.path.invalid: project config directory does not match the canonical .flow directory");
+  }
+  if (existsSync(localConfigPath)) {
+    const configEntry = await lstat(localConfigPath);
+    if (configEntry.isSymbolicLink() || !configEntry.isFile()) {
+      throw new Error("flow.config.merge.path.invalid: project config must be a real file");
+    }
+  }
   const lockPath = `${localConfigPath}.merge.lock`;
   const deadline = Date.now() + 30_000;
   let lock;
@@ -302,6 +311,13 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     }
   }
   try {
+    await ensureDirectoryPathWithoutSymlinks(cwd, ".flow");
+    if (existsSync(localConfigPath)) {
+      const configEntry = await lstat(localConfigPath);
+      if (configEntry.isSymbolicLink() || !configEntry.isFile()) {
+        throw new Error("flow.config.merge.path.invalid: project config must be a real file");
+      }
+    }
     const report = previewFlowConfigMerge(await loadFlowConfig(cwd), await readJson(resolvedProposalPath), {
       ...options,
       mode: "apply",
