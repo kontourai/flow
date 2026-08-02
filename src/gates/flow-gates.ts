@@ -84,6 +84,81 @@ function findClaimsInReport(report: any, selector: any): any[] {
   });
 }
 
+/**
+ * Surface 2.14.0 accepts a `Date` as its evaluation clock. Date truncates
+ * RFC3339 fractional seconds below milliseconds, so Flow applies this small
+ * chronology fence only after Surface has selected an otherwise accepted
+ * claim. Surface remains responsible for status/policy derivation; Flow only
+ * refuses an accepted result when the claim's own issue/expiry or the event
+ * timeline that Surface folds cannot be true at Flow's exact instant.
+ */
+function surfaceDateMilliseconds(timestamp: ParsedRfc3339Timestamp): number {
+  return (timestamp.epochSecond * 1000) + Number(timestamp.fractionalSecond.slice(0, 3).padEnd(3, "0"));
+}
+
+function exactClaimTimelineDiagnostic(bundle: any, reportClaim: any, acceptedStatuses: string[], evaluatedAt: ParsedRfc3339Timestamp): string | null {
+  const claim = bundle?.claims?.find((candidate: any) => candidate?.id === reportClaim.id);
+  if (!claim) return "bundle_invalid";
+
+  const issuedAt = parseRfc3339Timestamp(claim.createdAt);
+  const updatedAt = parseRfc3339Timestamp(claim.updatedAt);
+  if (issuedAt === null || updatedAt === null) return "bundle_invalid";
+
+  const expiresAt = claim.expiresAt === undefined ? undefined : parseRfc3339Timestamp(claim.expiresAt);
+  if (expiresAt === null) return "bundle_invalid";
+
+  const events = (bundle?.events ?? [])
+    .filter((event: any) => event?.claimId === claim.id)
+    .map((event: any, index: number) => {
+      const createdAt = parseRfc3339Timestamp(event.createdAt);
+      const verifiedAt = event.verifiedAt === undefined ? undefined : parseRfc3339Timestamp(event.verifiedAt);
+      return { event, index, createdAt, verifiedAt };
+  });
+  if (events.some(({ createdAt, verifiedAt }: any) => createdAt === null || verifiedAt === null)) return "bundle_invalid";
+
+  // Surface selects its latest event with Date.parse, but its resolution and
+  // invalidation rules are intentionally more complete than Flow's gate
+  // projection. Refuse only the lossy ordering case rather than reproducing
+  // that policy here: a pair of distinct precise instants that Date collapses
+  // into one millisecond leaves Surface's result dependent on bundle order.
+  for (let left = 0; left < events.length; left += 1) {
+    for (let right = left + 1; right < events.length; right += 1) {
+      const exactOrder = compareRfc3339Timestamps(events[left].createdAt, events[right].createdAt);
+      if (exactOrder !== 0 && surfaceDateMilliseconds(events[left].createdAt) === surfaceDateMilliseconds(events[right].createdAt)) {
+        return "claim_time_ambiguous";
+      }
+    }
+  }
+
+  // The ambiguity fence means an exact sort now agrees with Surface's Date
+  // sort. Intrinsic expiry is only part of Surface's ordinary latest-verified
+  // branch: assumed claims and authority-gated dispute resolutions bypass it.
+  // Preserve those richer Surface outcomes rather than duplicating its policy.
+  const latest = [...events].sort((left: any, right: any) => (
+    compareRfc3339Timestamps(right.createdAt, left.createdAt) || left.index - right.index
+  ))[0];
+  const intrinsicFreshnessEligible = reportClaim.status === "verified"
+    && latest?.event.status === "verified"
+    && latest.event.resolvesDispute !== true
+    && !events.some(({ event }: any) => event.resolvesDispute === true);
+  if (intrinsicFreshnessEligible && expiresAt !== undefined && compareRfc3339Timestamps(expiresAt, evaluatedAt) < 0) {
+    // Surface uses a strict expiry boundary (`now > expiresAt`): a claim is
+    // still valid at its exact expiry instant and stale immediately after.
+    return acceptedStatuses.includes("stale") ? null : "stale";
+  }
+  if (intrinsicFreshnessEligible && claim.expiresAt === undefined && claim.ttlSeconds !== undefined) {
+    if (!Number.isSafeInteger(claim.ttlSeconds)) return "bundle_invalid";
+    const anchor = latest.verifiedAt ?? latest.createdAt;
+    const expiry = { epochSecond: anchor.epochSecond + claim.ttlSeconds, fractionalSecond: anchor.fractionalSecond };
+    if (!Number.isFinite(expiry.epochSecond)) return "bundle_invalid";
+    if (compareRfc3339Timestamps(expiry, evaluatedAt) < 0) {
+      return acceptedStatuses.includes("stale") ? null : "stale";
+    }
+  }
+
+  return null;
+}
+
 function claimIsCurrentForVisit(bundle: any, claim: any, enteredAt: ParsedRfc3339Timestamp): boolean {
   const bundleClaim = bundle?.claims?.find((candidate: any) => candidate?.id === claim.id);
   if (!bundleClaim) return false;
@@ -206,7 +281,14 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   }
 
   const accepted = selector.accepted_statuses ?? ["verified"];
-  if (currentClaims.some((claim: any) => accepted.includes(claim.status ?? "unknown"))) return null;
+  const acceptedClaims = currentClaims.filter((claim: any) => accepted.includes(claim.status ?? "unknown"));
+  if (acceptedClaims.length) {
+    const exactDiagnostics = acceptedClaims.map((claim: any) => (
+      exactClaimTimelineDiagnostic(bundle, claim, accepted, evaluationNow!.exact)
+    ));
+    if (exactDiagnostics.includes(null)) return null;
+    return exactDiagnostics[0] ?? "rejected";
+  }
 
   const claimStatus = currentClaims[0].status ?? "unknown";
   if (!accepted.includes(claimStatus)) {

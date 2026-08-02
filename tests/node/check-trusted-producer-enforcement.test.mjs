@@ -87,6 +87,102 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
   assert.deepEqual(claimDiagnostic(mismatch)?.authority, { code: "producer_mismatch" });
 });
 
+test("Surface-accepted claim freshness and event chronology retain exact RFC3339 precision", async () => {
+  const { definition, state } = await gateState("exact-claim-freshness");
+  const evaluate = (manifest, now) => flow.evaluateGate(
+    definition,
+    structuredClone(state),
+    manifest,
+    "verify-gate",
+    configFor(),
+    now
+  );
+  const now = "2026-06-16T00:00:00.0001Z";
+
+  const expired = await passingFixture();
+  expired.evidence[0].bundle.claims[0].expiresAt = "2026-06-16T00:00:00.00005Z";
+  const expiredOutcome = evaluate(expired, now);
+  assert.equal(expiredOutcome.status, "route-back", "a claim expired 50 microseconds ago must not pass through Date truncation");
+  assert.equal(claimDiagnostic(expiredOutcome)?.reason, "stale");
+
+  const staleAcceptedDefinition = structuredClone(definition);
+  staleAcceptedDefinition.gates["verify-gate"].expects[0].bundle_claim.accepted_statuses = ["stale"];
+  const staleAccepted = await passingFixture();
+  staleAccepted.evidence[0].bundle.claims[0].expiresAt = "2026-06-16T00:00:00.00005Z";
+  assert.equal(
+    flow.evaluateGate(staleAcceptedDefinition, structuredClone(state), staleAccepted, "verify-gate", configFor(), "2026-06-16T00:00:00.0011Z").status,
+    "pass",
+    "an expectation that explicitly accepts stale must retain the Surface-stale claim at a fractional expiry boundary"
+  );
+
+  for (const [label, expiresAt] of [
+    ["at the exact expiry boundary", "2026-06-16T00:00:00.0001Z"],
+    ["after the evaluation instant", "2026-06-16T00:00:00.00015Z"],
+    ["at the same instant through an RFC3339 offset", "2026-06-15T18:00:00.0001-06:00"]
+  ]) {
+    const manifest = await passingFixture();
+    manifest.evidence[0].bundle.claims[0].expiresAt = expiresAt;
+    assert.equal(evaluate(manifest, now).status, "pass", label);
+  }
+
+  const ordinaryVerification = await passingFixture();
+  delete ordinaryVerification.evidence[0].bundle.events[0].verifiedAt;
+  assert.equal(evaluate(ordinaryVerification, now).status, "pass", "an ordinary event may omit optional verifiedAt");
+
+  const sameMillisecondConflict = await passingFixture();
+  sameMillisecondConflict.evidence[0].bundle.events[0].createdAt = "2026-06-16T00:00:00.00001Z";
+  sameMillisecondConflict.evidence[0].bundle.events[0].verifiedAt = "2026-06-16T00:00:00.00001Z";
+  sameMillisecondConflict.evidence[0].bundle.events.push({
+    id: "event.quality.tests.rejected",
+    claimId: "claim.quality.tests.verify",
+    status: "rejected",
+    actor: "ci/main",
+    method: "validation",
+    evidenceIds: ["evidence.quality.tests.output"],
+    createdAt: "2026-06-16T00:00:00.00009Z"
+  });
+  const ambiguousOutcome = evaluate(sameMillisecondConflict, now);
+  assert.equal(ambiguousOutcome.status, "route-back", "lossy same-millisecond event ordering must not choose an authorization result");
+  assert.equal(claimDiagnostic(ambiguousOutcome)?.reason, "claim_time_ambiguous");
+
+  const assumedWithExpiry = await passingFixture();
+  assumedWithExpiry.evidence[0].bundle.claims[0].expiresAt = "2026-06-15T00:00:00.00005Z";
+  assumedWithExpiry.evidence[0].bundle.events[0].status = "assumed";
+  delete assumedWithExpiry.evidence[0].bundle.events[0].verifiedAt;
+  const assumedDefinition = structuredClone(definition);
+  assumedDefinition.gates["verify-gate"].expects[0].bundle_claim.accepted_statuses = ["assumed"];
+  assert.equal(
+    flow.evaluateGate(assumedDefinition, structuredClone(state), assumedWithExpiry, "verify-gate", configFor(), now).status,
+    "pass",
+    "an accepted assumed claim retains Surface's expiry-bypassing status"
+  );
+
+  const resolutionWithExpiry = await passingFixture();
+  resolutionWithExpiry.evidence[0].bundle.claims[0].expiresAt = "2026-06-15T00:00:00.00005Z";
+  resolutionWithExpiry.evidence[0].bundle.authorityTrace = [authorityTrace()];
+  resolutionWithExpiry.evidence[0].bundle.events.push({
+    id: "event.quality.tests.resolved",
+    claimId: "claim.quality.tests.verify",
+    status: "verified",
+    actor: "ci/main",
+    method: "review",
+    evidenceIds: ["evidence.quality.tests.output"],
+    createdAt: "2026-06-15T00:00:00.001Z",
+    resolvesDispute: true
+  });
+  assert.equal(
+    evaluate(resolutionWithExpiry, now).status,
+    "pass",
+    "an authority-gated resolution retains Surface's expiry-bypassing status"
+  );
+
+  const malformedExpiry = await passingFixture();
+  malformedExpiry.evidence[0].bundle.claims[0].expiresAt = "2016-12-31T23:59:60Z";
+  const malformedOutcome = evaluate(malformedExpiry, now);
+  assert.equal(malformedOutcome.status, "route-back");
+  assert.equal(claimDiagnostic(malformedOutcome)?.reason, "bundle_invalid");
+});
+
 test("producer policy rejects malformed config and treats explicitly empty lists as deny-all", async () => {
   const { definition, state } = await gateState("producer-config-validation");
   const validManifest = await passingFixture("ci/trusted");
