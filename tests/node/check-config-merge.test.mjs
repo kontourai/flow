@@ -745,17 +745,11 @@ test("config merge preview rejects deeply nested config trees without recursion 
 test("loadFlowConfig rejects deeply nested legacy authority traces without recursion overflow", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-deep-legacy-"));
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
-  const deepLegacy = {
-    schema_version: FLOW_SCHEMA_VERSION,
-    trusted_producers: {
-      "quality.tests": {
-        producers: ["ci/main"],
-        nested: { wrapped: deepNestedObject(5_000, { authority_traces: ["legacy:opaque"] }) }
-      }
-    },
-    gate_overrides: {}
-  };
-  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(deepLegacy, null, 2)}\n`);
+  const depth = 5_000;
+  const nestedPrefixes = Array.from({ length: depth }, (_, index) => `{"level_${index}":`).join("");
+  const nestedLegacy = `${nestedPrefixes}${JSON.stringify({ authority_traces: ["legacy:opaque"] })}${"}".repeat(depth)}`;
+  const deepLegacyJson = `{"schema_version":${JSON.stringify(FLOW_SCHEMA_VERSION)},"trusted_producers":{"quality.tests":{"producers":["ci/main"],"nested":{"wrapped":${nestedLegacy}}}},"gate_overrides":{}}\n`;
+  await writeFile(path.join(cwd, ".flow", "config.json"), deepLegacyJson);
   await assert.rejects(
     () => loadFlowConfig(cwd),
     /flow\.config\.input\.invalid: config input must be a bounded acyclic JSON value/
