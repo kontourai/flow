@@ -235,7 +235,9 @@ test("authorized retry moves the same exhausted run to selected route and starts
   assert.equal(report.retry_authorizations[0].next_attempt, 1);
   assert.equal(report.retry_authorizations[0].remaining_attempts, 3);
   assert.equal(report.retry_authorizations[0].budget_status, "current");
-  assert.equal(report.gate_summaries.find((entry) => entry.gate_id === "verify-gate").status, "wait");
+  // flow#202: a gate with no recorded outcome reads `unknown` ("nothing to
+  // appraise"), not `wait`, which is reserved for evaluated-and-unsatisfied.
+  assert.equal(report.gate_summaries.find((entry) => entry.gate_id === "verify-gate").status, "unknown");
   const projection = flow.projectFlowRun({ ...result, report });
   assert.equal(projection.transitions.at(-1).type, "retry_authorized");
   assert.equal(projection.transitions.at(-1).retry_epoch, 2);

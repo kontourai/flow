@@ -602,6 +602,26 @@ export function predecessorsOf(definition: any, stepId: string): string[] {
 }
 
 /**
+ * Return the transitive set of effective predecessors of `stepId` — its
+ * ancestors in the dependency DAG. `stepId` itself is excluded. Result is in
+ * definition order for determinism.
+ */
+export function ancestorsOf(definition: any, stepId: string): string[] {
+  const steps = normalizedSteps(definition);
+  const seen = new Set<string>();
+  const queue = [...predecessorsOf(definition, stepId)];
+  while (queue.length) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const parent of predecessorsOf(definition, id)) {
+      if (!seen.has(parent)) queue.push(parent);
+    }
+  }
+  return steps.map((step) => step.id).filter((id) => seen.has(id));
+}
+
+/**
  * Return the transitive set of step ids that depend on `stepId` — its
  * descendants in the dependency DAG.  A step `D` is a descendant of `T` when
  * `T` is one of `D`'s transitive effective predecessors.  `stepId` itself is
@@ -671,6 +691,47 @@ export function invalidateDescendants(definition: any, state: any, targetStep: s
 }
 
 /** Whether the latest completion of a step is newer than every later invalidation marker. */
+/**
+ * The set of steps this run has actually occupied: where it started, where it is
+ * now, every step the cursor was moved TO by an allowed transition or a
+ * route-back/retry, and every step already recorded as a transition's
+ * `from_step`.
+ *
+ * Including recorded `from_step`s is not circular. Nothing enters the record
+ * without passing this same check, so the set only ever grows with steps whose
+ * occupancy was already established — the induction an append-only log gives
+ * you. It matters for a converging DAG, where a parallel branch's step is
+ * evidenced only by the transition that left it (`from_step: left, to_step:
+ * merge`) and never appears as anything's `to_step`.
+ *
+ * A `blocked` transition's `to_step` is deliberately excluded: the run proposes
+ * that edge but does not take it.
+ *
+ * flow#202 AC3 uses this as the write-time provenance invariant: a persisted
+ * transition may not name a `from_step` the run was never on.
+ */
+export function occupiedSteps(definition: any, state: any): Set<string> {
+  const occupied = new Set<string>();
+  const def = normalizeFlowDefinition(definition);
+  const first = normalizedSteps(def)[0]?.id;
+  if (first) occupied.add(first);
+  if (state?.current_step) {
+    occupied.add(state.current_step);
+    // The graph itself proves occupancy: a run cannot reach a step until every
+    // predecessor has passed, so every ancestor of the cursor was occupied on
+    // the way here whether or not each hop survives in the transition list.
+    for (const ancestor of ancestorsOf(def, state.current_step)) occupied.add(ancestor);
+  }
+  for (const transition of state?.transitions ?? []) {
+    if (transition?.from_step) occupied.add(transition.from_step);
+    if (!transition?.to_step) continue;
+    if (transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized") {
+      occupied.add(transition.to_step);
+    }
+  }
+  return occupied;
+}
+
 export function stepCompletionIsCurrent(state: any, stepId: string): boolean {
   let completedAt = -1;
   let invalidatedAt = -1;

@@ -4,6 +4,7 @@ import {
   acceptedExceptionFor,
   attachedEvidenceFor,
   descendantsOf,
+  occupiedSteps,
   findGate,
   getStep,
   invalidateDescendants,
@@ -329,8 +330,30 @@ export function mergeGateOutcome(state, outcome) {
   state.gate_outcomes = [...without, outcome];
 }
 
+/**
+ * flow#202 AC3 — no persisted transition may name a `from_step` the run was not
+ * on. Every transition `applyEvaluation` appends carries `from_step:
+ * gate.step`, so this is checkable exactly at the write point.
+ *
+ * The rule is exactly AC3's wording: `gate.step` must be a step this run has
+ * actually occupied — where it started, anywhere the cursor was moved to, or
+ * where it is now. A stale-ancestor re-check and a fail-closed downstream
+ * re-appraisal both satisfy it; a forward jump to a step the run never reached
+ * does not, and fails closed here even if some caller reintroduces a
+ * synthesised cursor upstream.
+ */
+function assertTransitionProvenance(definition, state, gate) {
+  if (occupiedSteps(definition, state).has(gate.step)) return;
+  const error = new Error(
+    `flow.transition.from_step.fabricated: refusing to record a transition from "${gate.step}" for gate "${gate.id}" while the run is on "${state.current_step}"`
+  );
+  (error as Error & { code?: string }).code = "flow.transition.from_step.fabricated";
+  throw error;
+}
+
 export function applyEvaluation(definition, state, outcome, at = new Date().toISOString()) {
   const gate = findGate(definition, outcome.gate_id);
+  assertTransitionProvenance(definition, state, gate);
   mergeGateOutcome(state, outcome);
 
   if (outcome.status === "pass") {

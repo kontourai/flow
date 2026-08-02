@@ -1,6 +1,8 @@
 import { BUILTIN_EVIDENCE_KINDS } from "../contracts/flow-types.js";
 
-export const STATUS_ORDER = ["pass", "block", "route-back", "wait"];
+// Report ordering, most-actionable first. `unknown` is last: a gate that was
+// never evaluated is not a verdict, it is the absence of one.
+export const STATUS_ORDER = ["pass", "block", "route-back", "wait", "unknown"];
 
 export function slugLabel(value) {
   if (value === "implement-gate") return "implementation gate";

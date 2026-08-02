@@ -431,7 +431,7 @@ export interface FlowConfig extends MutableRecord {
 
 export interface GateOutcome extends MutableRecord {
   gate_id: string;
-  status: "pass" | "block" | "route-back" | "wait" | string;
+  status: "pass" | "block" | "route-back" | "wait" | "unknown" | string;
   summary: string;
   evidence_refs?: string[];
   missing?: string[];
