@@ -12,10 +12,13 @@ import { stageStatuses, normalizeFlowDefinition } from "../definition/flow-defin
  * it does not orchestrate).
  *
  * Shape (decided per surface.md Findings — Surface rollups are intra-bundle):
- *  - **claims** = one `stage X passed` member claim per passed stage, PLUS a
- *    `claimGroup` ("run verified", all-required) so SURFACE derives the
- *    run-level verdict from the members. Flow does NOT compute "all green ⇒
- *    green" — that is claim logic Surface owns.
+ *  - **claims** = one `stage X passed` member claim per stage — EVERY stage, not
+ *    the passing subset — PLUS a `claimGroup` (all-required) so SURFACE derives
+ *    the run-level verdict from the members. Flow does NOT compute "all green ⇒
+ *    green" — that is claim logic Surface owns, and delegating it is only
+ *    meaningful if Surface receives the failures. Flow emits no producer-side
+ *    `status` on a member claim; a stage the run has not appraised carries no
+ *    event at all and derives `unknown`.
  *  - **evidence** = by-reference pointers to each stage's gate-evidence bundle
  *    (id + claim selector + statusFunctionVersion + asOf). NEVER inlines the
  *    child bundle's claims/events ledger.
@@ -38,6 +41,107 @@ const RUN_GROUP_CLAIM_TYPE = "flow.run.verified";
 
 function isPassed(status: string): boolean {
   return status === "passed";
+}
+
+function isFailed(status: string): boolean {
+  return status === "failed";
+}
+
+/**
+ * The hachure `waivers.md` record for a stage that passed only because an
+ * exception was accepted.
+ *
+ * `evaluateGate` short-circuits on an accepted exception and returns `pass` with
+ * no evidence, so the stage counted as passed and emitted `status: "verified"`
+ * with `evidenceIds: []` — indistinguishable from a stage that passed on real
+ * evidence. Nothing in the artifact named the exception, its reason, or who
+ * accepted it.
+ *
+ * `waivers.md` is the spec's existing vocabulary for exactly this: a typed
+ * `{reason, approved_by, approved_at}` object inside the claim's free-form
+ * `metadata`, documenting an accepted gap. Per that profile a waiver never
+ * upgrades a status, so the stage's event is `assumed` — "operationally present
+ * but not appraised to affirmation" — and the waiver says why that gap was
+ * accepted and by whom.
+ */
+function stageWaiver(state: any, stepGateIds: string[]): MutableRecord | null {
+  if (!stepGateIds.length) return null;
+  const outcomes: any[] = state?.gate_outcomes ?? [];
+  for (const gateId of stepGateIds) {
+    const outcome = outcomes.find((entry: any) => entry.gate_id === gateId && entry.status === "pass");
+    const exceptionId = outcome?.accepted_exception_id;
+    if (!exceptionId) continue;
+    const exception = (state?.exceptions ?? []).find((entry: any) => entry.id === exceptionId);
+    if (!exception) continue;
+    return {
+      reason: exception.reason,
+      approved_by: exception.authority,
+      approved_at: exception.accepted_at,
+      // Flow-side provenance so a consumer can find the exception on the run.
+      exceptionId: exception.id,
+      gateId: exception.gate_id,
+    };
+  }
+  return null;
+}
+
+/**
+ * The ledger line for a stage, or `null` when the run has not appraised it.
+ *
+ * Derived from the stage's recorded gate outcomes rather than from the display
+ * status alone: `stageStatuses` reports the cursor's own step as `current` even
+ * when its gate blocked, and a blocked stage has very much been appraised.
+ *
+ * A stage with no event derives `unknown` through Surface — the status
+ * function's "nothing to appraise" — which is the honest reading of a stage the
+ * run has not reached. Emitting a `verified` event for it, or dropping it from
+ * the bundle entirely (which asserts the same `unknown` while also removing it
+ * from the rollup), were the two shapes this projection used to produce.
+ */
+function stageEvent(
+  status: string,
+  stepGateIds: string[],
+  state: any,
+  waiver: MutableRecord | null,
+): { status: string; notes: string } | null {
+  const outcomes: any[] = state?.gate_outcomes ?? [];
+  const forStep = stepGateIds
+    .map((gateId) => outcomes.find((entry: any) => entry.gate_id === gateId))
+    .filter(Boolean);
+
+  const failing = forStep.find((entry: any) => entry.status === "block" || entry.status === "route-back");
+  if (failing) {
+    return {
+      status: "rejected",
+      notes: `Stage did not pass: gate ${failing.gate_id} recorded ${failing.status}.`,
+    };
+  }
+  if (isFailed(status)) return { status: "rejected", notes: "Stage did not pass: a gate blocked or routed back." };
+
+  if (stagePassedOnOutcomes(status, stepGateIds, state)) {
+    return waiver
+      ? { status: "assumed", notes: `Stage passed on an accepted exception (${waiver.exceptionId}), not on gate evidence.` }
+      : { status: "verified", notes: "Stage passed in the flow run." };
+  }
+  return null;
+}
+
+/**
+ * Whether a stage actually passed, read from its recorded gate outcomes rather
+ * than from the display status.
+ *
+ * `stageStatuses` reports whichever step the cursor sits on as `current`, and a
+ * completed run leaves its cursor on the terminal step (`applyEvaluation` sets
+ * `current_step = nextStep ?? gate.step`). So the FINAL stage of a fully green
+ * run is never reported `passed` — which, while membership was filtered to the
+ * passing subset, silently dropped it from the bundle altogether.
+ */
+function stagePassedOnOutcomes(status: string, stepGateIds: string[], state: any): boolean {
+  if (isPassed(status)) return true;
+  if (!stepGateIds.length) return false;
+  const outcomes: any[] = state?.gate_outcomes ?? [];
+  return stepGateIds.every((gateId) =>
+    outcomes.some((entry: any) => entry.gate_id === gateId && entry.status === "pass"));
 }
 
 /**
@@ -185,41 +289,53 @@ export function projectRunOutputBundle(
 
   const claims: MutableRecord[] = [];
   const bundleEvidence: MutableRecord[] = [];
+  const events: MutableRecord[] = [];
   const memberClaimIds: string[] = [];
 
-  for (const step of def.steps ?? []) {
+  for (const [index, step] of (def.steps ?? []).entries()) {
     const status = statuses[step.id];
-    if (!isPassed(status)) continue;
-
     const claimId = `claim.flow.stage.${step.id}`;
+    // EVERY stage is a member. Filtering the membership to the passing subset
+    // made the `all-required` rollup vacuously true by construction — it removed
+    // every counter-example before Surface could see one. Delegating the rollup
+    // is only meaningful if Surface receives the failures.
     memberClaimIds.push(claimId);
 
     const refs = bundleReferencesForStep(gatesByStep.get(step.id) ?? [], evidence, asOf);
+    const waiver = stageWaiver(state, gatesByStep.get(step.id) ?? []);
 
-    // Member claim: "stage X passed". Surface derives its status; Flow asserts
-    // the producer-side status as a starting point only.
-    claims.push({
+    const claim: MutableRecord = {
       id: claimId,
       subjectType: "flow-stage",
       subjectId: `${def.id}:${step.id}`,
       facet: "flow.process",
       claimType: RUN_CLAIM_TYPE,
       fieldOrBehavior: "stagePassed",
-      value: true,
-      status: "verified",
+      value: stagePassedOnOutcomes(status, gatesByStep.get(step.id) ?? [], state),
       createdAt: nowIso,
       updatedAt: nowIso,
       metadata: {
         // By-reference links to the gate-evidence bundles that back this stage.
         // NOT the child claims/events themselves (recursion by reference).
         bundleReferences: refs,
+        flowStageStatus: status ?? "pending",
+        // hachure waivers.md: an accepted exception is a producer assertion that
+        // a gap was deliberately accepted. It documents the gap; it never
+        // upgrades the derived status.
+        ...(waiver ? { waiver } : {}),
       },
-    });
+    };
+    // No producer-asserted `status` on the claim. Flow emits the ledger and
+    // lets Surface derive — that is the whole point of the claimGroup.
+    claims.push(claim);
 
     // One evidence record per referenced gate-evidence bundle, by reference.
+    const evidenceIds: string[] = [];
     for (const ref of refs) {
+      const evidenceId = `evidence.flow.ref.${step.id}.${ref.evidenceId}`;
+      evidenceIds.push(evidenceId);
       bundleEvidence.push({
-        id: `evidence.flow.ref.${step.id}.${ref.evidenceId}`,
+        id: evidenceId,
         claimId,
         evidenceType: "attestation",
         method: "attestation",
@@ -230,41 +346,45 @@ export function projectRunOutputBundle(
         metadata: { bundleReference: ref },
       });
     }
+
+    const event = stageEvent(status, gatesByStep.get(step.id) ?? [], state, waiver);
+    // A stage the run has not appraised gets NO event, so Surface derives
+    // `unknown` — "nothing to appraise" — rather than Flow asserting anything
+    // about it. sf-runtime-observation-required: no qualifying observation, no
+    // `verified`.
+    if (!event) continue;
+    events.push({
+      id: `event.flow.stage.${index + 1}.${event.status}`,
+      claimId,
+      status: event.status,
+      type: "verification",
+      actor: `flow:${def.id}`,
+      method: "transition",
+      // Cite the evidence this bundle actually carries for the stage instead of
+      // a literal empty list. An exception-passed stage legitimately has none,
+      // and that is now visible rather than indistinguishable from a stage that
+      // passed on real evidence.
+      evidenceIds,
+      createdAt: nowIso,
+      ...(event.status === "verified" ? { verifiedAt: nowIso } : {}),
+      notes: event.notes,
+    });
   }
 
   // Run-level rollup group. Surface derives whether the run is verified from the
-  // member claims (all-required). Flow does NOT compute this.
+  // member claims (all-required). Flow does NOT compute this — the title and
+  // description state the REQUIREMENT, they do not assert the outcome.
   const claimGroups = [
     {
       id: `group.flow.run.${state.run_id}`,
-      title: "Run verified",
+      title: "All flow stages verified",
       kind: "claimGroup",
-      description: "All flow stages passed.",
+      description: "Every stage of this flow run must derive verified for the run to roll up as verified.",
       claimIds: memberClaimIds,
       rollupPolicy: { mode: "all-required" },
       metadata: { claimType: RUN_GROUP_CLAIM_TYPE },
     },
   ];
-
-  // Events = the verification ledger line per passed stage. Surface requires
-  // every event.claimId to reference a claim in claims[], and the latest event
-  // governs status — so each passed member claim gets exactly one `verified`
-  // event (it is currently passed). Route-back history is recorded in the Flow
-  // Report / transitions, not re-asserted here as claim status (a re-passed
-  // stage is verified, not stale). Keeping route-back events off the member
-  // claims preserves a correct intra-bundle "run verified" rollup.
-  const events: MutableRecord[] = memberClaimIds.map((claimId, index) => ({
-    id: `event.flow.stage.${index + 1}.verified`,
-    claimId,
-    status: "verified",
-    type: "verification",
-    actor: `flow:${def.id}`,
-    method: "transition",
-    evidenceIds: [],
-    createdAt: nowIso,
-    verifiedAt: nowIso,
-    notes: "Stage passed in the flow run.",
-  }));
 
   const bundle: MutableRecord = {
     schemaVersion: 5,
