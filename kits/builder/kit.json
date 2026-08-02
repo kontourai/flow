@@ -3,7 +3,24 @@
   "id": "builder",
   "name": "Builder Kit",
   "product_name": "Builder Kit",
-  "description": "Repo-local Builder Kit routing declaration. The Flow Definitions ship in the installed @kontourai/flow-agents package and resolve through its packaged-flow fallback; this manifest exists so the workflow-steering hook routes implementation prompts in this repository into builder.build.",
+  "description": "Repo-local Builder Kit declaration. It packages the canonical Builder Flow Definitions from @kontourai/flow-agents 5.6.0 so it remains a valid portable Flow Kit while its workflow-steering hook routes implementation prompts to builder.build.",
+  "flows": [
+    {
+      "id": "builder.shape",
+      "path": "flows/shape.flow.json",
+      "description": "Shape a problem into slices and fileable work items."
+    },
+    {
+      "id": "builder.build",
+      "path": "flows/build.flow.json",
+      "description": "Pull ready provider-backed work through design probing, planning, implementation, verification, provider change readiness, merge readiness, and learning."
+    },
+    {
+      "id": "builder.publish-learn",
+      "path": "flows/publish-learn.flow.json",
+      "description": "Reusable delivery closeout extension for publish, provider/CI merge readiness, and learning feedback gates."
+    }
+  ],
   "workflow_triggers": [
     {
       "id": "builder-build-work",
