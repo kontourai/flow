@@ -8,7 +8,7 @@ import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.1";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.2";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -31,6 +31,10 @@ export interface TrustAttachmentReducerIdentity {
   artifact_id: typeof TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID;
   version: typeof TRUST_ATTACHMENT_REDUCER_VERSION;
   dependency_versions: { hachure: string; surface: string };
+  dependency_integrities: {
+    hachure: { validate: string };
+    surface: { validate: string; buildReport: string; checkAuthorityActive: string };
+  };
   hash: string;
 }
 
@@ -107,10 +111,19 @@ function canonicalJson(value: unknown): string {
  */
 export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerIdentity {
   const dependency_versions = { hachure: dependencies.hachure.version, surface: dependencies.surface.version };
+  const helperIntegrity = (helper: Function) => `sha256:${createHash("sha256").update(Function.prototype.toString.call(helper)).digest("hex")}`;
+  const dependency_integrities = {
+    hachure: { validate: helperIntegrity(dependencies.hachure.validate) },
+    surface: {
+      validate: helperIntegrity(dependencies.surface.validate),
+      buildReport: helperIntegrity(dependencies.surface.buildReport),
+      checkAuthorityActive: helperIntegrity(dependencies.surface.checkAuthorityActive)
+    }
+  };
   const hash = createHash("sha256")
-    .update(canonicalJson({ artifact_id: TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID, version: TRUST_ATTACHMENT_REDUCER_VERSION, dependency_versions }))
+    .update(canonicalJson({ artifact_id: TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID, version: TRUST_ATTACHMENT_REDUCER_VERSION, dependency_versions, dependency_integrities }))
     .digest("hex");
-  return { artifact_id: TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID, version: TRUST_ATTACHMENT_REDUCER_VERSION, dependency_versions, hash: `sha256:${hash}` };
+  return { artifact_id: TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID, version: TRUST_ATTACHMENT_REDUCER_VERSION, dependency_versions, dependency_integrities, hash: `sha256:${hash}` };
 }
 
 export function normalizeTrustAttachmentBundle(bundle: unknown, now: string, dependencies: TrustAttachmentReducerDependencies): { bundle: MutableRecord; bundle_report: MutableRecord } {

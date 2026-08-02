@@ -85,9 +85,13 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.1");
+  assert.equal(result.identity.version, "1.3.2");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
+  for (const integrity of [
+    result.identity.dependency_integrities.hachure.validate,
+    ...Object.values(result.identity.dependency_integrities.surface)
+  ]) assert.match(integrity, /^sha256:[a-f0-9]{64}$/);
   assert.match(result.identity.hash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(result.evidence.kind, "trust.bundle");
   assert.equal(result.next_manifest.evidence.length, 1);
@@ -240,6 +244,11 @@ test("trust attachment reducer enforces validated producer identity and gives op
   });
   assert.equal(injectedAuthority.evaluation.status, "route-back", "reducer evaluation must execute the authority helper named by its injected dependency identity");
   assert.deepEqual(injectedAuthority.evaluation.diagnostics.claim_evaluation[0].authority, { code: "revoked" });
+  assert.notEqual(injectedAuthority.identity.hash, richAuthority.identity.hash, "changing an injected helper must change the reducer identity");
+  assert.notEqual(
+    injectedAuthority.identity.dependency_integrities.surface.checkAuthorityActive,
+    richAuthority.identity.dependency_integrities.surface.checkAuthorityActive
+  );
 
   const malformedRun = runInput();
   malformedRun.config = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { producers: "review/trusted" } }, gate_overrides: {} };
