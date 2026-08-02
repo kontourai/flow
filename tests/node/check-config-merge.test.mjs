@@ -295,6 +295,104 @@ test("config merge snapshots every accessor-backed receipt field exactly once", 
   assert.equal(publicationIdReads, 1, "a second accessor read must not turn an invalid snapshot into a valid receipt");
 });
 
+test("config merge snapshots caller options before selecting a publisher capability", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-hostile-options-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } }, gate_overrides: {} }, null, 2)}\n`)
+  ]);
+
+  const reads = Object.create(null);
+  const firstPublisher = async (request) => ({
+    api_version: "flow.kontourai.io/v1alpha1",
+    status: "applied",
+    publisher: "host/first-publisher",
+    publication_id: "publication-first",
+    config_path: request.config_path,
+    contents_sha256: request.contents_sha256
+  });
+  const swappedPublisher = async () => {
+    throw new Error("the swapped publisher must never run");
+  };
+  const options = Object.defineProperties({}, {
+    publisher: {
+      enumerable: true,
+      get() {
+        reads.publisher = (reads.publisher ?? 0) + 1;
+        return reads.publisher === 1 ? firstPublisher : swappedPublisher;
+      }
+    },
+    acceptConflicts: {
+      enumerable: true,
+      get() {
+        reads.acceptConflicts = (reads.acceptConflicts ?? 0) + 1;
+        return undefined;
+      }
+    },
+    acceptedConflicts: {
+      enumerable: true,
+      get() {
+        reads.acceptedConflicts = (reads.acceptedConflicts ?? 0) + 1;
+        return undefined;
+      }
+    },
+    exceptionReason: {
+      enumerable: true,
+      get() {
+        reads.exceptionReason = (reads.exceptionReason ?? 0) + 1;
+        return undefined;
+      }
+    },
+    authority: {
+      enumerable: true,
+      get() {
+        reads.authority = (reads.authority ?? 0) + 1;
+        return undefined;
+      }
+    },
+    cwd: {
+      enumerable: true,
+      get() {
+        reads.cwd = (reads.cwd ?? 0) + 1;
+        return cwd;
+      }
+    }
+  });
+
+  const applied = await applyFlowConfigMerge("proposal.json", options);
+  assert.equal(applied.status, "applied");
+  assert.equal(applied.publisher_receipt.publisher, "host/first-publisher");
+  assert.deepEqual({ ...reads }, {
+    publisher: 1,
+    acceptConflicts: 1,
+    acceptedConflicts: 1,
+    exceptionReason: 1,
+    authority: 1,
+    cwd: 1
+  });
+
+  const getterSecret = "publisher-option-getter-secret-2026";
+  const throwingOptions = Object.defineProperty({}, "publisher", {
+    get() {
+      throw new Error(`private capability accessor failed: ${getterSecret}`);
+    }
+  });
+  let failure;
+  try {
+    await applyFlowConfigMerge(cwd, "proposal.json", throwingOptions);
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.equal(
+    failure.message,
+    "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics"
+  );
+  assert.doesNotMatch(String(failure), /publisher-option-getter-secret-2026/);
+  assert.match(failure.cause?.message, /publisher-option-getter-secret-2026/);
+});
+
 test("config merge rejects invalid and failed publisher capabilities", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-invalid-publisher-"));
   await mkdir(path.join(cwd, ".flow"), { recursive: true });

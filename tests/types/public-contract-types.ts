@@ -59,7 +59,7 @@ const configMergeReceipt: FlowConfigMergePublisherReceipt = {
 };
 const configMergeReportFields = {
   schema_version: "0.1",
-  mode: "preview",
+  mode: "preview" as const,
   local_config_path: "/project/.flow/config.json",
   proposal_path: "/project/proposal.json",
   proposed_changes: [],
@@ -81,6 +81,8 @@ const appliedConfigMergeReport: ConfigMergeAppliedReport = {
   status: "applied",
   publisher_receipt: configMergeReceipt
 };
+// @ts-expect-error public mode declarations must not admit schema-invalid report modes.
+const configMergeReportWithInvalidMode: ConfigMergeUnpublishedReport = { ...configMergeReportFields, mode: "unsupported", status: "ready" };
 // @ts-expect-error applied reports require a publisher receipt.
 const appliedWithoutPublisherReceipt: ConfigMergeReport = { ...configMergeReportFields, status: "applied" };
 // @ts-expect-error unpublished reports must not carry a publisher receipt.
@@ -93,6 +95,7 @@ void [
   configMergeReceipt,
   unpublishedConfigMergeReport,
   appliedConfigMergeReport,
+  configMergeReportWithInvalidMode,
   appliedWithoutPublisherReceipt,
   previewWithPublisherReceipt,
   appliedPreviewReport

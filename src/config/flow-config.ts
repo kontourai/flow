@@ -54,10 +54,47 @@ function publisherFailedError(cause: unknown) {
   );
 }
 
-function configMergePublisher(options: FlowConfigMergeApplyOptions): FlowConfigMergePublisher {
-  if (options.publisher === undefined) throw publisherUnavailableError();
-  if (typeof options.publisher !== "function") throw publisherInvalidError();
-  return options.publisher;
+type FlowConfigMergeApplyOptionsSnapshot = Readonly<{
+  publisher: unknown;
+  acceptConflicts: FlowConfigMergeApplyOptions["acceptConflicts"];
+  acceptedConflicts: FlowConfigMergeApplyOptions["acceptedConflicts"];
+  exceptionReason: FlowConfigMergeApplyOptions["exceptionReason"];
+  authority: FlowConfigMergeApplyOptions["authority"];
+  cwd: FlowConfigMergeApplyOptions["cwd"];
+}>;
+
+/**
+ * Copy every option Flow consumes before any merge work begins. The options
+ * object belongs to the host: accessors and proxies can otherwise change a
+ * capability or throw private host diagnostics between validation and use.
+ */
+function snapshotConfigMergeApplyOptions(options: FlowConfigMergeApplyOptions | undefined): FlowConfigMergeApplyOptionsSnapshot {
+  const source = options ?? {};
+  try {
+    return Object.freeze({
+      publisher: source.publisher,
+      acceptConflicts: source.acceptConflicts,
+      acceptedConflicts: source.acceptedConflicts,
+      exceptionReason: source.exceptionReason,
+      authority: source.authority,
+      cwd: source.cwd
+    });
+  } catch (error) {
+    // Reading a host capability crosses the same trust boundary as invoking
+    // it. Preserve private detail exclusively on the cause.
+    throw publisherFailedError(error);
+  }
+}
+
+function isFlowConfigMergePublisher(value: unknown): value is FlowConfigMergePublisher {
+  return typeof value === "function";
+}
+
+function configMergePublisher(options: FlowConfigMergeApplyOptionsSnapshot): FlowConfigMergePublisher {
+  const publisher = options.publisher;
+  if (publisher === undefined) throw publisherUnavailableError();
+  if (!isFlowConfigMergePublisher(publisher)) throw publisherInvalidError();
+  return publisher;
 }
 
 async function loadFlowConfigMergeBase(configPath: string) {
@@ -378,9 +415,14 @@ export async function previewFlowConfigMergeFile(proposalPath: string, options: 
 }
 
 export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPathOrOptions?: string | FlowConfigMergeApplyOptions, maybeOptions: FlowConfigMergeApplyOptions = {}): Promise<ConfigMergeReport> {
-  const cwd = typeof proposalPathOrOptions === "string" ? cwdOrProposalPath : (maybeOptions.cwd ?? process.cwd());
+  // Snapshot the caller-owned options before consulting any individual field.
+  // Do not spread the source later: that would re-enumerate/re-read hostile
+  // accessors after the publisher capability has been selected.
+  const options = snapshotConfigMergeApplyOptions(
+    typeof proposalPathOrOptions === "string" ? maybeOptions : proposalPathOrOptions
+  );
+  const cwd = typeof proposalPathOrOptions === "string" ? cwdOrProposalPath : (options.cwd ?? process.cwd());
   const proposalPath = typeof proposalPathOrOptions === "string" ? proposalPathOrOptions : cwdOrProposalPath;
-  const options: FlowConfigMergeApplyOptions = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
   // Flow has no safe pathname-only publication primitive. Require the host
   // capability before reading or creating any project state, so `apply` in a
   // plain Node/CLI host is predictably fail-closed and side-effect free.
@@ -394,7 +436,10 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
     readJson(resolvedProposalPath)
   ]);
   const report = previewFlowConfigMerge(local.config, proposedConfig, {
-    ...options,
+    acceptConflicts: options.acceptConflicts,
+    acceptedConflicts: options.acceptedConflicts,
+    exceptionReason: options.exceptionReason,
+    authority: options.authority,
     mode: "apply",
     cwd: projectDirectory,
     localConfigPath,

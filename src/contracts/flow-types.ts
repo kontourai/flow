@@ -576,7 +576,7 @@ export interface TransitionValidationResult extends MutableRecord {
 
 interface ConfigMergeReportFields extends MutableRecord {
   schema_version: string;
-  mode: string;
+  mode: "preview" | "apply";
   local_config_path: string;
   proposal_path: string | null;
   proposed_changes: MutableRecord[];
@@ -654,6 +654,7 @@ export interface FlowConfigMergeApplyOptions extends MutableRecord {
   acceptedConflicts?: string[];
   exceptionReason?: string;
   authority?: string;
+  cwd?: string;
 }
 
 export const FLOW_SCHEMA_VERSION = "0.1";
