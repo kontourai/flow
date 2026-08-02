@@ -10,8 +10,8 @@
       "claimType": "builder.pull-work.selected",
       "fieldOrBehavior": "Work Item kontourai/flow#221 is durably assigned to the active workflow actor (assignment sha256:7dbd96329242077f8380128b8da80c0398a129a78430ddcb23eef40e1c467f29).",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.pull-work.selected:attestation",
       "metadata": {
@@ -60,8 +60,8 @@
       "claimType": "builder.design-probe.pickup-readiness",
       "fieldOrBehavior": "Selected work is bounded, assigned, and ready for combined-head verification.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.design-probe.pickup-readiness:attestation",
       "metadata": {
@@ -100,8 +100,8 @@
       "claimType": "builder.design-probe.decisions",
       "fieldOrBehavior": "Decision: refresh all exact-head evidence and the provisional checkpoint after integrating main; no accepted gaps.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.design-probe.decisions:attestation",
       "metadata": {
@@ -140,8 +140,8 @@
       "claimType": "builder.plan.implementation",
       "fieldOrBehavior": "Plan covers combined-head integration, exact-head evidence refresh, fresh signed publication, hosted checks, merge, and terminal learning without stale evidence.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.plan.implementation:attestation",
       "metadata": {
@@ -221,8 +221,8 @@
       "claimType": "builder.execute.scope",
       "fieldOrBehavior": "Combined-head integration is conflict-free and limited to the two additive Builder Kit routing files from main; trusted-producer implementation scope is unchanged and ready for fresh exact-head verification.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.execute.scope:attestation",
       "metadata": {
@@ -261,8 +261,8 @@
       "claimType": "builder.verify.tests",
       "fieldOrBehavior": "Exact manifest verification passed at f524311; canonical 441-test suite and Node 22/24 integration checks passed; clean critique and Veritas evidence are current.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.verify.tests:test_output",
       "metadata": {
@@ -337,8 +337,8 @@
       "claimType": "builder.merge-ready.readiness",
       "fieldOrBehavior": "Exact combined head f524311 is review-ready with repaired Builder Kit container, current clean critique, canonical and manifest tests, and fresh Veritas governance; hosted outcomes remain unclaimed.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:builder.merge-ready.readiness:attestation",
       "metadata": {
@@ -377,8 +377,8 @@
       "claimType": "workflow.acceptance.criterion",
       "fieldOrBehavior": "All six lifecycle-correct criteria are complete at exact head f524311; later hosted, merge, and learning outcomes remain native-gate obligations.",
       "value": "pass",
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "updatedAt": "2026-08-02T21:26:59.094Z",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
       "impactLevel": "high",
       "verificationPolicyId": "policy:workflow.acceptance.criterion:attestation",
       "metadata": {
@@ -412,6 +412,128 @@
           "identity_version": 2,
           "recorded_at": "2026-08-02T21:26:40.252Z",
           "flow_run_head": "7632124bb1115d057b2be6103342d3d3894ad585a0ad8ce0d802ef764e240d41"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z",
+      "subjectType": "pull-request",
+      "subjectId": "kontourai-flow-221/gate-claim-ci-merge-readiness",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.merge-ready-ci.readiness",
+      "fieldOrBehavior": "Release-readiness decision and residual risks are recorded.",
+      "value": "pass",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.merge-ready-ci.readiness:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#221",
+        "expected_producer": "builder.release-readiness",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "ci-merge-readiness"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-221/release.json",
+            "summary": "Release-readiness decision, authorization, rollback, and observability state."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "ci-merge-readiness",
+          "claim_type": "builder.merge-ready-ci.readiness",
+          "subject_type": "pull-request",
+          "step_id": "merge-ready-ci",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T21:38:39.565Z",
+          "flow_run_head": "fbc55fabc932b8cb6fe8a2e7f4ed03ce214f316ca3c0f8bce1040f12ba910d6f"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z",
+      "subjectType": "decision",
+      "subjectId": "kontourai-flow-221/gate-claim-decision-evidence",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.learn.decisions",
+      "fieldOrBehavior": "Delivery decisions and unresolved gaps are recorded.",
+      "value": "pass",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.learn.decisions:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#221",
+        "expected_producer": "builder.learning-review",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "decision-evidence",
+          "learning-evidence"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-221/learning.json",
+            "summary": "Recorded delivery decisions, correction state, and routing."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "decision-evidence",
+          "claim_type": "builder.learn.decisions",
+          "subject_type": "decision",
+          "step_id": "learn",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T21:39:40.520Z",
+          "flow_run_head": "78afa69f4426e2ec2525c751029baea1cb28ee08882515cbf050baf1473d59a7"
+        }
+      },
+      "status": "verified"
+    },
+    {
+      "id": "kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z",
+      "subjectType": "release",
+      "subjectId": "kontourai-flow-221/gate-claim-learning-evidence",
+      "facet": "flow-agents.workflow",
+      "claimType": "builder.learn.evidence",
+      "fieldOrBehavior": "Observed outcomes and learning follow-up are recorded.",
+      "value": "pass",
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "updatedAt": "2026-08-02T21:39:41.587Z",
+      "impactLevel": "high",
+      "verificationPolicyId": "policy:builder.learn.evidence:attestation",
+      "metadata": {
+        "origin": "check",
+        "check_kind": "external",
+        "workflow_subject_ref": "kontourai/flow#221",
+        "expected_producer": "builder.learning-review",
+        "recorded_by": "codexthread-38b3dd5e35da9cba874a27a4Kontour",
+        "self_produced_trust_slices": [
+          "decision-evidence",
+          "learning-evidence"
+        ],
+        "artifact_refs": [
+          {
+            "kind": "artifact",
+            "file": ".kontourai/flow-agents/kontourai-flow-221/learning.json",
+            "summary": "Observed outcomes, follow-up routing, and unresolved gaps."
+          }
+        ],
+        "gate_claim": {
+          "expectation_id": "learning-evidence",
+          "claim_type": "builder.learn.evidence",
+          "subject_type": "release",
+          "step_id": "learn",
+          "identity_version": 2,
+          "recorded_at": "2026-08-02T21:39:41.587Z",
+          "flow_run_head": "78afa69f4426e2ec2525c751029baea1cb28ee08882515cbf050baf1473d59a7"
         }
       },
       "status": "verified"
@@ -1221,7 +1343,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Work Item kontourai/flow#221 is durably assigned to the active workflow actor (assignment sha256:7dbd96329242077f8380128b8da80c0398a129a78430ddcb23eef40e1c467f29).",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1232,7 +1354,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Selected work is bounded, assigned, and ready for combined-head verification.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1243,7 +1365,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Decision: refresh all exact-head evidence and the provisional checkpoint after integrating main; no accepted gaps.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1254,7 +1376,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Plan covers combined-head integration, exact-head evidence refresh, fresh signed publication, hosted checks, merge, and terminal learning without stale evidence.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1265,7 +1387,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Combined-head integration is conflict-free and limited to the two additive Builder Kit routing files from main; trusted-producer implementation scope is unchanged and ready for fresh exact-head verification.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1276,7 +1398,7 @@
       "method": "validation",
       "sourceRef": "kontourai-flow-221/command-log.jsonl",
       "excerptOrSummary": "Exact manifest verification passed at f524311; canonical 441-test suite and Node 22/24 integration checks passed; clean critique and Veritas evidence are current.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/evidence-capture",
       "passing": true,
       "execution": {
@@ -1293,7 +1415,7 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "Exact combined head f524311 is review-ready with repaired Builder Kit container, current clean critique, canonical and manifest tests, and fresh Veritas governance; hosted outcomes remain unclaimed.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1304,7 +1426,40 @@
       "method": "corroboration",
       "sourceRef": "kontourai-flow-221/evidence.json",
       "excerptOrSummary": "All six lifecycle-correct criteria are complete at exact head f524311; later hosted, merge, and learning outcomes remain native-gate obligations.",
-      "observedAt": "2026-08-02T21:26:59.094Z",
+      "observedAt": "2026-08-02T21:39:41.587Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z",
+      "claimId": "kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-221/evidence.json",
+      "excerptOrSummary": "Release-readiness decision and residual risks are recorded.",
+      "observedAt": "2026-08-02T21:39:41.587Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z",
+      "claimId": "kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-221/evidence.json",
+      "excerptOrSummary": "Delivery decisions and unresolved gaps are recorded.",
+      "observedAt": "2026-08-02T21:39:41.587Z",
+      "collectedBy": "flow-agents/workflow-sidecar",
+      "passing": true
+    },
+    {
+      "id": "ev:kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z",
+      "claimId": "kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z",
+      "evidenceType": "attestation",
+      "method": "corroboration",
+      "sourceRef": "kontourai-flow-221/evidence.json",
+      "excerptOrSummary": "Observed outcomes and learning follow-up are recorded.",
+      "observedAt": "2026-08-02T21:39:41.587Z",
       "collectedBy": "flow-agents/workflow-sidecar",
       "passing": true
     },
@@ -1583,6 +1738,57 @@
       "impactLevel": "high"
     },
     {
+      "id": "policy:builder.merge-ready-ci.readiness:attestation",
+      "claimType": "builder.merge-ready-ci.readiness",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.merge-ready-ci.readiness claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.learn.decisions:attestation",
+      "claimType": "builder.learn.decisions",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.learn.decisions claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
+      "id": "policy:builder.learn.evidence:attestation",
+      "claimType": "builder.learn.evidence",
+      "requiredEvidence": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "A verified verification event must support a builder.learn.evidence claim."
+      ],
+      "reviewAuthority": "system",
+      "validityRule": {
+        "kind": "manual"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "high"
+    },
+    {
       "id": "policy:workflow.acceptance.criterion:test_output",
       "claimType": "workflow.acceptance.criterion",
       "requiredEvidence": [
@@ -1625,8 +1831,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-selected-work.flow-agents-workflow.work-item-kontourai-flow-221-is-durably-assigned-to-the-active-workflow-actor-assignment-sha256-7dbd96329242077f8380128b8da80c0398a129a78430ddcb23eef40e1c467f29-gate-visit-2026-08-02t21-08-44z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-pickup-probe-readiness.flow-agents-workflow.selected-work-is-bounded-assigned-and-ready-for-combined-head-verification-gate-visit-2026-08-02t21-09-16-345z",
@@ -1637,8 +1843,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-pickup-probe-readiness.flow-agents-workflow.selected-work-is-bounded-assigned-and-ready-for-combined-head-verification-gate-visit-2026-08-02t21-09-16-345z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.decision-refresh-all-exact-head-evidence-and-the-provisional-checkpoint-after-integrating-main-no-accepted-gaps-gate-visit-2026-08-02t21-09-17-256z",
@@ -1649,8 +1855,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-probe-decisions-or-accepted-gaps.flow-agents-workflow.decision-refresh-all-exact-head-evidence-and-the-provisional-checkpoint-after-integrating-main-no-accepted-gaps-gate-visit-2026-08-02t21-09-17-256z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-implementation-plan.flow-agents-workflow.plan-covers-combined-head-integration-exact-head-evidence-refresh-fresh-signed-publication-hosted-checks-merge-and-terminal-learning-without-stale-evidence-gate-visit-2026-08-02t21-09-49-237z",
@@ -1661,8 +1867,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-implementation-plan.flow-agents-workflow.plan-covers-combined-head-integration-exact-head-evidence-refresh-fresh-signed-publication-hosted-checks-merge-and-terminal-learning-without-stale-evidence-gate-visit-2026-08-02t21-09-49-237z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-implementation-scope.flow-agents-workflow.combined-head-integration-is-conflict-free-and-limited-to-the-two-additive-builder-kit-routing-files-from-main-trusted-producer-implementation-scope-is-unchanged-and-ready-for-fresh-exact-head-verification-gate-visit-2026-08-02t21-10-12-421z",
@@ -1673,8 +1879,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-implementation-scope.flow-agents-workflow.combined-head-integration-is-conflict-free-and-limited-to-the-two-additive-builder-kit-routing-files-from-main-trusted-producer-implementation-scope-is-unchanged-and-ready-for-fresh-exact-head-verification-gate-visit-2026-08-02t21-10-12-421z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-tests-evidence.flow-agents-workflow.exact-manifest-verification-passed-at-f524311-canonical-441-test-suite-and-node-22-24-integration-checks-passed-clean-critique-and-veritas-evidence-are-current-gate-visit-2026-08-02t21-25-04-673z",
@@ -1685,8 +1891,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-tests-evidence.flow-agents-workflow.exact-manifest-verification-passed-at-f524311-canonical-441-test-suite-and-node-22-24-integration-checks-passed-clean-critique-and-veritas-evidence-are-current-gate-visit-2026-08-02t21-25-04-673z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-merge-readiness.flow-agents-workflow.exact-combined-head-f524311-is-review-ready-with-repaired-builder-kit-container-current-clean-critique-canonical-and-manifest-tests-and-fresh-veritas-governance-hosted-outcomes-remain-unclaimed-gate-visit-2026-08-02t21-26-59-094z",
@@ -1697,8 +1903,8 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-merge-readiness.flow-agents-workflow.exact-combined-head-f524311-is-review-ready-with-repaired-builder-kit-container-current-clean-critique-canonical-and-manifest-tests-and-fresh-veritas-governance-hosted-outcomes-remain-unclaimed-gate-visit-2026-08-02t21-26-59-094z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-gate-claim-acceptance-criteria.flow-agents-workflow.all-six-lifecycle-correct-criteria-are-complete-at-exact-head-f524311-later-hosted-merge-and-learning-outcomes-remain-native-gate-obligations-gate-visit-2026-08-02t21-26-40-252z",
@@ -1709,8 +1915,44 @@
       "evidenceIds": [
         "ev:kontourai-flow-221-gate-claim-acceptance-criteria.flow-agents-workflow.all-six-lifecycle-correct-criteria-are-complete-at-exact-head-f524311-later-hosted-merge-and-learning-outcomes-remain-native-gate-obligations-gate-visit-2026-08-02t21-26-40-252z"
       ],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
+    },
+    {
+      "id": "evt:kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z",
+      "claimId": "kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-221-gate-claim-ci-merge-readiness.flow-agents-workflow.release-readiness-decision-and-residual-risks-are-recorded-gate-visit-2026-08-02t21-38-39-565z"
+      ],
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
+    },
+    {
+      "id": "evt:kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z",
+      "claimId": "kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-221-gate-claim-decision-evidence.flow-agents-workflow.delivery-decisions-and-unresolved-gaps-are-recorded-gate-visit-2026-08-02t21-39-40-520z"
+      ],
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
+    },
+    {
+      "id": "evt:kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z",
+      "claimId": "kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z",
+      "status": "verified",
+      "actor": "flow-agents/workflow-sidecar",
+      "method": "validation",
+      "evidenceIds": [
+        "ev:kontourai-flow-221-gate-claim-learning-evidence.flow-agents-workflow.observed-outcomes-and-learning-follow-up-are-recorded-gate-visit-2026-08-02t21-39-41-587z"
+      ],
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     },
     {
       "id": "evt:kontourai-flow-221-trusted-producer-enforcement-authority-pins-hostile-input-bounds-atomic-concurrency-reducer-1-3-7-package-compatibility-dependency-graph-vendored-assets-and-the-additive-builder-kit-routing-files-remain-correct-at-exact-combined-head-1e7209f.flow-agents-workflow.trusted-producer-enforcement-authority-pins-hostile-input-bounds-atomic-concurrency-reducer-1-3-7-package-compatibility-dependency-graph-vendored-assets-and-the-additive-builder-kit-routing-files-remain-correct-at-exact-combined-head-1e7209f-verified-2026-08-02t21-25-04-673z",
@@ -1791,8 +2033,8 @@
       "actor": "flow-agents/workflow-sidecar",
       "method": "validation",
       "evidenceIds": [],
-      "createdAt": "2026-08-02T21:26:59.094Z",
-      "verifiedAt": "2026-08-02T21:26:59.094Z"
+      "createdAt": "2026-08-02T21:39:41.587Z",
+      "verifiedAt": "2026-08-02T21:39:41.587Z"
     }
   ]
 }
