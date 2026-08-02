@@ -266,48 +266,65 @@ function startLiveUpdates() {
   let es: EventSource | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  // EventSource callbacks can be queued after close(), particularly across the
+  // back/forward cache lifecycle. Pair every source with a generation so a
+  // callback from an earlier connection can never act on its replacement.
+  let generation = 0;
 
   function connect() {
     if (stopped) return;
     reconnectTimer = null;
-    if (es) {
-      try { es.close(); } catch { /* ignore */ }
-    }
-    es = new EventSource("/api/stream");
+    const sourceGeneration = ++generation;
+    const previousSource = es;
+    // Invalidate callbacks before closing the old source. Some EventSource
+    // implementations may still dispatch already-queued callbacks from it.
+    es = null;
+    try { previousSource?.close(); } catch { /* ignore */ }
 
-    es.addEventListener("open", () => {
+    const source = new EventSource("/api/stream");
+    es = source;
+    const isCurrent = () => !stopped && generation === sourceGeneration && es === source;
+
+    source.addEventListener("open", () => {
+      if (!isCurrent()) return;
       backoff = 1000;
       setLiveStatus(true);
     });
 
-    es.addEventListener("projection", (event: MessageEvent) => {
+    source.addEventListener("projection", (event: MessageEvent) => {
+      if (!isCurrent()) return;
       try {
         const projection = JSON.parse(event.data) as ConsoleProjection;
         renderApp(projection);
       } catch { /* malformed payload — skip */ }
     });
 
-    es.addEventListener("error", () => {
-      if (stopped) return;
+    source.addEventListener("error", () => {
+      if (!isCurrent()) return;
       setLiveStatus(false);
-      es?.close();
       es = null;
+      try { source.close(); } catch { /* ignore */ }
       // Exponential backoff with cap
       const delay = backoff;
       backoff = Math.min(backoff * 2, SSE_MAX_BACKOFF_MS);
-      reconnectTimer = setTimeout(connect, delay);
+      reconnectTimer = setTimeout(() => {
+        if (!stopped && generation === sourceGeneration && es === null) connect();
+      }, delay);
     });
   }
 
   function stop() {
     if (stopped) return;
     stopped = true;
+    // Make queued callbacks from the just-closed source inert before cleanup.
+    generation += 1;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-    try { es?.close(); } catch { /* ignore */ }
+    const source = es;
     es = null;
+    try { source?.close(); } catch { /* ignore */ }
     setLiveStatus(false);
   }
 
