@@ -5,7 +5,7 @@
 ### Features
 
 * Add an `attach-only` trust attachment reducer mode for provenance synchronization that must not evaluate a gate, mutate run state, or consume route-back budget.
-* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.3.5, evaluates rich Surface authority traces through one immutable snapshot of its explicit dependency adapter at the supplied instant, fingerprints every supported helper in its published identity, rejects substituted or access-varying helpers, keeps the public evaluator dependency-fixed, and preserves exact RFC3339 chronology beyond JavaScript millisecond precision.
+* Enforce trusted producer pins during canonical and pure trust attachment evaluation; the independently versioned trust attachment reducer is now 1.3.7, evaluates rich Surface authority traces through one immutable snapshot of its explicit dependency adapter at the supplied instant, fingerprints every supported helper in its published identity, rejects substituted or access-varying helpers, keeps the public evaluator dependency-fixed, and preserves exact RFC3339 chronology beyond JavaScript millisecond precision.
 
 ### ⚠ BREAKING CHANGES
 

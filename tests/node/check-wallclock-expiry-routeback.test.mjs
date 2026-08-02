@@ -212,7 +212,7 @@ function branchApprovalBundle(step) {
   return bundle;
 }
 
-async function makeRun(cwd, flowDefinition = definition()) {
+async function makeRun(cwd, flowDefinition = definition(), bundle = approvalBundle()) {
   await mkdir(cwd, { recursive: true });
   const defPath = path.join(cwd, "flow.json");
   await writeFile(defPath, JSON.stringify(flowDefinition));
@@ -237,7 +237,7 @@ async function makeRun(cwd, flowDefinition = definition()) {
       requested_kind: "trust.bundle",
       status: "passed",
       attached_at: T0,
-      bundle: approvalBundle()
+      bundle
     }
   ];
   await writeFile(path.join(run.dir, "state.json"), `${JSON.stringify(run.state, null, 2)}\n`);
@@ -307,6 +307,26 @@ test("T1 evaluateRun: wall-clock-expired claim → route-back + invalidateDescen
     Array.isArray(routeBack.invalidated_steps) && routeBack.invalidated_steps.includes("release"),
     "release is recorded among the invalidated descendants"
   );
+});
+
+test("canonical evaluateRun routes back at a fractional duration-policy boundary", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-fractional-"));
+  const bundle = approvalBundle();
+  delete bundle.claims[0].expiresAt;
+  bundle.claims[0].createdAt = "2026-06-15T00:00:00.00005Z";
+  bundle.claims[0].updatedAt = "2026-06-15T00:00:00.00005Z";
+  bundle.evidence[0].observedAt = "2026-06-15T00:00:00.00005Z";
+  bundle.events[0].createdAt = "2026-06-15T00:00:00.00005Z";
+  bundle.events[0].verifiedAt = "2026-06-15T00:00:00.00005Z";
+  bundle.policies[0].validityRule = { kind: "duration", durationDays: 1 };
+  const runId = await makeRun(cwd, definition(), bundle);
+
+  const fresh = await evaluateRun(runId, { cwd, gate: "verify-gate", now: "2026-06-16T00:00:00.00004Z" });
+  assert.equal(fresh.outcomes[0].status, "pass");
+  const stale = await evaluateRun(runId, { cwd, gate: "verify-gate", now: "2026-06-16T00:00:00.0001Z" });
+  assert.equal(stale.outcomes[0].status, "route-back", "the canonical ancestor re-check must consume the same exact reconciliation as direct evaluation");
+  assert.ok(stale.freshness_transitions.some((transition) => transition.claimId === "claim.approval" && transition.to === "stale"));
+  assert.equal((await loadRun(runId, cwd)).state.current_step, "prepare");
 });
 
 test("explicit evaluation of a pending downstream revisit fails closed before the run re-enters it", async () => {

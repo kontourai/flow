@@ -11,7 +11,7 @@ The artifacts here are authored fixtures in the neutral shape Flow consumes. Sur
 - `review-round-2-trusted.trust.json` — round 2: the review passes after regeneration; attached with `--supersede` to replace round 1. It is attached twice in this walkthrough — see [Why round 2 is attached twice](#why-round-2-is-attached-twice) below.
 - `resolution.trust.json` — the trusted `adversarial.resolution` claim for the resolve gate.
 
-Their claim/evidence timestamps are set comfortably in the future (`2030-01-01`) so the walkthrough keeps working no matter when you run it — see the currency rule linked below.
+The checked-in artifacts use historical fixture timestamps (`2025-01-01`). Flow never treats future-dated claims, events, or evidence as authorization facts, so examples must not use future dates to stay superficially fresh. After a route-back, attach newly observed producer evidence for the current visit; the CLI completion test rewrites the resolution fixture to its runtime-current timestamp to demonstrate that rule.
 
 ## Run it
 
@@ -71,14 +71,17 @@ next action: return to adversarial-review and replace failing evidence attempt 1
 
 This second route-back is expected — see [Why round 2 is attached twice](#why-round-2-is-attached-twice). It marks the run's re-entry into `adversarial-review`; it draws from a separate `missing_evidence` route (its own attempt budget, independent of `completeness_defect`'s) and only fires once per re-entry.
 
-Re-attach both claims the gate needs now that the step has been re-entered — producer-output for the first time in this walkthrough, and round 2 again (superseding the first round-2 attachment) so its attachment timestamp is current for this visit:
+Re-attach both claims with *newly observed* artifacts now that the step has been re-entered. The historical fixtures above intentionally demonstrate the initial route-back; they are not current enough to satisfy a revisited gate. Run the producer and reviewer again (or have Survey produce the next-round artifacts), then set these paths to those new bundles:
 
 ```sh
-flow attach-evidence adv-204 --gate adversarial-review-gate \
-  --file "$S/producer-output.trust.json" --kind trust.bundle --cwd "$DEMO"
+CURRENT_PRODUCER=/absolute/path/to/producer-output-current.trust.json
+CURRENT_ROUND_2=/absolute/path/to/review-round-2-current.trust.json
 
 flow attach-evidence adv-204 --gate adversarial-review-gate \
-  --file "$S/review-round-2-trusted.trust.json" --kind trust.bundle \
+  --file "$CURRENT_PRODUCER" --kind trust.bundle --cwd "$DEMO"
+
+flow attach-evidence adv-204 --gate adversarial-review-gate \
+  --file "$CURRENT_ROUND_2" --kind trust.bundle \
   --supersede <first-round-2-evidence-id> --cwd "$DEMO"
 
 flow evaluate adv-204 --gate adversarial-review-gate --cwd "$DEMO"
@@ -97,11 +100,13 @@ pass adversarial-review-gate: The producer output under adversarial review is av
 current step: resolve
 ```
 
-The superseded entries stay in the manifest for audit — reports still show round 1 and the first round-2 attachment happened — but only the current attachments drive the gate. Finish the run:
+The superseded entries stay in the manifest for audit — reports still show round 1 and the first round-2 attachment happened — but only the current attachments drive the gate. Finish the run with a newly observed resolution artifact too:
 
 ```sh
+CURRENT_RESOLUTION=/absolute/path/to/resolution-current.trust.json
+
 flow attach-evidence adv-204 --gate resolve-gate \
-  --file "$S/resolution.trust.json" --kind trust.bundle --cwd "$DEMO"
+  --file "$CURRENT_RESOLUTION" --kind trust.bundle --cwd "$DEMO"
 
 flow evaluate adv-204 --cwd "$DEMO"
 ```

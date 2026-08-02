@@ -4,13 +4,14 @@ import { defaultFlowConfig } from "../config/flow-config.js";
 import type { FlowEvidenceEntry, MutableRecord } from "../contracts/flow-types.js";
 import { findGate } from "../definition/flow-definition.js";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
-import { applyEvaluation, evaluateGateWithReducerDependencies } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGateWithReducerDependencies, reconcileSurfaceBundleReport } from "../gates/flow-gates.js";
+import { surfaceDerivationWithinBudget } from "../gates/surface-derivation-budget.js";
 import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
 import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.5";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.7";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -57,22 +58,30 @@ export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerD
  */
 function resolveSupportedReducerDependencies(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerDependencies {
   const supported = FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES;
-  const hachure = dependencies?.hachure;
-  const surface = dependencies?.surface;
-  const snapshot = {
-    hachure: {
-      package: hachure?.package,
-      version: hachure?.version,
-      validate: hachure?.validate
-    },
-    surface: {
-      package: surface?.package,
-      version: surface?.version,
-      validate: surface?.validate,
-      buildReport: surface?.buildReport,
-      checkAuthorityActive: surface?.checkAuthorityActive
-    }
+  let snapshot: {
+    hachure: { package: unknown; version: unknown; validate: unknown };
+    surface: { package: unknown; version: unknown; validate: unknown; buildReport: unknown; checkAuthorityActive: unknown };
   };
+  try {
+    const hachure = dependencies?.hachure;
+    const surface = dependencies?.surface;
+    snapshot = {
+      hachure: {
+        package: hachure?.package,
+        version: hachure?.version,
+        validate: hachure?.validate
+      },
+      surface: {
+        package: surface?.package,
+        version: surface?.version,
+        validate: surface?.validate,
+        buildReport: surface?.buildReport,
+        checkAuthorityActive: surface?.checkAuthorityActive
+      }
+    };
+  } catch {
+    throw new Error("unsupported trust attachment reducer dependency adapter: use FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES");
+  }
   if (
     snapshot.hachure.package !== supported.hachure.package
     || snapshot.hachure.version !== supported.hachure.version
@@ -200,7 +209,17 @@ export function normalizeTrustAttachmentBundle(bundle: unknown, now: string, dep
 
 function normalizeTrustAttachmentBundleWithDependencies(bundle: unknown, now: string, dependencies: TrustAttachmentReducerDependencies): { bundle: MutableRecord; bundle_report: MutableRecord } {
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("trust bundle must be a JSON object");
-  const validationView = surfaceTimestampValidationView(bundle);
+  // Snapshot once before every preflight/validation/fold. This prevents a
+  // hostile accessor or Proxy from showing a small input to the cheap budget
+  // then a different, oversized input to Surface.
+  let snapshot: MutableRecord;
+  try {
+    snapshot = structuredClone(bundle) as MutableRecord;
+  } catch (error) {
+    throw new Error("trust bundle cannot be snapshotted");
+  }
+  if (!surfaceDerivationWithinBudget(snapshot)) throw new Error("trust bundle exceeds Flow Surface derivation budget");
+  const validationView = surfaceTimestampValidationView(snapshot);
   const schemaResult = dependencies.hachure.validate(validationView);
   if (!schemaResult.valid) {
     throw new Error(`trust bundle does not conform to Hachure schema: ${schemaResult.errors.slice(0, 3).join("; ")}`);
@@ -211,9 +230,14 @@ function normalizeTrustAttachmentBundleWithDependencies(bundle: unknown, now: st
   } catch (error) {
     throw new Error(`trust bundle validation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+  if (!surfaceDerivationWithinBudget(validated)) throw new Error("trust bundle exceeds Flow Surface derivation budget");
   if (parseRfc3339Timestamp(now) === null) throw new Error("now must be a valid RFC3339 date-time");
   const evaluationTime = new Date(now);
-  return { bundle: structuredClone(bundle) as MutableRecord, bundle_report: dependencies.surface.buildReport(validated, { now: evaluationTime }) };
+  const surfaceReport = dependencies.surface.buildReport(validated, { now: evaluationTime });
+  return {
+    bundle: snapshot,
+    bundle_report: reconcileSurfaceBundleReport(validated, surfaceReport, now).report as MutableRecord
+  };
 }
 
 function attachmentMetadata(attachment: MutableRecord): MutableRecord {
@@ -241,14 +265,40 @@ function attachmentMetadata(attachment: MutableRecord): MutableRecord {
  * caller-supplied. The returned write set is descriptive; callers own I/O.
  */
 export function reduceTrustAttachment(input: TrustAttachmentReducerInput): TrustAttachmentReducerResult {
-  const { run, attachment } = input;
-  const dependencies = resolveSupportedReducerDependencies(input.dependencies);
-  const evaluationMode = input.evaluation_mode ?? "evaluate";
+  // Read caller-controlled request fields exactly once, then work only from
+  // plain snapshots. This reducer crosses validation, report derivation, gate
+  // evaluation, and transition persistence, so an access-varying getter must
+  // not choose a different instant or payload for each phase.
+  let operationNow: string;
+  let evaluationMode: TrustAttachmentEvaluationMode;
+  let rawRun: MutableRecord;
+  let rawAttachment: TrustAttachmentReducerInput["attachment"];
+  let rawBundle: unknown;
+  let rawDependencies: TrustAttachmentReducerDependencies;
+  try {
+    operationNow = input.now;
+    evaluationMode = input.evaluation_mode ?? "evaluate";
+    rawRun = input.run;
+    rawAttachment = input.attachment;
+    rawBundle = input.bundle;
+    rawDependencies = input.dependencies;
+  } catch (error) {
+    throw new Error("trust attachment request cannot be snapshotted");
+  }
+  let run: MutableRecord;
+  let attachment: MutableRecord & TrustAttachmentReducerInput["attachment"];
+  try {
+    run = structuredClone(rawRun) as MutableRecord;
+    attachment = structuredClone(rawAttachment) as MutableRecord & TrustAttachmentReducerInput["attachment"];
+  } catch (error) {
+    throw new Error("trust attachment request cannot be snapshotted");
+  }
+  const dependencies = resolveSupportedReducerDependencies(rawDependencies);
   if (!["evaluate", "attach-only"].includes(evaluationMode)) throw new Error(`unsupported trust attachment evaluation mode: ${String(evaluationMode)}`);
   if (!findGate(run.definition, attachment.gate_id)) throw new Error(`unknown gate: ${attachment.gate_id}`);
-  if (parseRfc3339Timestamp(input.now) === null) throw new Error("now must be a valid RFC3339 date-time");
+  if (parseRfc3339Timestamp(operationNow) === null) throw new Error("now must be a valid RFC3339 date-time");
 
-  const normalized = normalizeTrustAttachmentBundleWithDependencies(input.bundle, input.now, dependencies);
+  const normalized = normalizeTrustAttachmentBundleWithDependencies(rawBundle, operationNow, dependencies);
   const evidence = attachmentMetadata(attachment) as FlowEvidenceEntry;
   evidence.bundle = normalized.bundle;
   evidence.bundle_report = normalized.bundle_report;
@@ -263,11 +313,11 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
       next_manifest,
       attachment.gate_id,
       run.config ?? defaultFlowConfig(),
-      input.now,
+      operationNow,
       dependencies.surface
     )
     : null;
-  if (evaluation) applyEvaluation(run.definition, next_state, evaluation, input.now);
+  if (evaluation) applyEvaluation(run.definition, next_state, evaluation, operationNow);
   const report = {
     json: reportJson(run.definition, next_state, next_manifest),
     markdown: renderMarkdownReport(run.definition, next_state, next_manifest)

@@ -41,7 +41,8 @@ import {
   invalidateDescendants,
   validateDefinition
 } from "../definition/flow-definition.js";
-import { applyEvaluation, evaluateGate, expectationsForGate, mergeGateOutcome } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGate, expectationsForGate, mergeGateOutcome, reconcileSurfaceBundleReport } from "../gates/flow-gates.js";
+import { surfaceDerivationWithinBudget } from "../gates/surface-derivation-budget.js";
 import {
   buildDurableStepClaim,
   claimableMultiCursorSteps,
@@ -2322,7 +2323,7 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
     assertPausedContinuation(run, request);
     const prepared = await prepareEvidenceAttachment(run, request.evidence, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now, FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
     const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
-    const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.surfaceNow), run.config));
+    const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };
     const { nextState, event } = resumedContinuationState(run.state, request);
     if (request.resumeOnPass) validateRunStateConsistency(run.startDefinition, nextState, { runId });
@@ -2353,24 +2354,63 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
  * statuses every time, so this is a no-op for legacy bundles beyond appending
  * an identical inquiry record.
  */
-export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[] {
+export function reDeriveBundleReports(manifest: any, now: Date | string): MutableRecord[] {
+  const exactNow = now instanceof Date ? now.toISOString() : now;
+  if (parseRfc3339Timestamp(exactNow) === null) throw new Error("flow.rederive.now.invalid: now must be an RFC3339 date-time");
+  const surfaceNow = now instanceof Date ? new Date(now.getTime()) : new Date(now);
+  if (!Number.isFinite(surfaceNow.getTime())) throw new Error("flow.rederive.now.invalid: now must be an RFC3339 date-time");
   const transitions: MutableRecord[] = [];
   for (const entry of manifest.evidence ?? []) {
     if (entry.superseded_by) continue;
     if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") continue;
-    if (!entry.bundle) continue;
+    const rawBundle = entry.bundle;
+    if (!rawBundle) continue;
+    let snapshot: any;
+    try {
+      snapshot = structuredClone(rawBundle);
+    } catch {
+      entry.bundle_report = null;
+      continue;
+    }
+    if (!surfaceDerivationWithinBudget(snapshot)) {
+      entry.bundle_report = null;
+      continue; // reject an oversized raw attachment before schema validation
+    }
     let validated: any;
     try {
-      validated = validateTrustBundle(surfaceTimestampValidationView(entry.bundle));
+      validated = validateTrustBundle(surfaceTimestampValidationView(snapshot));
     } catch {
       entry.bundle_report = null;
       continue; // leave invalid bundles for the gate diagnostics to report
     }
+    if (!surfaceDerivationWithinBudget(validated)) {
+      entry.bundle_report = null;
+      continue; // avoid an unbounded Surface fold on an adversarial attachment
+    }
     const priorRecords: any[] = Array.isArray(entry.inquiry_records) ? entry.inquiry_records : [];
     const since = priorRecords.length > 0 ? priorRecords[priorRecords.length - 1] : undefined;
+    const checkpointAsOf = since && parseRfc3339Timestamp(since.asOf);
+    const timestamps = [
+      ...(validated.claims ?? []).flatMap((claim: any) => [claim.createdAt, claim.updatedAt]),
+      ...(validated.events ?? []).flatMap((event: any) => [event.createdAt, event.verifiedAt]),
+      ...(validated.evidence ?? []).map((evidence: any) => evidence.observedAt),
+      ...(validated.authorityTrace ?? []).map((trace: any) => trace.observedAt)
+    ];
+    // A prior exact fail-closed report may have seen facts that had not yet
+    // occurred. Surface checkpoints only replay event tails, so reuse would
+    // preserve that transient status forever. Once time has crossed any such
+    // fact, force one full public Surface fold while retaining the truthful
+    // exact checkpoint in the immutable inquiry series.
+    const requiresFullRefold = checkpointAsOf
+      && timestamps.some((value) => {
+        const timestamp = parseRfc3339Timestamp(value);
+        return timestamp !== null && compareRfc3339Timestamps(timestamp, checkpointAsOf) > 0;
+      });
     let liveReport: any;
     try {
-      liveReport = buildTrustReport(validated, since ? { now, since } : { now });
+      const surfaceReport = buildTrustReport(validated, since && !requiresFullRefold ? { now: surfaceNow, since } : { now: surfaceNow });
+      const reconciled = reconcileSurfaceBundleReport(validated, surfaceReport, exactNow);
+      liveReport = reconciled.report;
     } catch {
       continue;
     }
@@ -2561,7 +2601,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   // Surface APIs accept Date; Flow retains `evaluationInstant` for every
   // chronology decision and persisted transition.
   const now = new Date(evaluationInstant);
-  const freshnessTransitions = reDeriveBundleReports(run.manifest, now);
+  const freshnessTransitions = reDeriveBundleReports(run.manifest, evaluationInstant);
   const outcomes: GateOutcome[] = [];
 
   // A passed ancestor may become stale after the cursor has advanced. Queue

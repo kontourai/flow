@@ -8,6 +8,7 @@ import {
   FLOW_SCHEMA_VERSION,
   FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
   reduceTrustAttachment,
+  trustAttachmentReducerIdentity,
   startRun,
   attachEvidence
 } from "../../dist/index.js";
@@ -85,7 +86,7 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.5");
+  assert.equal(result.identity.version, "1.3.7");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   for (const integrity of [
@@ -194,6 +195,80 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
       /now must be a valid RFC3339 date-time/
     );
   }
+});
+
+test("trust attachment reducer persists the exact fail-closed report for future assumed facts", () => {
+  const future = bundle({ id: "claim.future-assumed" });
+  const futureAt = "2026-07-19T16:00:00.0001Z";
+  future.claims[0].createdAt = futureAt;
+  future.claims[0].updatedAt = futureAt;
+  future.events[0].status = "assumed";
+  future.events[0].createdAt = futureAt;
+  delete future.events[0].verifiedAt;
+  const result = reduceTrustAttachment({
+    run: runInput(), bundle: future, attachment: attachment("ev.future-assumed"), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(result.evidence.bundle_report.claims[0].status, "unknown");
+  assert.equal(result.evaluation.status, "route-back");
+});
+
+test("trust attachment reducer snapshots its operation instant before report, gate, and transition work", () => {
+  let reads = 0;
+  const request = {
+    run: runInput(),
+    bundle: bundle({ expiresAt: "2026-07-19T16:00:00.0005Z" }),
+    attachment: attachment("ev.now-getter"),
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
+    get now() {
+      reads += 1;
+      return reads === 1 ? "2026-07-19T16:00:00.0004Z" : "2026-07-19T16:00:00.0006Z";
+    }
+  };
+  const result = reduceTrustAttachment(request);
+  assert.equal(reads, 1, "caller-controlled now is read once for the entire reducer operation");
+  assert.equal(result.evidence.bundle_report.generatedAt, "2026-07-19T16:00:00.0004Z");
+  assert.equal(result.evaluation.status, "pass");
+  assert.equal(result.next_state.updated_at, "2026-07-19T16:00:00.0004Z");
+});
+
+test("trust attachment reducer snapshot errors do not expose hostile getter detail", () => {
+  const hostileBundle = {};
+  Object.defineProperty(hostileBundle, "claims", {
+    enumerable: true,
+    get() {
+      throw new Error("secret reducer filesystem path");
+    }
+  });
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: runInput(), bundle: hostileBundle, attachment: attachment("ev.hostile-snapshot"), now: NOW,
+      dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+    }),
+    (error) => error?.message === "trust bundle cannot be snapshotted"
+      && !error.message.includes("secret")
+      && error.cause === undefined
+  );
+});
+
+test("trust attachment reducer dependency snapshot failures are stable for both public entrypoints", () => {
+  const hostileDependencies = new Proxy(FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES, {
+    get(target, property, receiver) {
+      if (property === "hachure") throw new Error("secret dependency path");
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const assertSanitized = (error) => error?.message === "unsupported trust attachment reducer dependency adapter: use FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES"
+    && !error.message.includes("secret")
+    && error.cause === undefined;
+  assert.throws(() => trustAttachmentReducerIdentity(hostileDependencies), assertSanitized);
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: runInput(), bundle: bundle(), attachment: attachment("ev.hostile-dependencies"), now: NOW,
+      dependencies: hostileDependencies
+    }),
+    assertSanitized
+  );
 });
 
 test("trust attachment reducer enforces validated producer identity and gives opaque authority metadata zero trust weight", () => {
