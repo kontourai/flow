@@ -10,7 +10,7 @@ import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.3";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.4";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -49,20 +49,46 @@ export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerD
   })
 });
 
-function assertSupportedReducerDependencies(dependencies: TrustAttachmentReducerDependencies) {
+/**
+ * Reads an adapter once and returns the exact, immutable helper set the reducer
+ * will execute. This is deliberately a snapshot rather than a validation pass:
+ * an accessor or Proxy must not be able to present approved helpers for identity
+ * validation and different helpers for bundle normalization or gate evaluation.
+ */
+function resolveSupportedReducerDependencies(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerDependencies {
   const supported = FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES;
+  const hachure = dependencies?.hachure;
+  const surface = dependencies?.surface;
+  const snapshot = {
+    hachure: {
+      package: hachure?.package,
+      version: hachure?.version,
+      validate: hachure?.validate
+    },
+    surface: {
+      package: surface?.package,
+      version: surface?.version,
+      validate: surface?.validate,
+      buildReport: surface?.buildReport,
+      checkAuthorityActive: surface?.checkAuthorityActive
+    }
+  };
   if (
-    dependencies?.hachure?.package !== supported.hachure.package
-    || dependencies.hachure.version !== supported.hachure.version
-    || dependencies.hachure.validate !== supported.hachure.validate
-    || dependencies?.surface?.package !== supported.surface.package
-    || dependencies.surface.version !== supported.surface.version
-    || dependencies.surface.validate !== supported.surface.validate
-    || dependencies.surface.buildReport !== supported.surface.buildReport
-    || dependencies.surface.checkAuthorityActive !== supported.surface.checkAuthorityActive
+    snapshot.hachure.package !== supported.hachure.package
+    || snapshot.hachure.version !== supported.hachure.version
+    || snapshot.hachure.validate !== supported.hachure.validate
+    || snapshot.surface.package !== supported.surface.package
+    || snapshot.surface.version !== supported.surface.version
+    || snapshot.surface.validate !== supported.surface.validate
+    || snapshot.surface.buildReport !== supported.surface.buildReport
+    || snapshot.surface.checkAuthorityActive !== supported.surface.checkAuthorityActive
   ) {
     throw new Error("unsupported trust attachment reducer dependency adapter: use FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES");
   }
+  return Object.freeze({
+    hachure: Object.freeze(snapshot.hachure as TrustAttachmentReducerDependencies["hachure"]),
+    surface: Object.freeze(snapshot.surface as TrustAttachmentReducerDependencies["surface"])
+  });
 }
 
 export interface TrustAttachmentReducerIdentity {
@@ -148,7 +174,10 @@ function canonicalJson(value: unknown): string {
  * or ambient process state.
  */
 export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerIdentity {
-  assertSupportedReducerDependencies(dependencies);
+  return trustAttachmentReducerIdentityFor(resolveSupportedReducerDependencies(dependencies));
+}
+
+function trustAttachmentReducerIdentityFor(dependencies: TrustAttachmentReducerDependencies): TrustAttachmentReducerIdentity {
   const dependency_versions = { hachure: dependencies.hachure.version, surface: dependencies.surface.version };
   const helperIntegrity = (helper: Function) => `sha256:${createHash("sha256").update(Function.prototype.toString.call(helper)).digest("hex")}`;
   const dependency_integrities = {
@@ -166,7 +195,10 @@ export function trustAttachmentReducerIdentity(dependencies: TrustAttachmentRedu
 }
 
 export function normalizeTrustAttachmentBundle(bundle: unknown, now: string, dependencies: TrustAttachmentReducerDependencies): { bundle: MutableRecord; bundle_report: MutableRecord } {
-  assertSupportedReducerDependencies(dependencies);
+  return normalizeTrustAttachmentBundleWithDependencies(bundle, now, resolveSupportedReducerDependencies(dependencies));
+}
+
+function normalizeTrustAttachmentBundleWithDependencies(bundle: unknown, now: string, dependencies: TrustAttachmentReducerDependencies): { bundle: MutableRecord; bundle_report: MutableRecord } {
   if (!bundle || typeof bundle !== "object" || Array.isArray(bundle)) throw new Error("trust bundle must be a JSON object");
   const validationView = surfaceTimestampValidationView(bundle);
   const schemaResult = dependencies.hachure.validate(validationView);
@@ -209,14 +241,15 @@ function attachmentMetadata(attachment: MutableRecord): MutableRecord {
  * caller-supplied. The returned write set is descriptive; callers own I/O.
  */
 export function reduceTrustAttachment(input: TrustAttachmentReducerInput): TrustAttachmentReducerResult {
-  const { run, attachment, dependencies } = input;
+  const { run, attachment } = input;
+  const dependencies = resolveSupportedReducerDependencies(input.dependencies);
   const evaluationMode = input.evaluation_mode ?? "evaluate";
   if (!["evaluate", "attach-only"].includes(evaluationMode)) throw new Error(`unsupported trust attachment evaluation mode: ${String(evaluationMode)}`);
   if (!findGate(run.definition, attachment.gate_id)) throw new Error(`unknown gate: ${attachment.gate_id}`);
   const now = new Date(input.now);
   if (!Number.isFinite(now.getTime())) throw new Error("now must be a valid RFC3339 date-time");
 
-  const normalized = normalizeTrustAttachmentBundle(input.bundle, input.now, dependencies);
+  const normalized = normalizeTrustAttachmentBundleWithDependencies(input.bundle, input.now, dependencies);
   const evidence = attachmentMetadata(attachment) as FlowEvidenceEntry;
   evidence.bundle = normalized.bundle;
   evidence.bundle_report = normalized.bundle_report;
@@ -233,7 +266,7 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
     markdown: renderMarkdownReport(run.definition, next_state, next_manifest)
   };
   return {
-    identity: trustAttachmentReducerIdentity(dependencies),
+    identity: trustAttachmentReducerIdentityFor(dependencies),
     evaluation_mode: evaluationMode,
     evidence,
     next_manifest,

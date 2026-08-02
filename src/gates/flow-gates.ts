@@ -319,6 +319,13 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
         failures.add("revoked");
         continue;
       }
+      // Flow owns the exact RFC3339 chronology above, including fractional
+      // seconds beyond JavaScript Date precision. Surface still corroborates
+      // the trace per authority candidate, but receives no validity fields it
+      // could compare lexically and thereby override Flow's precise decision.
+      delete normalizedTrace.validFrom;
+      delete normalizedTrace.validUntil;
+      delete normalizedTrace.revokedAt;
       const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow);
       if (active === "active") return null;
       failures.add(active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace");

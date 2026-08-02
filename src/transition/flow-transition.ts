@@ -12,6 +12,7 @@ import {
 } from "../definition/flow-definition.js";
 import { evaluateGate } from "../gates/flow-gates.js";
 import { lifecycleEligibilityDiagnostic } from "../runtime/flow-run-lifecycle.js";
+import { parseRfc3339Timestamp } from "../shared/rfc3339.js";
 
 function transitionDiagnostic(code: string, path: string, message: string, related: MutableRecord = {}, severity = "error") {
   return {
@@ -127,9 +128,14 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
   const config = request.config ?? defaultFlowConfig();
   const manifest = manifestFromTransitionRequest(request);
   const transition = proposedTransitionFromRequest(request, currentState);
-  const evaluationNow = typeof request.now === "string" && Number.isFinite(Date.parse(request.now))
-    ? new Date(request.now)
-    : undefined;
+  let evaluationNow: Date | undefined;
+  if (request.now !== undefined) {
+    if (typeof request.now !== "string" || parseRfc3339Timestamp(request.now) === null) {
+      diagnostics.push(transitionDiagnostic("request.now.invalid", "$.now", "now must be an RFC3339 date-time"));
+    } else {
+      evaluationNow = new Date(request.now);
+    }
+  }
 
   const definitionResult = validateDefinitionWithDiagnostics(definition);
   diagnostics.push(...definitionResult.diagnostics);

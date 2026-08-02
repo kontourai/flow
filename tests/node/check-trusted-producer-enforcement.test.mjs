@@ -169,6 +169,19 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
     "an inactive qualifying trace must not mask a later active qualifying trace"
   );
 
+  for (const [label, trace, expectedStatus, expectedAuthority] of [
+    ["valid-from-100-microseconds-future", authorityTrace({ validFrom: "2026-06-16T00:00:00.0001Z" }), "route-back", "not_yet_valid"],
+    ["valid-from-100-microseconds-past", authorityTrace({ validFrom: "2026-06-15T23:59:59.9999Z" }), "pass", undefined],
+    ["valid-until-100-microseconds-future", authorityTrace({ validUntil: "2026-06-16T00:00:00.0001Z" }), "pass", undefined],
+    ["valid-until-100-microseconds-past", authorityTrace({ validUntil: "2026-06-15T23:59:59.9999Z" }), "route-back", "expired"],
+    ["revocation-100-microseconds-future", authorityTrace({ revokedAt: "2026-06-16T00:00:00.0001Z" }), "pass", undefined],
+    ["revocation-100-microseconds-past", authorityTrace({ revokedAt: "2026-06-15T23:59:59.9999Z" }), "route-back", "revoked"]
+  ]) {
+    const outcome = flow.evaluateGate(definition, structuredClone(state), await authorityFixture(trace), "verify-gate", config, now);
+    assert.equal(outcome.status, expectedStatus, label);
+    if (expectedAuthority) assert.deepEqual(claimDiagnostic(outcome)?.authority, { code: expectedAuthority }, label);
+  }
+
   const mismatchedEventAuthority = await authorityFixture(authorityTrace({ claimIds: undefined, evidenceIds: ["evidence.quality.tests.output"] }));
   mismatchedEventAuthority.evidence[0].bundle.events[0].authorityRef = "authority:other";
   mismatchedEventAuthority.evidence[0].bundle.events[0].actor = "ci/other";

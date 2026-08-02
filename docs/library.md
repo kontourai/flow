@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.3.3` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.3.4` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -297,8 +297,9 @@ route-back accounting unchanged; its write set therefore omits `state.json`.
 The reducer exposes one trusted adapter for the locked `hachure@0.15.0` schema
 validator and `@kontourai/surface@2.14.0` validator, report builder, and
 authority checker: `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`. The reducer
-requires those exact helper references and rejects substituted closures before
-normalization or evaluation. Pin the published package
+requires those exact helper references, snapshots them once, and rejects
+substituted or access-varying adapters before they can make identity and
+execution disagree. Pin the published package
 integrity plus `trustAttachmentReducerIdentity()` when a privileged coordinator
 needs a stable reducer contract. The identity publishes and binds SHA-256
 integrities for every supported helper together with the reducer API and
