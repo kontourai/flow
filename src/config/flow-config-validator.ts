@@ -103,8 +103,7 @@ export function snapshotFlowConfigInput(input: unknown): unknown {
       }
     }
     return result;
-  } catch (error) {
-    if (error instanceof ConfigInputInvalidError) throw error;
+  } catch {
     throw configInputInvalidError();
   }
 }

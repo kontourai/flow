@@ -861,6 +861,44 @@ test("config snapshot rejects Proxy ownKeys before enumeration and bounds aggreg
   );
 });
 
+test("config snapshot replaces replayed internal failures with a fresh public error", () => {
+  let initialFailure;
+  const cyclic = proposedConfigFixture();
+  cyclic.self = cyclic;
+  try {
+    previewFlowConfigMerge(localConfigFixture(), cyclic);
+  } catch (error) {
+    initialFailure = error;
+  }
+  assert.ok(initialFailure instanceof Error);
+
+  const privateMarker = "replayed-config-input-secret-2026";
+  const RecoveredConfigInputError = initialFailure.constructor;
+  const replayedFailure = new RecoveredConfigInputError();
+  replayedFailure.message = privateMarker;
+  replayedFailure.cause = { privateMarker };
+  const proposal = Object.defineProperty(proposedConfigFixture(), "trusted_producers", {
+    enumerable: true,
+    get() {
+      throw replayedFailure;
+    }
+  });
+  const local = localConfigFixture();
+  const localBefore = JSON.stringify(local);
+  let failure;
+  try {
+    previewFlowConfigMerge(local, proposal);
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.notEqual(failure, replayedFailure);
+  assert.equal(failure.message, "flow.config.input.invalid: config input must be a bounded acyclic JSON value");
+  assert.equal(failure.cause, undefined);
+  assert.doesNotMatch(String(failure), /replayed-config-input-secret-2026/);
+  assert.equal(JSON.stringify(local), localBefore, "replayed snapshot failures must not mutate source config");
+});
+
 test("config merge bounds accepted conflict aliases before copy, publisher invocation, or mutation", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-conflict-bounds-"));
   const configPath = path.join(cwd, ".flow", "config.json");
