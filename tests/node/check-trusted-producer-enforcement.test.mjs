@@ -105,12 +105,19 @@ test("producer policy rejects malformed config and treats explicitly empty lists
     );
   }
 
-  for (const mapping of [{ producers: [] }, { authority_refs: [] }, { producers: [], authority_refs: [] }]) {
+  for (const mapping of [
+    { producers: [] },
+    { authority_refs: [] },
+    { producers: [], authority_refs: [] },
+    { producers: [], authority_refs: ["authority:quality"] },
+    { producers: ["ci/trusted"], authority_refs: [] }
+  ]) {
     const outcome = flow.evaluateGate(definition, structuredClone(state), validManifest, "verify-gate", configFor({
       trusted_producers: { "quality.tests": mapping }
     }));
     assert.equal(outcome.status, "route-back");
     assert.equal(claimDiagnostic(outcome)?.reason, "untrusted_producer", JSON.stringify(mapping));
+    assert.deepEqual(claimDiagnostic(outcome)?.authority, { code: "deny_all" }, JSON.stringify(mapping));
   }
 });
 
@@ -182,6 +189,17 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
     if (expectedAuthority) assert.deepEqual(claimDiagnostic(outcome)?.authority, { code: expectedAuthority }, label);
   }
 
+  const fractionallyExpired = flow.evaluateGate(
+    definition,
+    structuredClone(state),
+    await authorityFixture(authorityTrace({ validUntil: "2026-06-16T00:00:00.00005Z" })),
+    "verify-gate",
+    config,
+    "2026-06-16T00:00:00.0001Z"
+  );
+  assert.equal(fractionallyExpired.status, "route-back", "Flow must retain fractions beyond Date precision");
+  assert.deepEqual(claimDiagnostic(fractionallyExpired)?.authority, { code: "expired" });
+
   const mismatchedEventAuthority = await authorityFixture(authorityTrace({ claimIds: undefined, evidenceIds: ["evidence.quality.tests.output"] }));
   mismatchedEventAuthority.evidence[0].bundle.events[0].authorityRef = "authority:other";
   mismatchedEventAuthority.evidence[0].bundle.events[0].actor = "ci/other";
@@ -194,6 +212,25 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
   const forgedCacheOutcome = flow.evaluateGate(definition, structuredClone(state), forgedCache, "verify-gate", config, now);
   assert.equal(forgedCacheOutcome.status, "route-back", "cached bundle_report display data must never authorize a gate");
   assert.equal(claimDiagnostic(forgedCacheOutcome)?.reason, "disputed");
+
+  const injectedReportHelper = {
+    validate: () => forgedCache.evidence[0].bundle,
+    buildReport: () => ({ claims: [{
+      id: "claim.quality.tests.verify", claimType: "quality.tests", subjectType: "flow-step", subjectId: "builder.verify", status: "verified"
+    }] }),
+    checkAuthorityActive: () => "active"
+  };
+  const injectedReportOutcome = flow.evaluateGate(
+    definition,
+    structuredClone(state),
+    forgedCache,
+    "verify-gate",
+    config,
+    now,
+    injectedReportHelper
+  );
+  assert.equal(injectedReportOutcome.status, "route-back", "public gate evaluation must ignore injected trust helpers");
+  assert.equal(claimDiagnostic(injectedReportOutcome)?.reason, "disputed");
 
   const nextStep = definition.steps.find((step) => step.id === "verify").next;
   const transition = flow.validateRunTransition({
@@ -246,6 +283,10 @@ test("canonical filesystem evaluation uses the same rich authority path and pinn
   const evaluated = await flow.evaluateRun(started.runId, { cwd, gate: "verify-gate", now: "2026-06-16T00:00:00.000Z" });
   assert.equal(evaluated.outcomes.at(-1)?.status, "pass");
   assert.equal((await flow.loadRun(started.runId, cwd)).state.gate_outcomes.at(-1)?.status, "pass");
+  await assert.rejects(
+    () => flow.evaluateRun(started.runId, { cwd, gate: "verify-gate", now: "06/16/2026" }),
+    /flow\.evaluate\.now\.invalid: now must be an RFC3339 date-time/
+  );
 });
 
 test("an expectation-level pin cannot broaden a claim-type producer boundary", async () => {

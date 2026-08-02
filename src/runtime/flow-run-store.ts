@@ -2521,7 +2521,13 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   // gates read them, so a claim that has gone stale flips the gate outcome.
   // The existing route-back cascade (invalidateDescendants) then clears any
   // downstream stale passes for free.
-  const now = options.now ? new Date(options.now) : new Date();
+  if (typeof options.now !== "string" || parseRfc3339Timestamp(options.now) === null) {
+    throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
+  }
+  const evaluationInstant = options.now;
+  // Surface APIs accept Date; Flow retains `evaluationInstant` for every
+  // chronology decision and persisted transition.
+  const now = new Date(evaluationInstant);
   const freshnessTransitions = reDeriveBundleReports(run.manifest, now);
   const outcomes: GateOutcome[] = [];
 
@@ -2541,7 +2547,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!rechecks?.length) continue;
     const gate = findGate(run.definition, gateId);
     if (!gate || !descendantsOf(run.definition, gate.step).includes(run.state.current_step)) continue;
-    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, now);
+    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
@@ -2552,7 +2558,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     // a stage the run already passed, never a forward jump. `applyEvaluation`
     // re-checks the ancestry at write time.
     const validationState = ancestorRecheckState(run.definition, run.state, gate);
-    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
+    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, evaluationInstant);
     if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
@@ -2563,7 +2569,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
       run.state.current_step = gate.step;
       outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
     }
-    applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+    applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
     const stillPassed = new Set(
       (run.state.gate_outcomes ?? [])
         .filter((entry: any) => entry.status === "pass")
@@ -2577,19 +2583,19 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   if (!outcomes.length) {
     const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
     if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
-    if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], now.toISOString());
+    if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], evaluationInstant);
     for (const gate of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, now);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
       if (options.gate) assertOffCurrentOutcomeCannotAdvance(run.definition, run.state, gate, outcome);
       // No synthesised cursor: the jump guard in `validateRunTransition` sees
       // the run's real state and can fire for the case it exists to catch.
-      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, now.toISOString());
+      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, evaluationInstant);
       if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
         const first = transitionValidation.diagnostics[0];
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
       }
       outcome.transition_validation = transitionValidation;
-      applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+      applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -2600,10 +2606,10 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
 
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const now = options.now === undefined ? new Date() : new Date(options.now);
-  if (!Number.isFinite(now.getTime())) throw new Error("flow.evaluate.now.invalid: now must be a valid date-time");
+  const now = options.now === undefined ? new Date().toISOString() : options.now;
+  if (typeof now !== "string" || parseRfc3339Timestamp(now) === null) throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
   await preflightRunMutationLifecycle(runId, cwd, "evaluate");
-  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd, now: now.toISOString() }));
+  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd, now }));
 }
 
 async function acceptExceptionUnlocked(runId, options) {

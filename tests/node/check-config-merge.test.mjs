@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -230,6 +230,73 @@ test("config merge rejects a symlinked .flow project boundary without mutating i
     /flow\.run_location\.unsafe_directory/
   );
   assert.equal(await readFile(path.join(outside, "config.json"), "utf8"), original);
+});
+
+test("config merge binds publication and cleanup to the locked .flow directory identity", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-directory-identity-"));
+  const outside = await mkdtemp(path.join(tmpdir(), "flow-config-merge-directory-successor-"));
+  const displaced = path.join(cwd, ".flow-displaced");
+  const initial = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`;
+  const externalConfig = `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.external": { producers: ["external"] } }, gate_overrides: {} }, null, 2)}\n`;
+  await Promise.all([
+    mkdir(path.join(cwd, ".flow"), { recursive: true }),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
+      schema_version: FLOW_SCHEMA_VERSION,
+      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
+      gate_overrides: {}
+    }, null, 2)}\n`),
+    writeFile(path.join(outside, "config.json"), externalConfig),
+    writeFile(path.join(outside, "config.json.merge.lock"), "successor-lock\n")
+  ]);
+  await writeFile(path.join(cwd, ".flow", "config.json"), initial);
+
+  await assert.rejects(
+    () => applyFlowConfigMerge(cwd, "proposal.json", {
+      // This project already uses explicit fault-injection seams for
+      // deterministic filesystem-race coverage. Swap the pathname after the
+      // merge has read its proposal but before any config staging can begin.
+      faultInjection: async (stage) => {
+        if (stage !== "before_stage") return;
+        await rename(path.join(cwd, ".flow"), displaced);
+        await symlink(outside, path.join(cwd, ".flow"));
+      }
+    }),
+    /flow\.config\.merge\.directory\.changed/
+  );
+
+  assert.equal(await readFile(path.join(outside, "config.json"), "utf8"), externalConfig, "the successor target must never receive staged config bytes");
+  assert.equal(await readFile(path.join(outside, "config.json.merge.lock"), "utf8"), "successor-lock\n", "cleanup must not unlink a successor directory's lock");
+  assert.equal(await readFile(path.join(displaced, "config.json"), "utf8"), initial, "the original directory remains unchanged after rejection");
+  await assert.rejects(() => readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), /ENOENT/, "the stable project lock must be released after rejection");
+  await assert.rejects(() => readFile(path.join(displaced, "config.json.merge.lock"), "utf8"), /ENOENT/, "the displaced .flow directory must not retain a stale merge lock");
+});
+
+test("config merge cleanup does not unlink a replaced project-root lock", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-root-lock-"));
+  const heldLock = path.join(cwd, ".flow.config.merge.lock.displaced");
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} }, null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
+      schema_version: FLOW_SCHEMA_VERSION,
+      trusted_producers: { "quality.tests": { producers: ["ci/tests"] } },
+      gate_overrides: {}
+    }, null, 2)}\n`)
+  ]);
+
+  const result = await applyFlowConfigMerge(cwd, "proposal.json", {
+    faultInjection: async (stage) => {
+      if (stage !== "before_stage") return;
+      await rename(path.join(cwd, ".flow.config.merge.lock"), heldLock);
+      await writeFile(path.join(cwd, ".flow.config.merge.lock"), "successor-root-lock\n");
+    }
+  });
+
+  assert.equal(result.status, "applied");
+  assert.equal(await readFile(path.join(cwd, ".flow.config.merge.lock"), "utf8"), "successor-root-lock\n", "cleanup must not unlink a replacement root lock");
+  assert.match(await readFile(heldLock, "utf8"), /^\d+\n$/, "the displaced acquired lock remains distinct from the successor");
+  const config = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(config.trusted_producers["quality.tests"].producers, ["ci/tests"]);
 });
 
 test("config merge rejects malformed producer mappings before preview or publication", async () => {

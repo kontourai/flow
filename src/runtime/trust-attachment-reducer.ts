@@ -4,13 +4,13 @@ import { defaultFlowConfig } from "../config/flow-config.js";
 import type { FlowEvidenceEntry, MutableRecord } from "../contracts/flow-types.js";
 import { findGate } from "../definition/flow-definition.js";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
-import { applyEvaluation, evaluateGate } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGateWithReducerDependencies } from "../gates/flow-gates.js";
 import { reportJson, renderMarkdownReport } from "../reports/flow-reports.js";
-import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.4";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.5";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -211,8 +211,8 @@ function normalizeTrustAttachmentBundleWithDependencies(bundle: unknown, now: st
   } catch (error) {
     throw new Error(`trust bundle validation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+  if (parseRfc3339Timestamp(now) === null) throw new Error("now must be a valid RFC3339 date-time");
   const evaluationTime = new Date(now);
-  if (!Number.isFinite(evaluationTime.getTime())) throw new Error("now must be a valid RFC3339 date-time");
   return { bundle: structuredClone(bundle) as MutableRecord, bundle_report: dependencies.surface.buildReport(validated, { now: evaluationTime }) };
 }
 
@@ -246,8 +246,7 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
   const evaluationMode = input.evaluation_mode ?? "evaluate";
   if (!["evaluate", "attach-only"].includes(evaluationMode)) throw new Error(`unsupported trust attachment evaluation mode: ${String(evaluationMode)}`);
   if (!findGate(run.definition, attachment.gate_id)) throw new Error(`unknown gate: ${attachment.gate_id}`);
-  const now = new Date(input.now);
-  if (!Number.isFinite(now.getTime())) throw new Error("now must be a valid RFC3339 date-time");
+  if (parseRfc3339Timestamp(input.now) === null) throw new Error("now must be a valid RFC3339 date-time");
 
   const normalized = normalizeTrustAttachmentBundleWithDependencies(input.bundle, input.now, dependencies);
   const evidence = attachmentMetadata(attachment) as FlowEvidenceEntry;
@@ -258,7 +257,15 @@ export function reduceTrustAttachment(input: TrustAttachmentReducerInput): Trust
 
   const next_state = structuredClone(run.state) as MutableRecord;
   const evaluation = evaluationMode === "evaluate"
-    ? evaluateGate(run.definition, next_state, next_manifest, attachment.gate_id, run.config ?? defaultFlowConfig(), now, dependencies.surface)
+    ? evaluateGateWithReducerDependencies(
+      run.definition,
+      next_state,
+      next_manifest,
+      attachment.gate_id,
+      run.config ?? defaultFlowConfig(),
+      input.now,
+      dependencies.surface
+    )
     : null;
   if (evaluation) applyEvaluation(run.definition, next_state, evaluation, input.now);
   const report = {

@@ -85,7 +85,7 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.4");
+  assert.equal(result.identity.version, "1.3.5");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   for (const integrity of [
@@ -188,6 +188,12 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
     }),
     /unsupported trust attachment evaluation mode/
   );
+  for (const now of ["not-a-date", "06/16/2026"]) {
+    assert.throws(
+      () => reduceTrustAttachment({ run, bundle: bundle(), attachment: attachment(`ev.bad-now.${now}`), now, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES }),
+      /now must be a valid RFC3339 date-time/
+    );
+  }
 });
 
 test("trust attachment reducer enforces validated producer identity and gives opaque authority metadata zero trust weight", () => {
@@ -263,8 +269,15 @@ test("trust attachment reducer snapshots a hostile adapter before identity and e
     gate_overrides: {}
   };
   let checkAuthorityReads = 0;
+  let buildReportReads = 0;
   const flippingSurface = new Proxy({ ...FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES.surface }, {
     get(target, property, receiver) {
+      if (property === "buildReport") {
+        buildReportReads += 1;
+        return buildReportReads === 1
+          ? target.buildReport
+          : () => ({ claims: [] });
+      }
       if (property === "checkAuthorityActive") {
         checkAuthorityReads += 1;
         return checkAuthorityReads === 1
@@ -288,7 +301,8 @@ test("trust attachment reducer snapshots a hostile adapter before identity and e
   });
 
   assert.equal(result.evaluation.status, "pass");
-  assert.equal(checkAuthorityReads, 1, "the reducer must execute only its validated dependency snapshot");
+  assert.equal(buildReportReads, 1, "the reducer must execute the snapshotted report helper during gate evaluation");
+  assert.equal(checkAuthorityReads, 1, "the reducer must execute the snapshotted authority helper during gate evaluation");
 });
 
 test("trust attachment reducer matches the canonical attachEvidence manifest projection", async () => {

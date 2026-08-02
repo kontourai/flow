@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.3.4` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.3.5` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency

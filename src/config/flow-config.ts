@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { lstat, open, unlink } from "node:fs/promises";
+import { lstat, open, rename, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { ensureDirectoryPathWithoutSymlinks, flowConfigPath, readJson, stageRunArtifact, syncDirectory } from "../runtime/flow-files.js";
+import { ensureDirectoryPathWithoutSymlinks, flowConfigPath, readJson, syncDirectory } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { ConfigMergeReport, FlowConfig, MutableRecord } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
@@ -13,6 +14,130 @@ const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";
 const FLOW_PROJECT_CONFIG_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const UNSAFE_CONFIG_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
+type ConfigDirectoryIdentity = {
+  dev: number;
+  ino: number;
+};
+
+function configDirectoryChangedError() {
+  return new Error("flow.config.merge.directory.changed: the canonical .flow directory changed during project config merge");
+}
+
+function projectDirectoryChangedError() {
+  return new Error("flow.config.merge.project.changed: the project directory changed during project config merge");
+}
+
+function configPathInvalidError() {
+  return new Error("flow.config.merge.path.invalid: project config must be a real file");
+}
+
+async function captureConfigDirectoryIdentity(configDirectory: string): Promise<ConfigDirectoryIdentity> {
+  const entry = await lstat(configDirectory);
+  if (entry.isSymbolicLink() || !entry.isDirectory()) throw configDirectoryChangedError();
+  return { dev: entry.dev, ino: entry.ino };
+}
+
+async function assertConfigDirectoryIdentity(configDirectory: string, expected: ConfigDirectoryIdentity) {
+  let entry;
+  try {
+    entry = await lstat(configDirectory);
+  } catch {
+    throw configDirectoryChangedError();
+  }
+  if (entry.isSymbolicLink() || !entry.isDirectory() || entry.dev !== expected.dev || entry.ino !== expected.ino) {
+    throw configDirectoryChangedError();
+  }
+}
+
+async function captureProjectDirectoryIdentity(projectDirectory: string): Promise<ConfigDirectoryIdentity> {
+  const entry = await lstat(projectDirectory);
+  if (entry.isSymbolicLink() || !entry.isDirectory()) throw projectDirectoryChangedError();
+  return { dev: entry.dev, ino: entry.ino };
+}
+
+async function assertProjectDirectoryIdentity(projectDirectory: string, expected: ConfigDirectoryIdentity) {
+  let entry;
+  try {
+    entry = await lstat(projectDirectory);
+  } catch {
+    throw projectDirectoryChangedError();
+  }
+  if (entry.isSymbolicLink() || !entry.isDirectory() || entry.dev !== expected.dev || entry.ino !== expected.ino) {
+    throw projectDirectoryChangedError();
+  }
+}
+
+async function inspectBoundConfigFile(configPath: string, configDirectory: string, directoryIdentity: ConfigDirectoryIdentity) {
+  await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+  try {
+    const entry = await lstat(configPath);
+    if (entry.isSymbolicLink() || !entry.isFile()) throw configPathInvalidError();
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    return entry;
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") throw error;
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    return undefined;
+  }
+}
+
+async function loadBoundFlowConfig(configPath: string, configDirectory: string, directoryIdentity: ConfigDirectoryIdentity) {
+  const entry = await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
+  if (!entry) return defaultFlowConfig();
+  const config = await readJson(configPath);
+  await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+  return validateFlatFlowConfig({ ...defaultFlowConfig(), ...normalizeFlowConfig(config) }) as FlowConfig;
+}
+
+async function stageBoundConfigArtifact(
+  configPath: string,
+  contents: string,
+  configDirectory: string,
+  directoryIdentity: ConfigDirectoryIdentity
+) {
+  const existing = await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
+  const temporary = path.join(configDirectory, `.${path.basename(configPath)}.${randomUUID()}.tmp`);
+  let handle;
+  try {
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    await handle.writeFile(contents, "utf8");
+    if (existing && (existing.mode & 0o7777) !== 0o600) await handle.chmod(existing.mode & 0o7777);
+    await handle.sync();
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity)
+      .then(() => rm(temporary, { force: true }))
+      .catch(() => undefined);
+    throw error;
+  }
+  await handle.close();
+  return {
+    commit: async () => {
+      await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+      await inspectBoundConfigFile(configPath, configDirectory, directoryIdentity);
+      await rename(temporary, configPath);
+      await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    },
+    discard: async () => {
+      await assertConfigDirectoryIdentity(configDirectory, directoryIdentity)
+        .then(() => rm(temporary, { force: true }))
+        .catch(() => undefined);
+    }
+  };
+}
+
+async function invokeConfigMergeFault(options: MutableRecord, stage: string) {
+  const hook = options.faultInjection;
+  if (hook === undefined) return;
+  if (typeof hook !== "function") {
+    throw new Error("flow.config.merge.request.invalid: faultInjection must be a function");
+  }
+  await hook(stage);
+}
 
 export function defaultFlowConfig(): FlowConfig {
   return {
@@ -283,42 +408,46 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
   const cwd = typeof proposalPathOrOptions === "string" ? cwdOrProposalPath : (maybeOptions.cwd ?? process.cwd());
   const proposalPath = typeof proposalPathOrOptions === "string" ? proposalPathOrOptions : cwdOrProposalPath;
   const options = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
+  const projectDirectory = path.resolve(cwd);
+  const projectDirectoryIdentity = await captureProjectDirectoryIdentity(projectDirectory);
   const resolvedProposalPath = path.resolve(cwd, proposalPath);
   const localConfigPath = flowConfigPath(cwd);
   const configDirectory = await ensureDirectoryPathWithoutSymlinks(cwd, ".flow");
+  const directoryIdentity = await captureConfigDirectoryIdentity(configDirectory);
   if (path.resolve(configDirectory) !== path.dirname(localConfigPath)) {
     throw new Error("flow.config.merge.path.invalid: project config directory does not match the canonical .flow directory");
   }
-  if (existsSync(localConfigPath)) {
-    const configEntry = await lstat(localConfigPath);
-    if (configEntry.isSymbolicLink() || !configEntry.isFile()) {
-      throw new Error("flow.config.merge.path.invalid: project config must be a real file");
-    }
-  }
-  const lockPath = `${localConfigPath}.merge.lock`;
+  await inspectBoundConfigFile(localConfigPath, configDirectory, directoryIdentity);
+  // Keep the coordination lock outside .flow. A malicious or concurrent
+  // replacement of .flow must not strand our lock in the displaced directory,
+  // nor make release address a successor directory's lock file.
+  const lockPath = path.join(projectDirectory, ".flow.config.merge.lock");
   const deadline = Date.now() + 30_000;
   let lock;
+  let lockIdentity;
   for (;;) {
     try {
+      await assertProjectDirectoryIdentity(projectDirectory, projectDirectoryIdentity);
       lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      lockIdentity = await lock.stat();
       await lock.writeFile(`${process.pid}\n`, "utf8");
       await lock.sync();
+      await assertProjectDirectoryIdentity(projectDirectory, projectDirectoryIdentity);
       break;
     } catch (error: any) {
+      await lock?.close().catch(() => undefined);
+      lock = undefined;
       if (error?.code !== "EEXIST") throw error;
       if (Date.now() >= deadline) throw new Error("flow.config.merge.lock.timeout: timed out waiting for the project config merge lock");
       await delay(10);
     }
   }
   try {
-    await ensureDirectoryPathWithoutSymlinks(cwd, ".flow");
-    if (existsSync(localConfigPath)) {
-      const configEntry = await lstat(localConfigPath);
-      if (configEntry.isSymbolicLink() || !configEntry.isFile()) {
-        throw new Error("flow.config.merge.path.invalid: project config must be a real file");
-      }
-    }
-    const report = previewFlowConfigMerge(await loadFlowConfig(cwd), await readJson(resolvedProposalPath), {
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    const localConfig = await loadBoundFlowConfig(localConfigPath, configDirectory, directoryIdentity);
+    const proposedConfig = await readJson(resolvedProposalPath);
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    const report = previewFlowConfigMerge(localConfig, proposedConfig, {
       ...options,
       mode: "apply",
       cwd,
@@ -326,18 +455,42 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
       proposalPath: resolvedProposalPath
     });
     if (report.conflicts.length) return { ...report, status: "blocked" };
-    const staged = await stageRunArtifact(localConfigPath, `${JSON.stringify(report.merged_config, null, 2)}\n`);
+    await invokeConfigMergeFault(options, "before_stage");
+    await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+    const staged = await stageBoundConfigArtifact(
+      localConfigPath,
+      `${JSON.stringify(report.merged_config, null, 2)}\n`,
+      configDirectory,
+      directoryIdentity
+    );
     try {
       await staged.commit();
-      await syncDirectory(path.dirname(localConfigPath));
+      await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
+      await syncDirectory(configDirectory);
+      await assertConfigDirectoryIdentity(configDirectory, directoryIdentity);
     } catch (error) {
       await staged.discard();
       throw error;
     }
     return { ...report, status: "applied" };
   } finally {
-    await lock.close();
-    await unlink(lockPath).catch(() => undefined);
+    await lock?.close().catch(() => undefined);
+    // This pathname is anchored in the project root rather than .flow, so a
+    // .flow successor cannot be mistaken for the acquired coordination lock.
+    // It is still a pathname, so retain the acquired inode check before
+    // unlinking in case another actor replaces the root-level lock itself.
+    await assertProjectDirectoryIdentity(projectDirectory, projectDirectoryIdentity)
+      .then(async () => {
+        const currentLock = await lstat(lockPath);
+        if (
+          currentLock.isSymbolicLink()
+          || !currentLock.isFile()
+          || currentLock.dev !== lockIdentity?.dev
+          || currentLock.ino !== lockIdentity?.ino
+        ) return;
+        await unlink(lockPath);
+      })
+      .catch(() => undefined);
   }
 }
 

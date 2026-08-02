@@ -128,12 +128,15 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
   const config = request.config ?? defaultFlowConfig();
   const manifest = manifestFromTransitionRequest(request);
   const transition = proposedTransitionFromRequest(request, currentState);
-  let evaluationNow: Date | undefined;
+  let evaluationNow: string | undefined;
   if (request.now !== undefined) {
     if (typeof request.now !== "string" || parseRfc3339Timestamp(request.now) === null) {
       diagnostics.push(transitionDiagnostic("request.now.invalid", "$.now", "now must be an RFC3339 date-time"));
     } else {
-      evaluationNow = new Date(request.now);
+      // Preserve the original strict RFC3339 representation so gate authority
+      // chronology retains offset and fractional-second precision. Gate code
+      // constructs a Date only at the Surface API boundary.
+      evaluationNow = request.now;
     }
   }
 

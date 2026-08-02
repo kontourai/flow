@@ -22,17 +22,42 @@ import type { ParsedRfc3339Timestamp } from "../shared/rfc3339.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "./trust-bundle-validator.js";
 
-export interface GateAuthorityDependencies {
+interface GateAuthorityDependencies {
   validate(bundle: unknown): any;
   buildReport(bundle: any, options: { now: Date }): any;
   checkAuthorityActive(actorRef: string, traces: any[], now: Date): string;
 }
 
-export const DEFAULT_GATE_AUTHORITY_DEPENDENCIES: GateAuthorityDependencies = {
+const DEFAULT_GATE_AUTHORITY_DEPENDENCIES: GateAuthorityDependencies = {
   validate: validateTrustBundle,
   buildReport: buildTrustReport,
   checkAuthorityActive
 };
+
+/**
+ * Flow compares authority chronology at RFC3339 precision, including
+ * fractional seconds that JavaScript's Date cannot represent. Surface is
+ * still given a Date for its public APIs, but it never becomes Flow's source
+ * of truth for the comparison itself.
+ */
+interface GateEvaluationTime {
+  exact: ParsedRfc3339Timestamp;
+  surfaceNow: Date;
+}
+
+type GateEvaluationInput = Date | string;
+
+function parseGateEvaluationTime(value: unknown): GateEvaluationTime | undefined {
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) return undefined;
+    const exact = parseRfc3339Timestamp(value.toISOString());
+    return exact ? { exact, surfaceNow: new Date(value.getTime()) } : undefined;
+  }
+  const exact = parseRfc3339Timestamp(value);
+  if (!exact || typeof value !== "string") return undefined;
+  const surfaceNow = new Date(value);
+  return Number.isFinite(surfaceNow.getTime()) ? { exact, surfaceNow } : undefined;
+}
 
 export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
@@ -120,8 +145,8 @@ function evidenceVisitDiagnostic(entry: any, visit: GateVisit): string | null {
   return null;
 }
 
-function deriveBundleReport(bundle: unknown, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): { report: any | null; error: string | null } {
-  if (!evaluationNow || !Number.isFinite(evaluationNow.getTime())) {
+function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): { report: any | null; error: string | null } {
+  if (!evaluationNow) {
     return { report: null, error: "evaluation_time_missing" };
   }
   // First validate via Surface (referential/structural)
@@ -133,14 +158,14 @@ function deriveBundleReport(bundle: unknown, evaluationNow: Date | undefined, de
   }
   // Then derive statuses via Surface
   try {
-    const report = dependencies.buildReport(validated, { now: evaluationNow });
+    const report = dependencies.buildReport(validated, { now: evaluationNow.surfaceNow });
     return { report, error: null };
   } catch (err: any) {
     return { report: null, error: `bundle_derivation_failed: ${err?.message ?? String(err)}` };
   }
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): string | null {
+function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): string | null {
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
   if (entry.status === "failed") return "rejected";
 
@@ -221,6 +246,11 @@ function trustedProducerPolicy(expectation: any, config: MutableRecord) {
       // `{}` is deliberately an unpinned reservation, while an explicitly
       // authored empty list is a deny-all authority boundary.
       configured: producers !== undefined || authorityRefs !== undefined,
+      // An explicitly empty route is an authored refusal, not an omitted
+      // route. In particular, `{ producers: ["ci/main"], authority_refs: [] }`
+      // must not silently regain access through the populated producer route.
+      denyAll: (Array.isArray(producers) && producers.length === 0)
+        || (Array.isArray(authorityRefs) && authorityRefs.length === 0),
       producers: allowedProducers,
       authorityRefs: allowedAuthorityRefs
     };
@@ -238,7 +268,7 @@ function canonicalAuthorityTimestamp(timestamp: ParsedRfc3339Timestamp): string 
   return `${wholeSecond}${timestamp.fractionalSecond ? `.${timestamp.fractionalSecond}` : ""}Z`;
 }
 
-function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): any[] {
+function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): any[] {
   const selector = expectation.bundle_claim ?? expectation.claim;
   const report = deriveBundleReport(entry.bundle, evaluationNow, dependencies).report;
   if (!selector || !report) return [];
@@ -248,7 +278,7 @@ function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: Par
   return current.filter((claim: any) => accepted.includes(claim.status ?? "unknown"));
 }
 
-function authorityTraceDiagnostic(entry: any, expectation: any, policies: ReturnType<typeof trustedProducerPolicy>, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): ProducerAuthorityResult {
+function authorityTraceDiagnostic(entry: any, expectation: any, policies: ReturnType<typeof trustedProducerPolicy>, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): ProducerAuthorityResult {
   const bundle = entry.bundle;
   const traces = Array.isArray(bundle?.authorityTrace) ? bundle.authorityTrace : [];
   if (!traces.length) return { reason: "untrusted_producer", authority: { code: "no_trace" } };
@@ -258,10 +288,10 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
   const selector = expectation.bundle_claim ?? expectation.claim;
   const accepted = selector?.accepted_statuses ?? ["verified"];
   const failures = new Set<string>();
-  if (!evaluationNow || !Number.isFinite(evaluationNow.getTime())) {
+  if (!evaluationNow) {
     return { reason: "untrusted_producer", authority: { code: "evaluation_time_missing" } };
   }
-  const evaluatedAt = parseRfc3339Timestamp(evaluationNow.toISOString())!;
+  const evaluatedAt = evaluationNow.exact;
 
   for (const trace of refScoped) {
     for (const claim of claims) {
@@ -326,7 +356,7 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
       delete normalizedTrace.validFrom;
       delete normalizedTrace.validUntil;
       delete normalizedTrace.revokedAt;
-      const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow);
+      const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow.surfaceNow);
       if (active === "active") return null;
       failures.add(active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace");
     }
@@ -342,7 +372,7 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
  * honest while ensuring an unattributed or untrusted otherwise-valid claim
  * can never advance a gate.
  */
-function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): ProducerAuthorityResult {
+function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): ProducerAuthorityResult {
   // An unrelated file, malformed bundle, or non-matching claim has its own
   // established diagnostic (or no claim diagnostic at all). Producer policy
   // applies only to a bundle candidate that otherwise satisfies this selector.
@@ -351,20 +381,25 @@ function evidenceProducerDiagnostic(entry: any, expectation: any, config: Mutabl
   if (evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies) !== null) return null;
   const policies = trustedProducerPolicy(expectation, config);
   if (!policies.length) return null;
+  if (policies.some((policy) => policy.denyAll)) return { reason: "untrusted_producer", authority: { code: "deny_all" } };
   const producerId = entry.bundle?.producerId;
   if (entry.producer !== undefined && entry.producer !== producerId) return { reason: "untrusted_producer", authority: { code: "producer_mismatch" } };
   if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return null;
   return authorityTraceDiagnostic(entry, expectation, policies, enteredAt, evaluationNow, dependencies);
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES) {
+function evidenceMatchesExpectationForEvaluation(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies) {
   if (expectation.kind !== "trust.bundle") return false;
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
   return evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies) === null
     && evidenceProducerDiagnostic(entry, expectation, config, enteredAt, evaluationNow, dependencies) === null;
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES) {
+export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: GateEvaluationInput) {
+  return evidenceMatchesExpectationForEvaluation(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES);
+}
+
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
     const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt, evaluationNow, dependencies);
@@ -383,12 +418,15 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
   return diagnostics;
 }
 
-export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig(), evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): GateOutcome {
+/**
+ * Internal reducer seam. This module is not exported from the package root;
+ * only the reducer may supply its already-validated, snapshotted adapter.
+ */
+export function evaluateGateWithReducerDependencies(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig(), evaluationNow: GateEvaluationInput | undefined, dependencies: GateAuthorityDependencies): GateOutcome {
   validateFlatFlowConfig(config);
-  const stateEvaluationNow = typeof state?.updated_at === "string" && Number.isFinite(Date.parse(state.updated_at))
-    ? new Date(state.updated_at)
-    : undefined;
-  const effectiveEvaluationNow = evaluationNow ?? stateEvaluationNow;
+  const effectiveEvaluationNow = evaluationNow === undefined
+    ? parseGateEvaluationTime(state?.updated_at)
+    : parseGateEvaluationTime(evaluationNow);
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 
@@ -434,7 +472,7 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
     const expectationWithGate = { ...expectation, gate_id: gateId };
     const match = visit.revisited && (visit.awaitingReentry || visit.enteredAt === null)
       ? undefined
-      : evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies));
+      : evidence.find((entry) => evidenceMatchesExpectationForEvaluation(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies));
     if (match) {
       matched.push({ expectation_id: expectation.id, evidence_id: match.id });
     } else if (expectation.required) {
@@ -498,6 +536,19 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
     matched_expectations: matched,
     ...(diagnosticPayload ? { diagnostics: diagnosticPayload } : {})
   };
+}
+
+/** Public gate evaluation intentionally has no trust-helper injection seam. */
+export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig(), evaluationNow?: GateEvaluationInput): GateOutcome {
+  return evaluateGateWithReducerDependencies(
+    definition,
+    state,
+    manifest,
+    gateId,
+    config,
+    evaluationNow,
+    DEFAULT_GATE_AUTHORITY_DEPENDENCIES
+  );
 }
 
 export function mergeGateOutcome(state, outcome) {
