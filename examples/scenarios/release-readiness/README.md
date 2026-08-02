@@ -11,7 +11,8 @@ Fixture adapters map local provider-shaped records into Flow evidence entries:
 - `kind: "trust.bundle"` when represented as Flow gate evidence
 - `bundle_claim.claimType`, `bundle_claim.subjectId`, and accepted event statuses in Flow gate expectations
 - lane-level `claim.type`, `claim.subject`, and `claim.status` inside release-readiness policy/results
-- `producer` and `authority_traces`
+- `producer` and its matching trust-bundle `producerId`; legacy
+  `authority_traces` are display-only provider provenance, not authorization
 - `external_links` copied with provider metadata preserved and `url` normalized from provider fields such as `href` when needed
 - `native_refs` copied with provider metadata preserved and `id` normalized from provider fields such as `ref` or `key` when needed, with a fixture-native id added when useful
 

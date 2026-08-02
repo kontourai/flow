@@ -6,7 +6,15 @@ export type {
   FlowPausedGateContinuationEvidence,
   FlowPausedGateContinuationOptions,
   FlowPausedGateContinuationResult,
+  FlowConfigMergeApplyOptions,
+  FlowConfigMergePreviewOptions,
+  FlowConfigMergePublisher,
+  FlowConfigMergePublisherReceipt,
+  FlowConfigMergePublisherRequest,
+  ConfigMergeAppliedReport,
   ConfigMergeReport,
+  ConfigMergeSummary,
+  ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowActiveStepClaim,
   FlowActiveStepClaimRequest,
@@ -25,6 +33,7 @@ export type {
   FlowMultiCursorBlockedStep,
   FlowDefinition,
   FlowDiagnostic,
+  FlowEvidenceAttachmentOptions,
   FlowEvidenceEntry,
   FlowEvidenceManifest,
   FlowExpectation,
@@ -219,12 +228,12 @@ export {
 export {
   TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID,
   TRUST_ATTACHMENT_REDUCER_VERSION,
+  FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
   normalizeTrustAttachmentBundle,
   reduceTrustAttachment,
   reduceTrustAttachmentManifest,
   trustAttachmentReducerIdentity
 } from "./runtime/trust-attachment-reducer.js";
-export { FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES } from "./runtime/flow-run-store.js";
 export type {
   TrustAttachmentEvaluationMode,
   TrustAttachmentReducerDependencies,

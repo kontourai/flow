@@ -226,7 +226,7 @@ responsibilities.
 flow attach-evidence <run-id> --gate <gate> --file <file>
   [--expected-run-head <sha256>]
   [--kind <kind>] [--bundle] [--status failed] [--supersede <evidence-id> ...]
-  [--producer <id>] [--authority-trace <trace>]
+  [--producer <id>]
   [--route-reason <reason>] [--expectation-id <id> ...]
   [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>]
   [--analytics-loop-key <key>] [--route-metadata <json-file>]
@@ -243,6 +243,7 @@ Copies the file into the run's `evidence/` directory and records it in the manif
 - `--bundle` (or `--kind trust.bundle`) parses the file as a Hachure TrustBundle, validates it against the Hachure schema, and stores the bundle plus its derived trust report on the evidence entry. See [Trust artifacts](evidence.md#trust-artifacts).
 - `--status failed` marks failing evidence; pair it with `--route-reason` to drive [route-back](gates-and-route-back.md#route-back).
 - `--supersede <evidence-id>` (repeatable) marks earlier evidence on the same gate as replaced by this entry. Superseded entries stay in the manifest for audit but no longer drive gate outcomes — this is how a route-back's "replace failing evidence" instruction is carried out.
+- `--producer <id>` may corroborate a `trust.bundle`'s validated `producerId`, but cannot override it. `--authority-trace` was removed: configure `authority_refs` and include the validated rich `authorityTrace` record in the bundle instead.
 - `--route-metadata` supplies nested `route_reason`, `expectation_ids`, `classifier`, `diagnostics`, and `analytics` from a JSON file; explicit flags win on overlap. Only `route_reason` affects routing — everything else is recorded for reports and learning.
 
 `--trust-artifact` is a deprecated alias for `--bundle` / `--kind trust.bundle`: using it attaches the file through the same trust.bundle path and prints a deprecation warning to stderr. Prefer `--bundle` (or `--kind trust.bundle`) directly.
@@ -341,7 +342,7 @@ flow config apply <proposal> [--accept-conflict <path> ...]
   [--format summary|markdown|json] [--cwd <path>]
 ```
 
-Preview is read-only; apply merges additive changes and rejects conflicts unless each is accepted with `--accept-conflict` plus a reason and authority. `apply` exits `1` when the merge is blocked by unaccepted conflicts. Full semantics: [Project Config](project-config.md).
+Preview is read-only. The standalone CLI has no capability-anchored atomic publisher, so `apply` exits `1` with `flow.config.merge.publisher.unavailable` and directs you to preview; it never writes `.flow/config.json`. Trusted desktop/host integrations use the library publisher capability instead. Full semantics: [Project Config](project-config.md).
 
 ## flow validate-transition
 

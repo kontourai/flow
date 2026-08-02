@@ -54,6 +54,28 @@ test("transition validator allows only legal forward transitions and keeps input
   assert.ok(unknown.diagnostics.some((diagnostic) => diagnostic.code === "transition.to_step.unknown"));
 });
 
+test("transition validator rejects provided now values that are not strict RFC3339 timestamps", () => {
+  const definition = routeBackDefinition();
+  const state = initialState(definition, "transition-invalid-now");
+  state.current_step = "plan";
+  const baseRequest = {
+    definition,
+    current_state: state,
+    proposed_transition: { from_step: "plan", to_step: "implement", status: "allowed" },
+    manifest: routeBackManifest([])
+  };
+
+  for (const now of ["not-a-date", "06/16/2026", 1, null]) {
+    const result = validateRunTransition({ ...baseRequest, now });
+    assert.equal(result.valid, false, String(now));
+    assert.equal(result.status, "invalid", String(now));
+    assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === "transition.request.now.invalid"), String(now));
+  }
+
+  const offset = validateRunTransition({ ...baseRequest, now: "2026-05-29T18:00:00-06:00" });
+  assert.equal(offset.valid, true, "a strict RFC3339 timestamp with an offset remains supported");
+});
+
 test("transition validator accepts Resource-shaped request definitions", async () => {
   const definition = await resourceDefinitionFixture();
   const state = initialState(definition, "resource-transition");

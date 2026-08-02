@@ -8,6 +8,7 @@ import {
   FLOW_SCHEMA_VERSION,
   FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
   reduceTrustAttachment,
+  trustAttachmentReducerIdentity,
   startRun,
   attachEvidence
 } from "../../dist/index.js";
@@ -32,7 +33,7 @@ const definition = {
   }
 };
 
-function bundle({ id = "claim.review", expiresAt } = {}) {
+function bundle({ id = "claim.review", expiresAt, producerId, authorityTrace } = {}) {
   return {
     schemaVersion: 7, source: "test/reducer",
     claims: [{
@@ -42,7 +43,9 @@ function bundle({ id = "claim.review", expiresAt } = {}) {
       ...(expiresAt ? { expiresAt } : {})
     }],
     evidence: [], policies: [],
-    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: [], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }]
+    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: [], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }],
+    ...(producerId ? { producerId } : {}),
+    ...(authorityTrace ? { authorityTrace } : {})
   };
 }
 
@@ -59,6 +62,20 @@ function attachment(id = "ev.reducer.1", overrides = {}) {
   return { id, gate_id: "verify-gate", attached_at: NOW, original_path: "review.json", stored_path: `evidence/${id}.json`, sha256: "a".repeat(64), ...overrides };
 }
 
+function reviewAuthorityTrace(overrides = {}) {
+  return {
+    id: "trace.review",
+    subject: { subjectType: "flow-step", subjectId: "verify" },
+    actorRef: "test/reviewer",
+    authorityType: "role",
+    authorityRef: "authority:review",
+    sourceRef: "policy:review",
+    observedAt: "2026-07-19T15:30:00.000Z",
+    claimIds: ["claim.review"],
+    ...overrides
+  };
+}
+
 test("trust attachment reducer is pure, versioned, schema-valid, and returns the full write intent", async () => {
   const run = runInput();
   const before = structuredClone(run);
@@ -69,9 +86,13 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.1.0");
+  assert.equal(result.identity.version, "1.3.7");
   assert.equal(result.evaluation_mode, "evaluate");
-  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.12.0" });
+  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
+  for (const integrity of [
+    result.identity.dependency_integrities.hachure.validate,
+    ...Object.values(result.identity.dependency_integrities.surface)
+  ]) assert.match(integrity, /^sha256:[a-f0-9]{64}$/);
   assert.match(result.identity.hash, /^sha256:[a-f0-9]{64}$/);
   assert.equal(result.evidence.kind, "trust.bundle");
   assert.equal(result.next_manifest.evidence.length, 1);
@@ -168,6 +189,195 @@ test("trust attachment reducer fails closed for invalid bundles and derives stal
     }),
     /unsupported trust attachment evaluation mode/
   );
+  for (const now of ["not-a-date", "06/16/2026"]) {
+    assert.throws(
+      () => reduceTrustAttachment({ run, bundle: bundle(), attachment: attachment(`ev.bad-now.${now}`), now, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES }),
+      /now must be a valid RFC3339 date-time/
+    );
+  }
+});
+
+test("trust attachment reducer persists the exact fail-closed report for future assumed facts", () => {
+  const future = bundle({ id: "claim.future-assumed" });
+  const futureAt = "2026-07-19T16:00:00.0001Z";
+  future.claims[0].createdAt = futureAt;
+  future.claims[0].updatedAt = futureAt;
+  future.events[0].status = "assumed";
+  future.events[0].createdAt = futureAt;
+  delete future.events[0].verifiedAt;
+  const result = reduceTrustAttachment({
+    run: runInput(), bundle: future, attachment: attachment("ev.future-assumed"), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(result.evidence.bundle_report.claims[0].status, "unknown");
+  assert.equal(result.evaluation.status, "route-back");
+});
+
+test("trust attachment reducer snapshots its operation instant before report, gate, and transition work", () => {
+  let reads = 0;
+  const request = {
+    run: runInput(),
+    bundle: bundle({ expiresAt: "2026-07-19T16:00:00.0005Z" }),
+    attachment: attachment("ev.now-getter"),
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
+    get now() {
+      reads += 1;
+      return reads === 1 ? "2026-07-19T16:00:00.0004Z" : "2026-07-19T16:00:00.0006Z";
+    }
+  };
+  const result = reduceTrustAttachment(request);
+  assert.equal(reads, 1, "caller-controlled now is read once for the entire reducer operation");
+  assert.equal(result.evidence.bundle_report.generatedAt, "2026-07-19T16:00:00.0004Z");
+  assert.equal(result.evaluation.status, "pass");
+  assert.equal(result.next_state.updated_at, "2026-07-19T16:00:00.0004Z");
+});
+
+test("trust attachment reducer snapshot errors do not expose hostile getter detail", () => {
+  const hostileBundle = {};
+  Object.defineProperty(hostileBundle, "claims", {
+    enumerable: true,
+    get() {
+      throw new Error("secret reducer filesystem path");
+    }
+  });
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: runInput(), bundle: hostileBundle, attachment: attachment("ev.hostile-snapshot"), now: NOW,
+      dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+    }),
+    (error) => error?.message === "trust bundle cannot be snapshotted"
+      && !error.message.includes("secret")
+      && error.cause === undefined
+  );
+});
+
+test("trust attachment reducer dependency snapshot failures are stable for both public entrypoints", () => {
+  const hostileDependencies = new Proxy(FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES, {
+    get(target, property, receiver) {
+      if (property === "hachure") throw new Error("secret dependency path");
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const assertSanitized = (error) => error?.message === "unsupported trust attachment reducer dependency adapter: use FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES"
+    && !error.message.includes("secret")
+    && error.cause === undefined;
+  assert.throws(() => trustAttachmentReducerIdentity(hostileDependencies), assertSanitized);
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: runInput(), bundle: bundle(), attachment: attachment("ev.hostile-dependencies"), now: NOW,
+      dependencies: hostileDependencies
+    }),
+    assertSanitized
+  );
+});
+
+test("trust attachment reducer enforces validated producer identity and gives opaque authority metadata zero trust weight", () => {
+  const trustedConfig = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.review": { producers: ["review/trusted"] } },
+    gate_overrides: {}
+  };
+  const trustedRun = runInput();
+  trustedRun.config = trustedConfig;
+  const trusted = reduceTrustAttachment({
+    run: trustedRun, bundle: bundle({ producerId: "review/trusted" }), attachment: attachment("ev.trusted", { producer: "review/trusted" }), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(trusted.evaluation.status, "pass");
+
+  for (const attachmentInput of [attachment("ev.missing"), attachment("ev.untrusted", { producer: "review/other" })]) {
+    const rejected = reduceTrustAttachment({
+      run: trustedRun, bundle: bundle({ id: attachmentInput.id }), attachment: attachmentInput, now: NOW,
+      dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+    });
+    assert.equal(rejected.evaluation.status, "route-back");
+    assert.equal(rejected.evaluation.diagnostics.claim_evaluation[0].reason, "untrusted_producer");
+  }
+
+  const authorityOnlyConfig = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } }, gate_overrides: {} };
+  const authority = reduceTrustAttachment({
+    run: { ...trustedRun, config: authorityOnlyConfig }, bundle: bundle({ id: "claim.authority" }), attachment: attachment("ev.authority", {
+      authority_trace: "authority:review", authority_traces: ["authority:other", "authority:review"]
+    }), now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(authority.evaluation.status, "route-back");
+  assert.deepEqual(authority.evaluation.diagnostics.claim_evaluation[0].authority, { code: "no_trace" });
+  assert.deepEqual(authority.evidence.authority_traces, ["authority:other", "authority:review"]);
+
+  const richAuthority = reduceTrustAttachment({
+    run: { ...trustedRun, config: authorityOnlyConfig },
+    bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }), attachment: attachment("ev.rich-authority"), now: NOW,
+    dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
+  });
+  assert.equal(richAuthority.evaluation.status, "pass");
+
+  const revokedDependencies = {
+    ...FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
+    surface: {
+      ...FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES.surface,
+      checkAuthorityActive: () => "revoked"
+    }
+  };
+  assert.throws(
+    () => reduceTrustAttachment({
+      run: { ...trustedRun, config: authorityOnlyConfig },
+      bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }), attachment: attachment("ev.injected-authority"), now: NOW,
+      dependencies: revokedDependencies
+    }),
+    /unsupported trust attachment reducer dependency adapter/,
+    "callers cannot substitute closure behavior while retaining Flow's reducer identity"
+  );
+
+  const malformedRun = runInput();
+  malformedRun.config = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.review": { producers: "review/trusted" } }, gate_overrides: {} };
+  assert.throws(
+    () => reduceTrustAttachment({ run: malformedRun, bundle: bundle(), attachment: attachment("ev.bad-config"), now: NOW, dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES }),
+    /flow config does not satisfy flow-config\.schema\.json/
+  );
+});
+
+test("trust attachment reducer snapshots a hostile adapter before identity and execution", () => {
+  const authorityRun = runInput();
+  authorityRun.config = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } },
+    gate_overrides: {}
+  };
+  let checkAuthorityReads = 0;
+  let buildReportReads = 0;
+  const flippingSurface = new Proxy({ ...FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES.surface }, {
+    get(target, property, receiver) {
+      if (property === "buildReport") {
+        buildReportReads += 1;
+        return buildReportReads === 1
+          ? target.buildReport
+          : () => ({ claims: [] });
+      }
+      if (property === "checkAuthorityActive") {
+        checkAuthorityReads += 1;
+        return checkAuthorityReads === 1
+          ? target.checkAuthorityActive
+          : () => "revoked";
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  const dependencies = {
+    ...FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
+    surface: flippingSurface
+  };
+
+  const result = reduceTrustAttachment({
+    run: authorityRun,
+    bundle: bundle({ authorityTrace: [reviewAuthorityTrace()] }),
+    attachment: attachment("ev.flipping-adapter"),
+    now: NOW,
+    dependencies
+  });
+
+  assert.equal(result.evaluation.status, "pass");
+  assert.equal(buildReportReads, 1, "the reducer must execute the snapshotted report helper during gate evaluation");
+  assert.equal(checkAuthorityReads, 1, "the reducer must execute the snapshotted authority helper during gate evaluation");
 });
 
 test("trust attachment reducer matches the canonical attachEvidence manifest projection", async () => {
@@ -180,7 +390,9 @@ test("trust attachment reducer matches the canonical attachEvidence manifest pro
   const before = runInput();
   before.state = started.state;
   before.manifest.run_id = started.state.run_id;
-  const attached = await attachEvidence(started.runId, { cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle" });
+  const attached = await attachEvidence(started.runId, {
+    cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle"
+  });
   const reduced = reduceTrustAttachment({
     run: before, bundle: bundle(), now: attached.attached_at,
     attachment: attachment(attached.id, {

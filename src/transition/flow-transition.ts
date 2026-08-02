@@ -12,6 +12,7 @@ import {
 } from "../definition/flow-definition.js";
 import { evaluateGate } from "../gates/flow-gates.js";
 import { lifecycleEligibilityDiagnostic } from "../runtime/flow-run-lifecycle.js";
+import { parseRfc3339Timestamp } from "../shared/rfc3339.js";
 
 function transitionDiagnostic(code: string, path: string, message: string, related: MutableRecord = {}, severity = "error") {
   return {
@@ -127,6 +128,17 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
   const config = request.config ?? defaultFlowConfig();
   const manifest = manifestFromTransitionRequest(request);
   const transition = proposedTransitionFromRequest(request, currentState);
+  let evaluationNow: string | undefined;
+  if (request.now !== undefined) {
+    if (typeof request.now !== "string" || parseRfc3339Timestamp(request.now) === null) {
+      diagnostics.push(transitionDiagnostic("request.now.invalid", "$.now", "now must be an RFC3339 date-time"));
+    } else {
+      // Preserve the original strict RFC3339 representation so gate authority
+      // chronology retains offset and fractional-second precision. Gate code
+      // constructs a Date only at the Surface API boundary.
+      evaluationNow = request.now;
+    }
+  }
 
   const definitionResult = validateDefinitionWithDiagnostics(definition);
   diagnostics.push(...definitionResult.diagnostics);
@@ -242,7 +254,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
     diagnostics.push(transitionDiagnostic("completion.premature", "$.proposed_state.status", "run cannot complete before the current step reaches a terminal edge", { current_step: currentStepId, expected_to_step: expectedNext }));
   }
 
-  const outcomes = gates.map((gate) => evaluateGate(definition, currentState, manifest, gate.id, config));
+  const outcomes = gates.map((gate) => evaluateGate(definition, currentState, manifest, gate.id, config, evaluationNow));
   const blocking = outcomes.filter((outcome) => outcome.status !== "pass");
   diagnostics.push(...blocking.map((outcome) => transitionGateOutcomeDiagnostic(outcome)));
 

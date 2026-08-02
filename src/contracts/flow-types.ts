@@ -87,7 +87,9 @@ export interface FlowEvidenceEntry extends MutableRecord {
    */
   inquiry_records?: MutableRecord[];
   producer?: string;
+  /** Legacy display-only metadata. Never used to authorize a gate. */
   authority_trace?: string;
+  /** Legacy display-only metadata. Never used to authorize a gate. */
   authority_traces?: string[];
   route_reason?: string;
   expectation_ids?: string[];
@@ -99,6 +101,26 @@ export interface FlowEvidenceManifest extends MutableRecord {
   definition_id?: string;
   definition_version?: string;
   evidence: FlowEvidenceEntry[];
+}
+
+/** Public, provider-neutral input accepted by `attachEvidence`. */
+export interface FlowEvidenceAttachmentOptions {
+  cwd?: string;
+  gate: string;
+  file: string;
+  kind?: string;
+  bundle?: boolean;
+  trustArtifact?: boolean;
+  expectedRunHead?: string;
+  expectedSha256?: string;
+  status?: string;
+  supersede?: string | string[];
+  producer?: string;
+  route_reason?: string;
+  expectation_ids?: string[];
+  classifier?: MutableRecord;
+  diagnostics?: MutableRecord;
+  analytics?: MutableRecord;
 }
 
 export type FlowRunStatus =
@@ -160,10 +182,7 @@ export interface FlowLifecycleRequest {
  * paused run. The attachment fields use the same neutral vocabulary as
  * attachEvidence; `gate` and `cwd` belong to the enclosing operation.
  */
-export interface FlowPausedGateContinuationEvidence extends MutableRecord {
-  file: string;
-  kind?: string;
-}
+export type FlowPausedGateContinuationEvidence = Omit<FlowEvidenceAttachmentOptions, "cwd" | "gate">;
 
 /**
  * Atomically evaluate new evidence at a paused run's current gate.
@@ -555,10 +574,19 @@ export interface TransitionValidationResult extends MutableRecord {
   transition: MutableRecord | null;
 }
 
-export interface ConfigMergeReport extends MutableRecord {
+/** Exact count fields emitted by the config-merge report schema. */
+export interface ConfigMergeSummary {
+  proposed: number;
+  accepted: number;
+  rejected: number;
+  conflicts: number;
+  unchanged: number;
+  exceptions: number;
+}
+
+interface ConfigMergeReportFields extends MutableRecord {
   schema_version: string;
-  mode: string;
-  status: string;
+  mode: "preview" | "apply";
   local_config_path: string;
   proposal_path: string | null;
   proposed_changes: MutableRecord[];
@@ -568,7 +596,93 @@ export interface ConfigMergeReport extends MutableRecord {
   unchanged: MutableRecord[];
   exceptions: MutableRecord[];
   merged_config: FlowConfig;
-  summary: MutableRecord;
+  summary: ConfigMergeSummary;
+}
+
+/** A config merge result that has not been published by a trusted host. */
+export interface ConfigMergeUnpublishedReport extends ConfigMergeReportFields {
+  status: "ready" | "conflicts" | "blocked";
+  publisher_receipt?: never;
+}
+
+/** A config merge result acknowledged by a trusted host publisher. */
+export interface ConfigMergeAppliedReport extends ConfigMergeReportFields {
+  mode: "apply";
+  status: "applied";
+  publisher_receipt: FlowConfigMergePublisherReceipt;
+}
+
+/**
+ * Discriminated by `status`: applied reports always carry a publisher receipt,
+ * while preview/conflict/blocked reports can never carry one.
+ */
+export type ConfigMergeReport = ConfigMergeUnpublishedReport | ConfigMergeAppliedReport;
+
+/**
+ * Immutable hand-off from Flow's deterministic config merge engine to a host
+ * that owns an atomic, capability-anchored filesystem publisher.
+ *
+ * Flow deliberately does not implement that publisher: Node's pathname-only
+ * filesystem API cannot make the final replacement safe when `.flow` changes
+ * concurrently. A host (for example Station) must bind this request to its
+ * own atomic publication primitive and verify `expected_config_sha256` before
+ * replacing the target.
+ */
+export interface FlowConfigMergePublisherRequest {
+  api_version: "flow.kontourai.io/v1alpha1";
+  project_directory: string;
+  config_directory: string;
+  config_path: string;
+  /** SHA-256 of the exact raw config bytes Flow merged from, or null when absent. */
+  expected_config_sha256: string | null;
+  /** Canonical, immutable JSON bytes the host must publish verbatim. */
+  contents: string;
+  contents_sha256: string;
+}
+
+/**
+ * A structured acknowledgement from a trusted config merge publisher. This
+ * binds the acknowledgement to the exact target and canonical bytes; it is
+ * not evidence that Flow itself performed or verified an atomic write.
+ */
+export interface FlowConfigMergePublisherReceipt extends MutableRecord {
+  api_version: "flow.kontourai.io/v1alpha1";
+  status: "applied";
+  publisher: string;
+  publication_id: string;
+  config_path: string;
+  contents_sha256: string;
+}
+
+export type FlowConfigMergePublisher = (
+  request: Readonly<FlowConfigMergePublisherRequest>
+) => Promise<FlowConfigMergePublisherReceipt> | FlowConfigMergePublisherReceipt;
+
+/**
+ * Options shared by a read-only config merge preview and the host-owned apply
+ * path. Preview deliberately has no mode selector: its report is always a
+ * preview, while apply mode is an internal implementation detail of the
+ * separately named `applyFlowConfigMerge` operation.
+ */
+export interface FlowConfigMergePreviewOptions extends MutableRecord {
+  /** The preview API always emits `mode: "preview"`; callers cannot override it. */
+  mode?: never;
+  acceptConflicts?: string[];
+  acceptedConflicts?: string[];
+  exceptionReason?: string;
+  authority?: string;
+  cwd?: string;
+  localConfigPath?: string;
+  proposalPath?: string | null;
+}
+
+export interface FlowConfigMergeApplyOptions extends MutableRecord {
+  publisher?: FlowConfigMergePublisher;
+  acceptConflicts?: string[];
+  acceptedConflicts?: string[];
+  exceptionReason?: string;
+  authority?: string;
+  cwd?: string;
 }
 
 export const FLOW_SCHEMA_VERSION = "0.1";

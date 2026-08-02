@@ -26,7 +26,7 @@ import {
   writeJson
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
-import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -41,7 +41,8 @@ import {
   invalidateDescendants,
   validateDefinition
 } from "../definition/flow-definition.js";
-import { applyEvaluation, evaluateGate, expectationsForGate, mergeGateOutcome } from "../gates/flow-gates.js";
+import { applyEvaluation, evaluateGate, expectationsForGate, mergeGateOutcome, reconcileSurfaceBundleReport } from "../gates/flow-gates.js";
+import { surfaceDerivationWithinBudget } from "../gates/surface-derivation-budget.js";
 import {
   buildDurableStepClaim,
   claimableMultiCursorSteps,
@@ -58,9 +59,8 @@ import { validateEvaluationTransition } from "../transition/flow-evaluation-tran
 import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../reports/flow-reports.js";
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
-import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
+import { compareRfc3339Timestamps, parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
-import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 import {
   FlowLifecycleError,
   assertLifecycleEligible,
@@ -76,7 +76,7 @@ import {
   validateRetryAuthorizationRequest
 } from "./flow-run-retry-authorization.js";
 import { exhaustedRouteBackProof, validateRetryAuthorizationHistory } from "./flow-run-retry-proof.js";
-import { normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest, type TrustAttachmentReducerDependencies } from "./trust-attachment-reducer.js";
+import { FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES, normalizeTrustAttachmentBundle, reduceTrustAttachmentManifest } from "./trust-attachment-reducer.js";
 import {
   assertRunRecoveryFenceOpen,
   assertActiveRunRecoveryFenceWrite,
@@ -91,19 +91,6 @@ import {
   withRunRecoveryFenceRead
 } from "./flow-run-recovery-fence.js";
 
-/**
- * Flow's adapter for the exact locked dependency APIs. The pure reducer accepts
- * this as data so a coordinator can pin its own artifact and dependencies.
- */
-export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerDependencies = {
-  hachure: { package: "hachure", version: "0.15.0", validate: validateTrustBundleSchema },
-  surface: {
-    package: "@kontourai/surface",
-    version: "2.12.0",
-    validate: (bundle) => validateTrustBundle(bundle) as MutableRecord,
-    buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord
-  }
-};
 import {
   FlowDefinitionAmendmentError,
   amendmentRequestReplayExists,
@@ -671,12 +658,12 @@ async function saveLifecycleState(run) {
 
 function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleAction) {
   const timestamp = options.at ?? new Date().toISOString();
-  if (!isNonEmptyString(timestamp) || !Number.isFinite(Date.parse(timestamp))) {
+  if (!isNonEmptyString(timestamp) || parseRfc3339Timestamp(timestamp) === null) {
     throw new FlowLifecycleError({
       code: "flow.lifecycle.request.invalid",
       severity: "error",
       path: "$.at",
-      message: "at must be a date-time when provided",
+      message: "at must be an RFC3339 date-time when provided",
       operation
     });
   }
@@ -754,9 +741,29 @@ export function cancelRun(runId: string, options: MutableRecord = {}) {
 }
 
 function multiCursorNow(options: MutableRecord = {}) {
-  const value = options.now ? new Date(options.now) : new Date();
-  if (!Number.isFinite(value.getTime())) throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be a valid date-time");
+  if (options.now !== undefined && (typeof options.now !== "string" || parseRfc3339Timestamp(options.now) === null)) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  const value = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(value.getTime())) throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
   return value;
+}
+
+/**
+ * Multi-cursor leases use Date arithmetic, but gate authority and durable audit
+ * records need the caller's full RFC3339 precision. Never reconstruct the
+ * latter from Date: JavaScript truncates fractions beyond milliseconds.
+ */
+function multiCursorEvaluationTime(options: MutableRecord = {}) {
+  const exact = options.now === undefined ? new Date().toISOString() : options.now;
+  if (typeof exact !== "string" || parseRfc3339Timestamp(exact) === null) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  const surfaceNow = new Date(exact);
+  if (!Number.isFinite(surfaceNow.getTime())) {
+    throw new FlowMultiCursorError("flow.multi_cursor.time.invalid", "now must be an RFC3339 date-time");
+  }
+  return { exact, surfaceNow };
 }
 
 function multiCursorActor(value: unknown): FlowStepClaimActor {
@@ -963,7 +970,8 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
   return withRunMutationLock(runId, cwd, async () => {
     const run = await loadRun(runId, cwd);
     assertLifecycleEligible("evaluate", run.state.status);
-    const now = multiCursorNow(options);
+    const evaluationTime = multiCursorEvaluationTime(options);
+    const now = evaluationTime.surfaceNow;
     expireMultiCursorClaims(run, now);
     invalidateStaleMultiCursorClaims(run, now);
     const cursor = ensureMultiCursorState(run.state);
@@ -975,7 +983,7 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     if (!gates.length) throw new FlowMultiCursorError("flow.multi_cursor.gate.required", `claimed step ${claim.step_id} has no gate to evaluate`);
     const outcomes: GateOutcome[] = [];
     for (const gateId of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config, evaluationTime.exact);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -985,9 +993,9 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     cursor.active_claims.splice(index, 1);
     if (terminal.status === "pass" && outcomes.length === gates.length) {
       const next = getStep(run.definition, claim.step_id)?.next ?? null;
-      run.state.transitions.push({ from_step: claim.step_id, to_step: next, status: "allowed", reason: "required evidence present", at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      run.state.transitions.push({ from_step: claim.step_id, to_step: next, status: "allowed", reason: "required evidence present", at: evaluationTime.exact, gate_id: terminal.gate_id, claim_id: claim.claim_id });
       cursor.blocked_steps = cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id);
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString() });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact });
     } else if (terminal.status === "route-back") {
       const target = terminal.route_back_to;
       const invalidatedDescendants = invalidateDescendants(run.definition, run.state, target);
@@ -997,19 +1005,19 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
       // Keep the reserved route-back record byte-for-byte derivable from the
       // preceding transition history. Claim correlation stays in the separate
       // claim history ledger, not in this proof-carrying transition shape.
-      run.state.transitions.push({ type: "route_back", from_step: claim.step_id, to_step: target, status: "blocked", reason: terminal.reason ?? terminal.route_reason ?? terminal.summary, route_reason: terminal.route_reason, selected_route: terminal.selected_route, recovery_step: terminal.recovery_step, attempt: terminal.attempt, retry_epoch: terminal.retry_epoch, max_attempts: terminal.max_attempts, limit_exceeded: terminal.limit_exceeded, invalidated_steps: invalidatedDescendants.length ? invalidatedDescendants : undefined, evidence_refs: terminal.evidence_refs, expectation_ids: terminal.expectation_ids, classifier: terminal.classifier, diagnostics: terminal.diagnostics, analytics: terminal.analytics, analytics_loop_key: terminal.analytics_loop_key, at: now.toISOString(), gate_id: terminal.gate_id });
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "route-back" });
+      run.state.transitions.push({ type: "route_back", from_step: claim.step_id, to_step: target, status: "blocked", reason: terminal.reason ?? terminal.route_reason ?? terminal.summary, route_reason: terminal.route_reason, selected_route: terminal.selected_route, recovery_step: terminal.recovery_step, attempt: terminal.attempt, retry_epoch: terminal.retry_epoch, max_attempts: terminal.max_attempts, limit_exceeded: terminal.limit_exceeded, invalidated_steps: invalidatedDescendants.length ? invalidatedDescendants : undefined, evidence_refs: terminal.evidence_refs, expectation_ids: terminal.expectation_ids, classifier: terminal.classifier, diagnostics: terminal.diagnostics, analytics: terminal.analytics, analytics_loop_key: terminal.analytics_loop_key, at: evaluationTime.exact, gate_id: terminal.gate_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact, reason: "route-back" });
       run.state.current_step = target;
     } else {
-      cursor.blocked_steps = [...cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id), { step_id: claim.step_id, gate_id: terminal.gate_id, at: now.toISOString(), summary: terminal.summary }];
-      run.state.transitions.push({ from_step: claim.step_id, to_step: getStep(run.definition, claim.step_id)?.next ?? null, status: "blocked", reason: terminal.summary, evidence_refs: terminal.evidence_refs, at: now.toISOString(), gate_id: terminal.gate_id, claim_id: claim.claim_id });
-      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: now.toISOString(), reason: "blocked" });
+      cursor.blocked_steps = [...cursor.blocked_steps.filter((entry) => entry.step_id !== claim.step_id), { step_id: claim.step_id, gate_id: terminal.gate_id, at: evaluationTime.exact, summary: terminal.summary }];
+      run.state.transitions.push({ from_step: claim.step_id, to_step: getStep(run.definition, claim.step_id)?.next ?? null, status: "blocked", reason: terminal.summary, evidence_refs: terminal.evidence_refs, at: evaluationTime.exact, gate_id: terminal.gate_id, claim_id: claim.claim_id });
+      recordClaimEvent(run.state, { action: "settled", claim_id: claim.claim_id, step_id: claim.step_id, at: evaluationTime.exact, reason: "blocked" });
     }
     if (multiCursorTerminal(run.definition, run.state)) run.state.status = "completed";
     else if (cursor.active_claims.length || claimableMultiCursorSteps(run.definition, run.state).length) run.state.status = "active";
     else if (cursor.blocked_steps.length) run.state.status = "blocked";
     run.state.current_step = projectMultiCursorCurrentStep(run.definition, run.state);
-    run.state.updated_at = now.toISOString();
+    run.state.updated_at = evaluationTime.exact;
     await saveRun(run);
     return { ...run, outcomes, settled: true };
   });
@@ -2029,13 +2037,13 @@ export function normalizeTrustBundle(raw: unknown): { bundle: any; bundle_report
   return normalizeTrustAttachmentBundle(raw, new Date().toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES);
 }
 
-async function attachEvidenceUnlocked(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
+async function attachEvidenceUnlocked(runId: string, options: FlowEvidenceAttachmentOptions): Promise<FlowEvidenceEntry> {
   const run = await loadRun(runId, options.cwd);
   if (options.expectedRunHead !== undefined && flowRunHead(run.state) !== options.expectedRunHead) {
     throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
   }
   assertRunMutationLifecycleEligible("attach_evidence", run);
-  const prepared = await prepareEvidenceAttachment(run, options, { normalizeBundle: normalizeTrustBundle, attachedAt: () => new Date() });
+  const prepared = await prepareEvidenceAttachment(run, options, { normalizeBundle: normalizeTrustBundle, attachedAt: () => new Date().toISOString() });
   await writeFile(prepared.storedPath, prepared.sourceBytes, { flag: "wx" });
   run.manifest = prepared.nextManifest;
   await saveRun(run);
@@ -2063,17 +2071,65 @@ async function preflightRunMutationLifecycle(runId: string, cwd: string, operati
   assertRunMutationLifecycleEligible(operation, run);
 }
 
-export function attachEvidence(runId: string, options: MutableRecord): Promise<FlowEvidenceEntry> {
-  const cwd = path.resolve(options.cwd ?? process.cwd());
+const ATTACH_EVIDENCE_OPTION_KEYS = new Set([
+  "cwd", "gate", "file", "kind", "bundle", "trustArtifact", "expectedRunHead", "expectedSha256", "status", "supersede",
+  "producer", "route_reason", "expectation_ids", "classifier", "diagnostics", "analytics"
+]);
+
+function attachmentOptionString(options: any, key: string, required = false) {
+  const value = options[key];
+  if (value === undefined && !required) return;
+  if (!isNonEmptyString(value)) throw new Error(`flow.attach_evidence.options.invalid: ${key} must be a non-empty string`);
+}
+
+function attachmentOptionStrings(options: any, key: string) {
+  const value = options[key];
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.some((entry) => !isNonEmptyString(entry))) {
+    throw new Error(`flow.attach_evidence.options.invalid: ${key} must be an array of non-empty strings`);
+  }
+}
+
+/** Reject malformed or silently ignored public attachment options before I/O. */
+function validateEvidenceAttachmentOptions(options: unknown): FlowEvidenceAttachmentOptions {
+  let candidate: MutableRecord;
+  try {
+    candidate = structuredClone(options) as MutableRecord;
+  } catch {
+    throw new Error("flow.attach_evidence.options.invalid: options must be structured-cloneable");
+  }
+  if (!isObject(candidate) || Array.isArray(candidate)) throw new Error("flow.attach_evidence.options.invalid: options must be an object");
+  for (const key of Object.keys(candidate)) {
+    if (!ATTACH_EVIDENCE_OPTION_KEYS.has(key)) throw new Error(`flow.attach_evidence.options.invalid: unsupported option ${key}`);
+  }
+  attachmentOptionString(candidate, "gate", true);
+  attachmentOptionString(candidate, "file", true);
+  for (const key of ["cwd", "kind", "expectedRunHead", "expectedSha256", "status", "producer", "route_reason"]) attachmentOptionString(candidate, key);
+  for (const key of ["expectation_ids"]) attachmentOptionStrings(candidate, key);
+  for (const key of ["bundle", "trustArtifact"]) {
+    if (candidate[key] !== undefined && typeof candidate[key] !== "boolean") throw new Error(`flow.attach_evidence.options.invalid: ${key} must be a boolean`);
+  }
+  if (candidate.supersede !== undefined && (!isNonEmptyString(candidate.supersede) && (!Array.isArray(candidate.supersede) || candidate.supersede.some((entry) => !isNonEmptyString(entry))))) {
+    throw new Error("flow.attach_evidence.options.invalid: supersede must be a non-empty string or an array of non-empty strings");
+  }
+  for (const key of ["classifier", "diagnostics", "analytics"]) {
+    if (candidate[key] !== undefined && (!isObject(candidate[key]) || Array.isArray(candidate[key]))) throw new Error(`flow.attach_evidence.options.invalid: ${key} must be an object`);
+  }
+  return candidate as FlowEvidenceAttachmentOptions;
+}
+
+export function attachEvidence(runId: string, options: FlowEvidenceAttachmentOptions): Promise<FlowEvidenceEntry> {
+  const validatedOptions = validateEvidenceAttachmentOptions(options);
+  const cwd = path.resolve(validatedOptions.cwd ?? process.cwd());
   let expectedRunHead: string | undefined;
-  if (options.expectedRunHead !== undefined) {
-    if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+  if (validatedOptions.expectedRunHead !== undefined) {
+    if (typeof validatedOptions.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(validatedOptions.expectedRunHead)) {
       throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
     }
-    expectedRunHead = options.expectedRunHead.toLowerCase();
+    expectedRunHead = validatedOptions.expectedRunHead.toLowerCase();
   }
   return preflightRunMutationLifecycle(runId, cwd, "attach_evidence")
-    .then(() => withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...options, cwd, expectedRunHead })));
+    .then(() => withRunMutationLock(runId, cwd, () => attachEvidenceUnlocked(runId, { ...validatedOptions, cwd, expectedRunHead })));
 }
 
 type PreparedEvidenceAttachment = {
@@ -2085,54 +2141,81 @@ type PreparedEvidenceAttachment = {
 
 type EvidencePreparation = {
   normalizeBundle: (raw: unknown) => { bundle: any; bundle_report: any };
-  attachedAt: () => Date;
+  attachedAt: () => string;
 };
 
 function continuationNow(value: unknown) {
-  if (value !== undefined && (typeof value !== "string" || !isNonEmptyString(value) || !Number.isFinite(Date.parse(value)))) {
-    throw new Error("flow.paused_gate_continuation.request.invalid: now must be a date-time when provided");
+  const exact = value === undefined ? new Date().toISOString() : value;
+  if (typeof exact !== "string" || parseRfc3339Timestamp(exact) === null) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: now must be an RFC3339 date-time when provided");
   }
-  const now = value === undefined ? new Date() : new Date(value as string);
-  return now;
+  const surfaceNow = new Date(exact);
+  if (!Number.isFinite(surfaceNow.getTime())) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: now must be an RFC3339 date-time when provided");
+  }
+  return { exact, surfaceNow };
 }
 
 function pausedGateContinuationRequest(options: FlowPausedGateContinuationOptions) {
-  if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+  let requestOptions: FlowPausedGateContinuationOptions;
+  try {
+    requestOptions = structuredClone(options) as FlowPausedGateContinuationOptions;
+  } catch {
+    throw new Error("flow.paused_gate_continuation.request.invalid: options must be structured-cloneable");
+  }
+  if (!isObject(requestOptions) || Array.isArray(requestOptions)) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: options must be an object");
+  }
+  if (typeof requestOptions.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(requestOptions.expectedRunHead)) {
     throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
   }
-  if (!isNonEmptyString(options.gate)) {
+  if (!isNonEmptyString(requestOptions.gate)) {
     throw new Error("flow.paused_gate_continuation.request.invalid: gate must be a non-empty string");
   }
-  if (!isObject(options.evidence) || !isNonEmptyString(options.evidence.file)) {
+  if (!isObject(requestOptions.evidence) || !isNonEmptyString(requestOptions.evidence.file)) {
     throw new Error("flow.paused_gate_continuation.request.invalid: evidence.file must be a non-empty string");
   }
-  if (typeof options.resumeOnPass !== "boolean") {
+  const cwd = path.resolve(requestOptions.cwd ?? process.cwd());
+  const evidence = validateEvidenceAttachmentOptions({
+    ...(requestOptions.evidence as MutableRecord),
+    cwd,
+    gate: requestOptions.gate
+  });
+  if (typeof requestOptions.resumeOnPass !== "boolean") {
     throw new Error("flow.paused_gate_continuation.request.invalid: resumeOnPass must be a boolean");
   }
-  if (options.resumeOnPass && !options.resume) {
+  if (requestOptions.resumeOnPass && !requestOptions.resume) {
     throw new Error("flow.paused_gate_continuation.request.invalid: resume is required when resumeOnPass is true");
   }
-  if (!options.resumeOnPass && options.resume !== undefined) {
+  if (!requestOptions.resumeOnPass && requestOptions.resume !== undefined) {
     throw new Error("flow.paused_gate_continuation.request.invalid: resume is only allowed when resumeOnPass is true");
   }
-  const now = continuationNow(options.now);
-  const resumeOptions = options.resumeOnPass && options.resume!.at === undefined
-    ? { ...options.resume!, at: now.toISOString() }
-    : options.resume;
-  const resume = options.resumeOnPass
+  const evaluationTime = continuationNow(requestOptions.now);
+  const resumeOptions = requestOptions.resumeOnPass && requestOptions.resume!.at === undefined
+    ? { ...requestOptions.resume!, at: evaluationTime.exact }
+    : requestOptions.resume;
+  const resume = requestOptions.resumeOnPass
     ? { request: validateLifecycleRequest("resume", { reason: resumeOptions!.reason, authority: resumeOptions!.authority }), at: lifecycleTimestamp(resumeOptions!, "resume") }
     : undefined;
-  if (resume && Date.parse(resume.at) > now.getTime()) {
-    throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
+  if (resume) {
+    const resumeAt = parseRfc3339Timestamp(resume.at);
+    const evaluationAt = parseRfc3339Timestamp(evaluationTime.exact)!;
+    if (resumeAt === null) {
+      throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must be an RFC3339 date-time");
+    }
+    if (compareRfc3339Timestamps(resumeAt, evaluationAt) > 0) {
+      throw new Error("flow.paused_gate_continuation.request.invalid: resume.at must not follow evaluation now");
+    }
   }
   return {
-    cwd: path.resolve(options.cwd ?? process.cwd()),
-    expectedRunHead: options.expectedRunHead.toLowerCase(),
-    gate: options.gate,
-    evidence: options.evidence,
-    resumeOnPass: options.resumeOnPass,
+    cwd,
+    expectedRunHead: requestOptions.expectedRunHead.toLowerCase(),
+    gate: requestOptions.gate,
+    evidence,
+    resumeOnPass: requestOptions.resumeOnPass,
     resume,
-    now
+    now: evaluationTime.exact,
+    surfaceNow: evaluationTime.surfaceNow
   };
 }
 
@@ -2170,7 +2253,7 @@ function normalizedEvidenceBundle(sourceBytes: Buffer, options: MutableRecord, p
   return preparation.normalizeBundle(raw);
 }
 
-async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: MutableRecord, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
+async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: FlowEvidenceAttachmentOptions, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
   if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
   const { source, sourceBytes, sourceSha256 } = await readEvidenceSource(options);
   const kind = normalizeEvidenceKind(options.kind);
@@ -2188,7 +2271,7 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
     original_path: options.file,
     stored_path: path.join(FLOW_RUN_EVIDENCE_DIR, storedName),
     sha256: sourceSha256,
-    attached_at: preparation.attachedAt().toISOString()
+    attached_at: preparation.attachedAt()
   };
   if (normalizedBundle) {
     evidence.kind = "trust.bundle";
@@ -2197,7 +2280,6 @@ async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>
     evidence.bundle_report = normalizedBundle.bundle_report;
   }
   if (options.producer) evidence.producer = options.producer;
-  if (options.authorityTrace) evidence.authority_trace = options.authorityTrace;
   if (options.route_reason) evidence.route_reason = options.route_reason;
   if (options.expectation_ids) evidence.expectation_ids = options.expectation_ids;
   if (options.classifier) evidence.classifier = options.classifier;
@@ -2234,11 +2316,11 @@ function blockingFreshnessRechecks(definition: any, currentStep: string, recheck
 }
 
 function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, state: FlowRunState, manifest: MutableRecord, request: ReturnType<typeof pausedGateContinuationRequest>) {
-  const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config);
-  const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now.toISOString());
-  if (validation.status === "invalid") throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
+  const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config, request.now);
+  const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now);
+  if (validation.status === "invalid" || (outcome.status === "pass" && validation.valid !== true)) throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
   outcome.transition_validation = validation;
-  applyEvaluation(run.definition, state, outcome, request.now.toISOString());
+  applyEvaluation(run.definition, state, outcome, request.now);
   return outcome;
 }
 
@@ -2248,7 +2330,7 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
   return withRunMutationLock(runId, request.cwd, async () => {
     const run = await loadRun(runId, request.cwd);
     assertPausedContinuation(run, request);
-    const prepared = await prepareEvidenceAttachment(run, { ...request.evidence, cwd: request.cwd, gate: request.gate }, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now.toISOString(), FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
+    const prepared = await prepareEvidenceAttachment(run, request.evidence, { normalizeBundle: (raw) => normalizeTrustAttachmentBundle(raw, request.now, FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES), attachedAt: () => request.now });
     const manifest = structuredClone(prepared.nextManifest) as MutableRecord;
     const rechecks = blockingFreshnessRechecks(run.definition, run.state.current_step, staleGateRechecks(run.definition, run.state, manifest, reDeriveBundleReports(manifest, request.now), run.config));
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };
@@ -2281,24 +2363,63 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
  * statuses every time, so this is a no-op for legacy bundles beyond appending
  * an identical inquiry record.
  */
-export function reDeriveBundleReports(manifest: any, now: Date): MutableRecord[] {
+export function reDeriveBundleReports(manifest: any, now: Date | string): MutableRecord[] {
+  const exactNow = now instanceof Date ? now.toISOString() : now;
+  if (parseRfc3339Timestamp(exactNow) === null) throw new Error("flow.rederive.now.invalid: now must be an RFC3339 date-time");
+  const surfaceNow = now instanceof Date ? new Date(now.getTime()) : new Date(now);
+  if (!Number.isFinite(surfaceNow.getTime())) throw new Error("flow.rederive.now.invalid: now must be an RFC3339 date-time");
   const transitions: MutableRecord[] = [];
   for (const entry of manifest.evidence ?? []) {
     if (entry.superseded_by) continue;
     if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") continue;
-    if (!entry.bundle) continue;
+    const rawBundle = entry.bundle;
+    if (!rawBundle) continue;
+    let snapshot: any;
+    try {
+      snapshot = structuredClone(rawBundle);
+    } catch {
+      entry.bundle_report = null;
+      continue;
+    }
+    if (!surfaceDerivationWithinBudget(snapshot)) {
+      entry.bundle_report = null;
+      continue; // reject an oversized raw attachment before schema validation
+    }
     let validated: any;
     try {
-      validated = validateTrustBundle(surfaceTimestampValidationView(entry.bundle));
+      validated = validateTrustBundle(surfaceTimestampValidationView(snapshot));
     } catch {
       entry.bundle_report = null;
       continue; // leave invalid bundles for the gate diagnostics to report
     }
+    if (!surfaceDerivationWithinBudget(validated)) {
+      entry.bundle_report = null;
+      continue; // avoid an unbounded Surface fold on an adversarial attachment
+    }
     const priorRecords: any[] = Array.isArray(entry.inquiry_records) ? entry.inquiry_records : [];
     const since = priorRecords.length > 0 ? priorRecords[priorRecords.length - 1] : undefined;
+    const checkpointAsOf = since && parseRfc3339Timestamp(since.asOf);
+    const timestamps = [
+      ...(validated.claims ?? []).flatMap((claim: any) => [claim.createdAt, claim.updatedAt]),
+      ...(validated.events ?? []).flatMap((event: any) => [event.createdAt, event.verifiedAt]),
+      ...(validated.evidence ?? []).map((evidence: any) => evidence.observedAt),
+      ...(validated.authorityTrace ?? []).map((trace: any) => trace.observedAt)
+    ];
+    // A prior exact fail-closed report may have seen facts that had not yet
+    // occurred. Surface checkpoints only replay event tails, so reuse would
+    // preserve that transient status forever. Once time has crossed any such
+    // fact, force one full public Surface fold while retaining the truthful
+    // exact checkpoint in the immutable inquiry series.
+    const requiresFullRefold = checkpointAsOf
+      && timestamps.some((value) => {
+        const timestamp = parseRfc3339Timestamp(value);
+        return timestamp !== null && compareRfc3339Timestamps(timestamp, checkpointAsOf) > 0;
+      });
     let liveReport: any;
     try {
-      liveReport = buildTrustReport(validated, since ? { now, since } : { now });
+      const surfaceReport = buildTrustReport(validated, since && !requiresFullRefold ? { now: surfaceNow, since } : { now: surfaceNow });
+      const reconciled = reconcileSurfaceBundleReport(validated, surfaceReport, exactNow);
+      liveReport = reconciled.report;
     } catch {
       continue;
     }
@@ -2482,8 +2603,14 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   // gates read them, so a claim that has gone stale flips the gate outcome.
   // The existing route-back cascade (invalidateDescendants) then clears any
   // downstream stale passes for free.
-  const now = options.now ? new Date(options.now) : new Date();
-  const freshnessTransitions = reDeriveBundleReports(run.manifest, now);
+  if (typeof options.now !== "string" || parseRfc3339Timestamp(options.now) === null) {
+    throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
+  }
+  const evaluationInstant = options.now;
+  // Surface APIs accept Date; Flow retains `evaluationInstant` for every
+  // chronology decision and persisted transition.
+  const now = new Date(evaluationInstant);
+  const freshnessTransitions = reDeriveBundleReports(run.manifest, evaluationInstant);
   const outcomes: GateOutcome[] = [];
 
   // A passed ancestor may become stale after the cursor has advanced. Queue
@@ -2502,7 +2629,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!rechecks?.length) continue;
     const gate = findGate(run.definition, gateId);
     if (!gate || !descendantsOf(run.definition, gate.step).includes(run.state.current_step)) continue;
-    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
@@ -2513,8 +2640,8 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     // a stage the run already passed, never a forward jump. `applyEvaluation`
     // re-checks the ancestry at write time.
     const validationState = ancestorRecheckState(run.definition, run.state, gate);
-    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
-    if (transitionValidation.status === "invalid") {
+    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, evaluationInstant);
+    if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
     }
@@ -2524,7 +2651,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
       run.state.current_step = gate.step;
       outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
     }
-    applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+    applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
     const stillPassed = new Set(
       (run.state.gate_outcomes ?? [])
         .filter((entry: any) => entry.status === "pass")
@@ -2538,19 +2665,19 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   if (!outcomes.length) {
     const gates = options.gate ? [findGate(run.definition, options.gate)] : openGates(run.definition, run.state);
     if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
-    if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], now.toISOString());
+    if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], evaluationInstant);
     for (const gate of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config);
+      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
       if (options.gate) assertOffCurrentOutcomeCannotAdvance(run.definition, run.state, gate, outcome);
       // No synthesised cursor: the jump guard in `validateRunTransition` sees
       // the run's real state and can fire for the case it exists to catch.
-      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, now.toISOString());
-      if (transitionValidation.status === "invalid") {
+      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, evaluationInstant);
+      if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
         const first = transitionValidation.diagnostics[0];
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
       }
       outcome.transition_validation = transitionValidation;
-      applyEvaluation(run.definition, run.state, outcome, now.toISOString());
+      applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -2561,8 +2688,10 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
 
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
+  const now = options.now === undefined ? new Date().toISOString() : options.now;
+  if (typeof now !== "string" || parseRfc3339Timestamp(now) === null) throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
   await preflightRunMutationLifecycle(runId, cwd, "evaluate");
-  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd }));
+  return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { ...options, cwd, now }));
 }
 
 async function acceptExceptionUnlocked(runId, options) {

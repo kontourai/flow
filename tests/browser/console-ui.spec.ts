@@ -236,12 +236,15 @@ test("live stream closes when the page lifecycle ends", async ({ page }) => {
     () => (window as typeof window & { __flowEventSourceCloseCount?: number })
       .__flowEventSourceCloseCount ?? 0
   )).toBe(1);
+  await expect(page.getByTestId("live-indicator")).toHaveAttribute("data-connected", "false");
+  await expect(page.getByTestId("live-indicator").locator(".live-dot")).toHaveClass(/live-dot-off/);
 
   await page.evaluate(() => window.dispatchEvent(
     new PageTransitionEvent("pageshow", { persisted: true })
   ));
   await expect(page.getByTestId("live-indicator"))
     .toHaveAttribute("data-connected", "true", { timeout: 5000 });
+  await expect(page.getByTestId("live-indicator").locator(".live-dot")).toHaveClass(/live-dot-on/);
 
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
   await expect.poll(() => page.evaluate(
@@ -250,7 +253,105 @@ test("live stream closes when the page lifecycle ends", async ({ page }) => {
   )).toBe(2);
 });
 
-test("live update: mutating run state file updates header status and timeline without reload", async ({ page }) => {
+test("live update: stale EventSource callbacks cannot affect a lifecycle replacement", async ({ page }) => {
+  test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
+  await page.addInitScript(() => {
+    type Listener = (event: Event) => void;
+
+    class ControlledEventSource {
+      static instances: ControlledEventSource[] = [];
+      readonly listeners = new Map<string, Listener[]>();
+      closeCount = 0;
+
+      constructor(_url: string) {
+        ControlledEventSource.instances.push(this);
+      }
+
+      addEventListener(type: string, listener: Listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      close() {
+        this.closeCount += 1;
+      }
+
+      emit(type: string) {
+        for (const listener of this.listeners.get(type) ?? []) listener(new Event(type));
+      }
+    }
+
+    Object.assign(window, { __flowControlledEventSource: ControlledEventSource });
+    window.EventSource = ControlledEventSource as unknown as typeof EventSource;
+  });
+
+  const consoleErrors = await loadFlowConsole(page);
+  const indicator = page.getByTestId("live-indicator");
+
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __flowControlledEventSource?: { instances: unknown[] } })
+      .__flowControlledEventSource?.instances.length ?? 0
+  ))).toBe(1);
+
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  await page.evaluate(() => window.dispatchEvent(
+    new PageTransitionEvent("pageshow", { persisted: true })
+  ));
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __flowControlledEventSource?: { instances: unknown[] } })
+      .__flowControlledEventSource?.instances.length ?? 0
+  ))).toBe(2);
+
+  const staleOpenMutatedIndicator = await page.evaluate(() => {
+    type ControlledSource = { emit(type: string): void };
+    const sources = (window as typeof window & {
+      __flowControlledEventSource: { instances: ControlledSource[] };
+    }).__flowControlledEventSource.instances;
+    sources[0].emit("open");
+    return document.querySelector<HTMLElement>('[data-testid="live-indicator"]')?.dataset.connected === "true";
+  });
+  // Before the generation guard, this was true: source #1's queued open
+  // callback incorrectly marked the replacement connection as live.
+  expect(staleOpenMutatedIndicator).toBe(false);
+
+  const replacementClosed = await page.evaluate(() => {
+    type ControlledSource = { emit(type: string): void; closeCount: number };
+    const sources = (window as typeof window & {
+      __flowControlledEventSource: { instances: ControlledSource[] };
+    }).__flowControlledEventSource.instances;
+    sources[0].emit("error");
+    return sources[1].closeCount;
+  });
+  // Before the generation guard, this was one because source #1's error
+  // callback closed the shared `es` reference, which pointed at source #2.
+  expect(replacementClosed).toBe(0);
+  await expect(indicator).toHaveAttribute("data-connected", "false");
+
+  await page.evaluate(() => {
+    type ControlledSource = { emit(type: string): void };
+    const sources = (window as typeof window & {
+      __flowControlledEventSource: { instances: ControlledSource[] };
+    }).__flowControlledEventSource.instances;
+    sources[1].emit("open");
+  });
+  await expect(indicator).toHaveAttribute("data-connected", "true");
+
+  const currentCloseCount = await page.evaluate(() => {
+    type ControlledSource = { emit(type: string): void; closeCount: number };
+    const sources = (window as typeof window & {
+      __flowControlledEventSource: { instances: ControlledSource[] };
+    }).__flowControlledEventSource.instances;
+    sources[1].emit("error");
+    return sources[1].closeCount;
+  });
+  expect(currentCloseCount).toBe(1);
+  await expect(indicator).toHaveAttribute("data-connected", "false");
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("live update: a projection re-render preserves the connected indicator", async ({ page }) => {
   test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
   const consoleErrors = await loadFlowConsole(page);
 
@@ -281,6 +382,11 @@ test("live update: mutating run state file updates header status and timeline wi
 
     // Status badge should still be visible (header re-rendered)
     await expect(page.getByTestId("flow-console-status")).toBeVisible();
+    // `renderApp` replaces the header, so the newly-created indicator must
+    // reflect the connection that was already established by the SSE client.
+    await expect(indicator).toHaveAttribute("data-connected", "true");
+    await expect(indicator.locator(".live-label")).toHaveText("live");
+    await expect(indicator.locator(".live-dot")).toHaveClass(/live-dot-on/);
   } finally {
     await writeFile(STATE_FILE, originalState);
   }

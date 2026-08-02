@@ -19,6 +19,19 @@
     "summary"
   ],
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "mode": { "const": "apply" },
+        "status": { "const": "applied" }
+      },
+      "required": ["publisher_receipt"]
+    },
+    {
+      "properties": { "status": { "enum": ["ready", "conflicts", "blocked"] } },
+      "not": { "required": ["publisher_receipt"] }
+    }
+  ],
   "properties": {
     "schema_version": { "type": "string", "const": "0.1" },
     "mode": { "type": "string", "enum": ["preview", "apply"] },
@@ -32,6 +45,7 @@
     "unchanged": { "type": "array", "items": { "$ref": "#/$defs/change" } },
     "exceptions": { "type": "array", "items": { "$ref": "#/$defs/exception" } },
     "merged_config": { "$ref": "flow-config.schema.json#/$defs/flat_config" },
+    "publisher_receipt": { "$ref": "#/$defs/publisher_receipt" },
     "summary": {
       "type": "object",
       "required": ["proposed", "accepted", "rejected", "conflicts", "unchanged", "exceptions"],
@@ -73,6 +87,19 @@
         "local_value": true,
         "proposed_value": true,
         "accepted_value": true
+      }
+    },
+    "publisher_receipt": {
+      "type": "object",
+      "required": ["api_version", "status", "publisher", "publication_id", "config_path", "contents_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "api_version": { "const": "flow.kontourai.io/v1alpha1" },
+        "status": { "const": "applied" },
+        "publisher": { "type": "string", "minLength": 1 },
+        "publication_id": { "type": "string", "minLength": 1 },
+        "config_path": { "type": "string", "minLength": 1 },
+        "contents_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       }
     }
   }

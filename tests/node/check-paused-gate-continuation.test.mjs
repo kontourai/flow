@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -24,12 +24,27 @@ const definition = {
   }
 };
 
-function bundle(subjectId = "work-42", expiresAt) {
+function bundle(subjectId = "work-42", expiresAt, authorityTrace) {
   return {
     schemaVersion: 7, source: "test/paused-gate",
     claims: [{ id: "claim.review", subjectType: "work-item", subjectId, facet: "quality.review", claimType: "quality.review", fieldOrBehavior: "review", value: "accepted", createdAt: "2026-07-22T11:00:00.000Z", updatedAt: "2026-07-22T11:00:00.000Z", ...(expiresAt ? { expiresAt } : {}) }],
     evidence: [], policies: [],
-    events: [{ id: "event.review", claimId: "claim.review", status: "verified", actor: "reviewer:test", method: "review", evidenceIds: [], createdAt: "2026-07-22T11:30:00.000Z", verifiedAt: "2026-07-22T11:30:00.000Z" }]
+    events: [{ id: "event.review", claimId: "claim.review", status: "verified", actor: "reviewer:test", method: "review", evidenceIds: [], createdAt: "2026-07-22T11:30:00.000Z", verifiedAt: "2026-07-22T11:30:00.000Z" }],
+    ...(authorityTrace ? { authorityTrace: [authorityTrace] } : {})
+  };
+}
+
+function reviewAuthorityTrace(overrides = {}) {
+  return {
+    id: "trace.review",
+    subject: { subjectType: "work-item", subjectId: "work-42" },
+    actorRef: "reviewer:test",
+    authorityType: "role",
+    authorityRef: "authority:review",
+    sourceRef: "policy:review",
+    observedAt: "2026-07-22T11:30:00.000Z",
+    claimIds: ["claim.review"],
+    ...overrides
   };
 }
 
@@ -37,18 +52,22 @@ function authority(ref) {
   return { kind: "operator_request", actor: "operator:test", request_ref: ref, requested_at: TIME };
 }
 
-async function fixture(name, { priorStatus = "active", terminal = false, definitionValue } = {}) {
+async function fixture(name, { priorStatus = "active", terminal = false, definitionValue, config, pauseAt = TIME } = {}) {
   const cwd = await mkdtemp(path.join(tmpdir(), `flow-paused-gate-${name}-`));
   const definitionPath = path.join(cwd, "definition.json");
   const fixtureDefinition = structuredClone(definitionValue ?? definition);
   if (terminal) fixtureDefinition.steps[0].next = null;
   await writeFile(definitionPath, `${JSON.stringify(fixtureDefinition, null, 2)}\n`);
+  if (config) {
+    await mkdir(path.join(cwd, ".flow"), { recursive: true });
+    await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  }
   const started = await startRun(definitionPath, { cwd, runId: "paused-run", params: { subject: "work-42" } });
   const statePath = path.join(started.dir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
   state.status = priorStatus;
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
-  await pauseRun(started.runId, { cwd, reason: "Wait for review evidence.", authority: authority(`request:pause:${name}`), at: TIME });
+  await pauseRun(started.runId, { cwd, reason: "Wait for review evidence.", authority: authority(`request:pause:${name}`), at: pauseAt });
   return { cwd, runId: started.runId, dir: started.dir, run: await loadRun(started.runId, cwd) };
 }
 
@@ -190,6 +209,159 @@ test("AC1: omitted now and resume.at share one operation timestamp", async () =>
     resume: { reason: "Continue after accepted review.", authority: authority("request:resume:default-timestamp") }
   }));
   assert.equal(result.committed, true);
+});
+
+test("paused gate continuation snapshots evidence before waiting for the mutation lock", async () => {
+  const fixtureData = await fixture("option-snapshot");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const continuation = request(fixtureData, evidencePath, {
+    evidence: {
+      file: evidencePath,
+      kind: "trust.bundle",
+      classifier: { kind: "original", nested: { value: "original" } },
+      diagnostics: { code: "original", nested: { value: "original" } },
+      analytics: { loop_key: "original", nested: { value: "original" } }
+    }
+  });
+  const pending = continuePausedGate(fixtureData.runId, continuation);
+  continuation.gate = "mutated-gate";
+  continuation.evidence.file = path.join(fixtureData.cwd, "missing-after-invocation.json");
+  continuation.evidence.classifier.nested.value = "mutated";
+  continuation.evidence.diagnostics.nested.value = "mutated";
+  continuation.evidence.analytics.nested.value = "mutated";
+
+  const result = await pending;
+  assert.equal(result.committed, true);
+  assert.equal(result.evidence.gate_id, "verify-gate");
+  assert.equal(result.evidence.original_path, evidencePath);
+  assert.deepEqual(result.evidence.classifier, { kind: "original", nested: { value: "original" } });
+  assert.deepEqual(result.evidence.diagnostics, { code: "original", nested: { value: "original" } });
+  assert.deepEqual(result.evidence.analytics, { loop_key: "original", nested: { value: "original" } });
+});
+
+test("paused gate continuation snapshots an access-varying gate before validation and persistence", async () => {
+  const fixtureData = await fixture("gate-accessor-snapshot");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const continuation = request(fixtureData, evidencePath);
+  let gateReads = 0;
+  Object.defineProperty(continuation, "gate", {
+    enumerable: true,
+    get() {
+      gateReads += 1;
+      return gateReads === 1 ? "verify-gate" : "not-current-gate";
+    }
+  });
+
+  const result = await continuePausedGate(fixtureData.runId, continuation);
+  const persisted = await loadRun(fixtureData.runId, fixtureData.cwd);
+  assert.equal(gateReads, 1);
+  assert.equal(result.committed, true);
+  assert.equal(result.evidence.gate_id, "verify-gate");
+  assert.deepEqual(persisted.manifest.evidence.map((entry) => entry.gate_id), ["verify-gate"]);
+  assert.equal(persisted.state.current_step, "publish");
+});
+
+test("paused continuation enforces the same active scoped authority trace as canonical and pure evaluation", async () => {
+  const config = {
+    schema_version: "0.1",
+    trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } },
+    gate_overrides: {}
+  };
+  const fixtureData = await fixture("rich-authority", { config });
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle("work-42", undefined, reviewAuthorityTrace()))}\n`);
+  const passed = await continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, { ref: "rich-authority" }));
+  assert.equal(passed.committed, true);
+
+  const rejectedFixture = await fixture("rich-authority-opaque", { config });
+  const opaquePath = path.join(rejectedFixture.cwd, "accepted-review.json");
+  await writeFile(opaquePath, `${JSON.stringify(bundle())}\n`);
+  const rejected = await continuePausedGate(rejectedFixture.runId, request(rejectedFixture, opaquePath, {
+    ref: "rich-authority-opaque",
+    evidence: { file: opaquePath, kind: "trust.bundle" }
+  }));
+  assert.equal(rejected.committed, false);
+  assert.equal(rejected.outcomes[0].status, "route-back");
+  assert.deepEqual(rejected.outcomes[0].diagnostics.claim_evaluation[0].authority, { code: "no_trace" });
+});
+
+test("paused continuation retains fractional evaluation instants for authority, transition validation, and persistence", async () => {
+  const config = {
+    schema_version: "0.1",
+    trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } },
+    gate_overrides: {}
+  };
+  const evaluatedAt = "2026-07-22T12:01:00.0001Z";
+
+  const acceptedFixture = await fixture("fractional-authority-accepted", { config });
+  const acceptedEvidence = path.join(acceptedFixture.cwd, "accepted-review.json");
+  await writeFile(acceptedEvidence, `${JSON.stringify(bundle("work-42", undefined, reviewAuthorityTrace({ validUntil: "2026-07-22T12:01:00.0002Z" })))}\n`);
+  const accepted = await continuePausedGate(acceptedFixture.runId, request(acceptedFixture, acceptedEvidence, { now: evaluatedAt, ref: "fractional-authority-accepted" }));
+  assert.equal(accepted.committed, true);
+  const acceptedPersisted = await loadRun(acceptedFixture.runId, acceptedFixture.cwd);
+  assert.equal(acceptedPersisted.state.transitions.at(-1).at, evaluatedAt);
+  assert.equal(acceptedPersisted.state.updated_at, evaluatedAt);
+  assert.equal(acceptedPersisted.manifest.evidence.at(-1).attached_at, evaluatedAt);
+
+  const expiredFixture = await fixture("fractional-authority-expired", { config });
+  const expiredEvidence = path.join(expiredFixture.cwd, "expired-review.json");
+  await writeFile(expiredEvidence, `${JSON.stringify(bundle("work-42", undefined, reviewAuthorityTrace({ validUntil: "2026-07-22T12:01:00.00005Z" })))}\n`);
+  const expired = await continuePausedGate(expiredFixture.runId, request(expiredFixture, expiredEvidence, { now: evaluatedAt, ref: "fractional-authority-expired" }));
+  assert.equal(expired.committed, false);
+  assert.equal(expired.outcomes[0].status, "route-back", "an authority expired 50 microseconds before evaluation must not pass through Date truncation");
+  assert.deepEqual(expired.outcomes[0].diagnostics.claim_evaluation[0].authority, { code: "expired" });
+});
+
+test("paused continuation rejects Date-parseable non-RFC3339 now without mutation", async () => {
+  const fixtureData = await fixture("non-strict-now");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, { now: "2026-07-22 12:01:00Z", ref: "non-strict-now" })),
+    /now must be an RFC3339 date-time/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
+});
+
+test("paused continuation compares resume ordering at full RFC3339 precision", async () => {
+  const fixtureData = await fixture("fractional-resume-order");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, {
+      now: "2026-07-22T12:01:00.0001Z",
+      resume: {
+        reason: "too late by 50 microseconds",
+        authority: authority("request:fractional-resume-order"),
+        at: "2026-07-22T12:01:00.00015Z"
+      }
+    })),
+    /resume\.at must not follow evaluation now/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
+});
+
+test("paused continuation rejects resume before its pause at fractional RFC3339 precision without mutation", async () => {
+  const fixtureData = await fixture("fractional-lifecycle-order", { pauseAt: "2026-07-22T12:01:00.00015Z" });
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const before = await snapshotRunTree(fixtureData.dir);
+  await assert.rejects(
+    continuePausedGate(fixtureData.runId, request(fixtureData, evidencePath, {
+      now: "2026-07-22T12:01:00.0002Z",
+      resume: {
+        reason: "resume before the persisted pause",
+        authority: authority("request:fractional-lifecycle-order"),
+        at: "2026-07-22T12:01:00.0001Z"
+      }
+    })),
+    /precedes the prior event/
+  );
+  assert.deepEqual(await snapshotRunTree(fixtureData.dir), before);
 });
 
 test("AC2: prospective freshness and validation before staging leave the full run tree untouched", async () => {

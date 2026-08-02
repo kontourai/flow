@@ -54,12 +54,12 @@ function usage() {
   flow cancel <run-id> --request <request-json> [--cwd <path>]
   flow authorize-retry <run-id> --request <request-json> [--cwd <path>]
   flow amend-definition <run-id> --definition <successor-json> --request <request-json> [--cwd <path>]
-  flow attach-evidence <run-id> --gate <gate> --file <file> [--expected-run-head <sha256>] [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--authority-trace <trace>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
+  flow attach-evidence <run-id> --gate <gate> --file <file> [--expected-run-head <sha256>] [--kind <kind>] [--bundle] [--supersede <evidence-id> ...] [--trust-artifact (deprecated, alias for --kind trust.bundle)] [--producer <id>] [--route-reason <reason>] [--classifier-kind <kind>] [--classifier-source <source>] [--classifier-confidence <0..1>] [--analytics-loop-key <key>] [--expectation-id <id> ...] [--route-metadata <json-file>] [--cwd <path>]
   flow capture <run-id> --gate <gate> --kind command [--timeout <ms>] [--cwd <path>] -- <cmd...>
   flow evaluate <run-id> [--gate <gate>] [--exit-code] [--cwd <path>]
   flow accept-exception <run-id> --gate <gate> --reason <reason> --authority <authority> [--cwd <path>]
   flow config preview <proposal> [--format summary|markdown|json] [--cwd <path>]
-  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]
+  flow config apply <proposal> [--accept-conflict <path> ...] [--exception-reason <reason>] [--authority <authority>] [--format summary|markdown|json] [--cwd <path>]  (requires a trusted host publisher; unavailable in this CLI)
   flow report <run-id> [--format summary|markdown|json] [--cwd <path>]
   flow version-release-report <fixture-json> [--format json|markdown] [--cwd <path>]
   flow console --run <run-id> [--cwd <path>] [--host 127.0.0.1|localhost|::1] [--port <port>]
@@ -85,6 +85,9 @@ function parseArgs(argv: string[]) {
         flags.params.push(argv[++i]);
       }
       continue;
+    }
+    if (key === "authority-trace") {
+      throw new Error("--authority-trace is removed; place a validated authorityTrace record in the attached trust.bundle and configure authority_refs");
     }
     if (key === "expectation-id" || key === "accept-conflict" || key === "supersede") {
       flags[key] ??= [];
@@ -516,11 +519,7 @@ async function main() {
       expectedRunHead: flags["expected-run-head"],
       status: flags.status,
       supersede: flags.supersede,
-      claimType: flags["claim-type"],
-      claimSubject: flags["claim-subject"],
-      claimStatus: flags["claim-status"],
       producer: flags.producer,
-      authorityTrace: flags["authority-trace"],
       route_reason: routeMetadata.route_reason,
       expectation_ids: routeMetadata.expectation_ids,
       classifier: routeMetadata.classifier,

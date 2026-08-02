@@ -1,13 +1,24 @@
 import {
-  finalizeRunRecoveryFence
+  finalizeRunRecoveryFence,
+  previewFlowConfigMerge
 } from "../../src/index.js";
 import type {
+  ConfigMergeAppliedReport,
+  ConfigMergeReport,
+  ConfigMergeSummary,
+  ConfigMergeUnpublishedReport,
   FlowConfig,
+  FlowConfigMergeApplyOptions,
+  FlowConfigMergePreviewOptions,
+  FlowConfigMergePublisher,
+  FlowConfigMergePublisherRequest,
+  FlowConfigMergePublisherReceipt,
   FlowActiveStepClaim,
   FlowActiveStepClaimRequest,
   FlowConsoleProjection,
   FlowDefinition,
   FlowDiagnostic,
+  FlowEvidenceAttachmentOptions,
   FlowEvidenceEntry,
   FlowExpectation,
   FlowGate,
@@ -18,9 +29,105 @@ import type {
   FlowRunRecoveryFenceWrite,
   FlowRunRecoveryFenceSnapshot,
   FlowRunState,
+  FlowPausedGateContinuationEvidence,
   FlowStep,
   ReleaseReadinessResult
 } from "../../src/index.js";
+
+const configMergePublisher: FlowConfigMergePublisher = async (request: Readonly<FlowConfigMergePublisherRequest>) => ({
+  api_version: "flow.kontourai.io/v1alpha1",
+  status: "applied",
+  publisher: "test-host",
+  publication_id: "publication-1",
+  config_path: request.config_path,
+  contents_sha256: request.contents_sha256
+});
+const configMergeOptions: FlowConfigMergeApplyOptions = { publisher: configMergePublisher };
+const configMergePreviewOptions: FlowConfigMergePreviewOptions = { cwd: "/project" };
+// @ts-expect-error preview callers cannot request apply mode.
+const previewApplyMode: FlowConfigMergePreviewOptions = { mode: "apply" };
+// @ts-expect-error preview callers cannot provide arbitrary result modes.
+const previewUnsupportedMode: FlowConfigMergePreviewOptions = { mode: "unsupported" };
+// @ts-expect-error preview callers cannot inject apply mode through the public function.
+previewFlowConfigMerge({}, {}, { mode: "apply" });
+const configMergeRequest: FlowConfigMergePublisherRequest = {
+  api_version: "flow.kontourai.io/v1alpha1",
+  project_directory: "/project",
+  config_directory: "/project/.flow",
+  config_path: "/project/.flow/config.json",
+  expected_config_sha256: null,
+  contents: "{}\n",
+  contents_sha256: "a".repeat(64)
+};
+const configMergeReceipt: FlowConfigMergePublisherReceipt = {
+  api_version: "flow.kontourai.io/v1alpha1",
+  status: "applied",
+  publisher: "test-host",
+  publication_id: "publication-1",
+  config_path: configMergeRequest.config_path,
+  contents_sha256: configMergeRequest.contents_sha256
+};
+const configMergeReportFields = {
+  schema_version: "0.1",
+  mode: "preview" as const,
+  local_config_path: "/project/.flow/config.json",
+  proposal_path: "/project/proposal.json",
+  proposed_changes: [],
+  accepted_changes: [],
+  rejected_changes: [],
+  conflicts: [],
+  unchanged: [],
+  exceptions: [],
+  merged_config: { schema_version: "0.1", trusted_producers: {}, gate_overrides: {} },
+  summary: { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0, exceptions: 0 }
+};
+const configMergeSummary: ConfigMergeSummary = {
+  proposed: 0,
+  accepted: 0,
+  rejected: 0,
+  conflicts: 0,
+  unchanged: 0,
+  exceptions: 0
+};
+// @ts-expect-error config merge summaries are the six schema-defined counters, not an open record.
+const configMergeSummaryWithExtraField: ConfigMergeUnpublishedReport["summary"] = { ...configMergeSummary, other: 1 };
+// @ts-expect-error config merge summaries require every schema-defined counter.
+const configMergeSummaryWithMissingField: ConfigMergeUnpublishedReport["summary"] = { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0 };
+const unpublishedConfigMergeReport: ConfigMergeUnpublishedReport = {
+  ...configMergeReportFields,
+  status: "ready"
+};
+const appliedConfigMergeReport: ConfigMergeAppliedReport = {
+  ...configMergeReportFields,
+  mode: "apply",
+  status: "applied",
+  publisher_receipt: configMergeReceipt
+};
+// @ts-expect-error public mode declarations must not admit schema-invalid report modes.
+const configMergeReportWithInvalidMode: ConfigMergeUnpublishedReport = { ...configMergeReportFields, mode: "unsupported", status: "ready" };
+// @ts-expect-error applied reports require a publisher receipt.
+const appliedWithoutPublisherReceipt: ConfigMergeReport = { ...configMergeReportFields, status: "applied" };
+// @ts-expect-error unpublished reports must not carry a publisher receipt.
+const previewWithPublisherReceipt: ConfigMergeReport = { ...configMergeReportFields, status: "ready", publisher_receipt: configMergeReceipt };
+// @ts-expect-error an applied report cannot be emitted by preview mode.
+const appliedPreviewReport: ConfigMergeReport = { ...configMergeReportFields, status: "applied", publisher_receipt: configMergeReceipt };
+void [
+  configMergeOptions,
+  configMergePreviewOptions,
+  previewApplyMode,
+  previewUnsupportedMode,
+  configMergeRequest,
+  configMergeReceipt,
+  configMergeSummary,
+  configMergeSummaryWithExtraField,
+  configMergeSummaryWithMissingField,
+  unpublishedConfigMergeReport,
+  appliedConfigMergeReport,
+  configMergeReportWithInvalidMode,
+  appliedWithoutPublisherReceipt,
+  previewWithPublisherReceipt,
+  appliedPreviewReport
+];
 
 const activeStepClaimRequest: FlowActiveStepClaimRequest = {
   claim_id: "claim-render-1",
@@ -189,6 +296,20 @@ const evidenceEntryWithOpenBundle: FlowEvidenceEntry = {
   project_evidence_detail: "kept-open"
 };
 
+const attachmentOptions: FlowEvidenceAttachmentOptions = {
+  gate: "verify-gate",
+  file: "evidence.json"
+};
+const pausedContinuationEvidence: FlowPausedGateContinuationEvidence = {
+  file: "evidence.json"
+};
+// @ts-expect-error opaque authority metadata is not an attachment option.
+const attachmentOptionsWithAuthorityTrace: FlowEvidenceAttachmentOptions = { gate: "verify-gate", file: "evidence.json", authorityTraces: ["authority:one"] };
+// @ts-expect-error paused continuation evidence cannot supply an enclosing gate.
+const pausedContinuationEvidenceWithGate: FlowPausedGateContinuationEvidence = { file: "evidence.json", gate: "verify-gate" };
+// @ts-expect-error paused continuation evidence rejects unknown fields.
+const pausedContinuationEvidenceWithUnknownField: FlowPausedGateContinuationEvidence = { file: "evidence.json", unsupported: true };
+
 const diagnosticWithOpenRelated: FlowDiagnostic = {
   code: "flow.test",
   severity: "info",
@@ -264,6 +385,11 @@ void [
   gateWithUnknownRoutePolicyField,
   stepWithUnknownField,
   stepWithoutNext,
+  attachmentOptions,
+  attachmentOptionsWithAuthorityTrace,
+  pausedContinuationEvidence,
+  pausedContinuationEvidenceWithGate,
+  pausedContinuationEvidenceWithUnknownField,
   diagnosticWithOpenRelated,
   releaseResultWithOpenReportData,
   runStateWithOpenRuntimeMaps,

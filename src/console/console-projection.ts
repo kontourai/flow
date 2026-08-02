@@ -454,10 +454,10 @@ function projectEvidence(entry) {
   };
 }
 
-function projectGate(definition, state, manifest, config, gateId) {
+function projectGate(definition, state, manifest, config, gateId, evaluationNow) {
   const gate = findGate(definition, gateId);
   const outcome = state.gate_outcomes.find((entry) => entry.gate_id === gateId);
-  const computed = evaluateGate(definition, state, manifest, gateId, config);
+  const computed = evaluateGate(definition, state, manifest, gateId, config, evaluationNow);
   const evidence = attachedEvidenceFor(manifest, gateId);
   const expectations = expectationsForGate(gate, config).map(projectExpectation);
   const status = outcome?.status ?? computed.status ?? "wait";
@@ -710,8 +710,11 @@ export function projectFlowRun(
 ): FlowConsoleProjection {
   const { dir, definition, state, manifest, config, report } = normalizeRunParts(runOrParts);
   const effectiveConfig = config ?? options.config;
+  const evaluationNow = typeof state.updated_at === "string" && Number.isFinite(Date.parse(state.updated_at))
+    ? state.updated_at
+    : undefined;
   const gateIds = Object.keys(definition.gates ?? {}).sort((left, right) => left.localeCompare(right));
-  const gates = gateIds.map((gateId) => projectGate(definition, state, manifest, effectiveConfig, gateId));
+  const gates = gateIds.map((gateId) => projectGate(definition, state, manifest, effectiveConfig, gateId, evaluationNow));
   const transitions = (state.transitions ?? []).map(projectTransition);
   const lifecycle = (state.lifecycle ?? []).map(projectLifecycle);
   const exceptions = (state.exceptions ?? []).map(projectException);

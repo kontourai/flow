@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
 import {
   acceptException,
+  attachEvidence,
   amendRunDefinition,
   claimReadyStep,
   definitionDigest,
@@ -21,6 +22,7 @@ import {
   renewStepClaim,
   startRun
 } from "../../dist/index.js";
+import { surfaceClaimEvidenceFixture } from "./helpers/fixtures.mjs";
 
 const actor = { key: "host-a", kind: "host" };
 
@@ -45,16 +47,43 @@ function definition() {
   };
 }
 
-async function run(name, definitionValue = definition()) {
+async function run(name, definitionValue = definition(), config) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), `flow-multi-${name}-`));
   const file = path.join(cwd, "definition.json");
   await writeFile(file, `${JSON.stringify(definitionValue, null, 2)}\n`);
+  if (config) {
+    await mkdir(path.join(cwd, ".flow"), { recursive: true });
+    await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  }
   return { cwd, ...(await startRun(file, { cwd, runId: name })) };
 }
 
 function request(step_id, suffix, lease_seconds = 300) {
   return { step_id, claim_id: `claim-${suffix}`, liveness_id: `lease-${suffix}`, actor, lease_seconds };
 }
+
+async function authorityBundle(validUntil) {
+  const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const bundle = manifest.evidence[0].bundle;
+  bundle.authorityTrace = [{
+    id: "trace.quality",
+    subject: { subjectType: "flow-step", subjectId: "builder.verify" },
+    actorRef: "ci/main",
+    authorityType: "system",
+    authorityRef: "authority:quality",
+    sourceRef: "policy:quality",
+    observedAt: "2026-06-15T00:00:00.000Z",
+    claimIds: ["claim.quality.tests.verify"],
+    ...(validUntil ? { validUntil } : {})
+  }];
+  return bundle;
+}
+
+const authorityConfig = {
+  schema_version: "0.1",
+  trusted_producers: { "quality.tests": { authority_refs: ["authority:quality"] } },
+  gate_overrides: {}
+};
 
 test("durable claims use a non-self-referential step domain and siblings remain renewable", async () => {
   const fixture = await run("multi-siblings");
@@ -202,4 +231,51 @@ test("fan-in settles out of order and terminal completion waits for the joined s
   const completed = await evaluateClaimedStep(fixture.runId, { cwd: fixture.cwd, now: "2026-07-24T12:04:00.000Z", claim_id: publish.claim.claim_id, liveness_id: publish.claim.liveness_id, actor });
   assert.equal(completed.state.status, "completed");
   assert.equal(completed.state.multi_cursor.active_claims.length, 0);
+});
+
+test("claimed evaluation preserves fractional authority chronology and its exact audit instant", async () => {
+  const fixture = await run("multi-fractional-authority", definition(), authorityConfig);
+  const claimed = await claimReadyStep(fixture.runId, { cwd: fixture.cwd, now: "2026-07-24T12:00:00.000Z", ...request("prepare", "fractional") });
+  const evidencePath = path.join(fixture.cwd, "quality-bundle.json");
+  await writeFile(evidencePath, `${JSON.stringify(await authorityBundle("2026-07-24T12:00:00.00005Z"))}\n`);
+  await attachEvidence(fixture.runId, { cwd: fixture.cwd, gate: "prepare-gate", file: evidencePath, kind: "trust.bundle" });
+
+  const evaluatedAt = "2026-07-24T12:00:00.0001Z";
+  const result = await evaluateClaimedStep(fixture.runId, {
+    cwd: fixture.cwd, now: evaluatedAt, claim_id: claimed.claim.claim_id, liveness_id: claimed.claim.liveness_id, actor
+  });
+  assert.equal(result.outcomes[0].status, "route-back", "an authority expired 50 microseconds before evaluation must not pass through Date truncation");
+  const persisted = await loadRun(fixture.runId, fixture.cwd);
+  assert.equal(persisted.state.transitions.at(-1).at, evaluatedAt);
+  assert.equal(persisted.state.multi_cursor.claim_history.at(-1).at, evaluatedAt);
+  assert.equal(persisted.state.updated_at, evaluatedAt);
+});
+
+test("claimed evaluation rejects Date-parseable non-RFC3339 instants without mutation", async () => {
+  const fixture = await run("multi-non-strict-now");
+  const claimed = await claimReadyStep(fixture.runId, { cwd: fixture.cwd, now: "2026-07-24T12:00:00.000Z", ...request("prepare", "non-strict") });
+  const before = await loadRun(fixture.runId, fixture.cwd);
+  await assert.rejects(
+    evaluateClaimedStep(fixture.runId, {
+      cwd: fixture.cwd, now: "2026-07-24 12:00:00Z", claim_id: claimed.claim.claim_id, liveness_id: claimed.claim.liveness_id, actor
+    }),
+    /now must be an RFC3339 date-time/
+  );
+  const after = await loadRun(fixture.runId, fixture.cwd);
+  assert.deepEqual(after.state, before.state);
+  assert.deepEqual(after.manifest, before.manifest);
+});
+
+test("claim admission rejects Date-parseable non-RFC3339 instants without mutation", async () => {
+  const fixture = await run("multi-claim-non-strict-now");
+  const before = await loadRun(fixture.runId, fixture.cwd);
+  await assert.rejects(
+    claimReadyStep(fixture.runId, {
+      cwd: fixture.cwd, now: "2026-07-24 12:00:00Z", ...request("prepare", "claim-non-strict")
+    }),
+    /now must be an RFC3339 date-time/
+  );
+  const after = await loadRun(fixture.runId, fixture.cwd);
+  assert.deepEqual(after.state, before.state);
+  assert.deepEqual(after.manifest, before.manifest);
 });

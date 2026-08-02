@@ -104,9 +104,9 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@kontourai/surface": "^2.13.1",
-    "ajv": "^8.20.0",
+    "@kontourai/surface": "2.14.0",
+    "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "hachure": "^0.15.0"
+    "hachure": "0.15.0"
   }
 }

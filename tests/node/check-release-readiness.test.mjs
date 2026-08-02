@@ -30,6 +30,7 @@ test("release readiness fixture adapters emit trust-bundle evidence and preserve
   assert.doesNotThrow(() => validateTrustBundle(evidence[0].bundle));
   assert.equal(evidence[0].bundle.schemaVersion, 5);
   assert.equal(evidence[0].bundle.source, "release-fixture/change-management");
+  assert.equal(evidence[0].bundle.producerId, "release-fixture/change-management");
   assert.equal(evidence[0].bundle.claims[0].claimType, "release.change.approved");
   assert.equal(evidence[0].bundle.claims[0].subjectType, "release");
   assert.equal(evidence[0].bundle.claims[0].subjectId, "release:kai-2026.06");

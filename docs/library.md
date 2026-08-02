@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.1.0` reducer for an
+`reduceTrustAttachment()` is the separately versioned `1.3.7` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -294,13 +294,22 @@ supersession, and other authority-only synchronization. That mode validates and
 attaches the bundle, derives reports, and deliberately leaves run state and
 route-back accounting unchanged; its write set therefore omits `state.json`.
 
-The reducer does not embed Hachure schema or Surface trust semantics. A caller
-supplies the `hachure@0.15.0` schema validator and `@kontourai/surface@2.12.0`
-validator/report builder as explicit dependencies; `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`
-is Flow's adapter for those locked package versions. Pin the published package
+The reducer exposes one trusted adapter for the locked `hachure@0.15.0` schema
+validator and `@kontourai/surface@2.14.0` validator, report builder, and
+authority checker: `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`. The reducer
+requires those exact helper references, snapshots them once, and rejects
+substituted or access-varying adapters before they can make identity and
+execution disagree. Pin the published package
 integrity plus `trustAttachmentReducerIdentity()` when a privileged coordinator
-needs a stable reducer contract. The identity hash binds the reducer API version
-and dependency versions, while package integrity binds the artifact bytes.
+needs a stable reducer contract. The identity publishes and binds SHA-256
+integrities for every supported helper together with the reducer API and
+dependency versions, while package integrity binds the artifact bytes.
+
+`attachEvidence()` accepts the typed `FlowEvidenceAttachmentOptions` contract.
+It deliberately has no authority-string option: authority policy reads only the
+validated rich `bundle.authorityTrace` records, at the explicit evaluation
+instant supplied by the runtime or pure reducer. Historical manifest
+`authority_trace(s)` fields remain display-only and have zero trust weight.
 
 ### Authorized definition amendment
 
@@ -556,15 +565,33 @@ See [Release Readiness](release-readiness.md) for a worked example against the b
 import {
   previewFlowConfigMerge,
   applyFlowConfigMerge,
+  type FlowConfigMergePublisher,
   renderConfigMergeMarkdown
 } from "@kontourai/flow";
 
 const report = previewFlowConfigMerge(localConfig, proposedConfig);
 console.log(renderConfigMergeMarkdown(report));
+
+// Flow core does not perform pathname-based publication. A host must provide
+// an atomic, capability-anchored publisher and return a receipt for these
+// exact bytes. The receipt is a host acknowledgement, not Flow I/O evidence.
+const publisher: FlowConfigMergePublisher = async (request) => {
+  await hostAtomicReplace(request); // validates request.expected_config_sha256
+  return {
+    api_version: "flow.kontourai.io/v1alpha1",
+    status: "applied",
+    publisher: "example-host",
+    publication_id: "host-publication-id",
+    config_path: request.config_path,
+    contents_sha256: request.contents_sha256
+  };
+};
+
+await applyFlowConfigMerge("./kit-flow-config.json", { publisher });
 ```
 
 See [Project Config](project-config.md) for merge semantics and conflict handling.
 
 ## Types
 
-The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowRunStatus`, `FlowLifecycleAction`, `FlowLifecycleAuthority`, `FlowLifecycleEvent`, `FlowLifecycleRequest`, `FlowLifecycleDiagnostic`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.
+The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowRunStatus`, `FlowLifecycleAction`, `FlowLifecycleAuthority`, `FlowLifecycleEvent`, `FlowLifecycleRequest`, `FlowLifecycleDiagnostic`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, `FlowConfigMergeApplyOptions`, `FlowConfigMergePublisher`, `FlowConfigMergePublisherRequest`, `FlowConfigMergePublisherReceipt`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.

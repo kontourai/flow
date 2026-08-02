@@ -8,6 +8,7 @@ import type {
   FlowRunState,
   FlowRunStatus
 } from "../contracts/flow-types.js";
+import { compareRfc3339Timestamps, parseRfc3339Timestamp } from "../shared/rfc3339.js";
 import { isNonEmptyString, isObject } from "../shared/flow-utils.js";
 
 const RESUMABLE = new Set<FlowRunStatus>(["active", "blocked", "needs_decision"]);
@@ -112,8 +113,8 @@ export function validateLifecycleRequest(operation: FlowLifecycleAction, value: 
   }
   validateLifecycleText(operation, "authority.actor", authority.actor, FLOW_LIFECYCLE_TEXT_LIMITS.actor, "flow.lifecycle.authority.invalid");
   validateLifecycleText(operation, "authority.request_ref", authority.request_ref, FLOW_LIFECYCLE_TEXT_LIMITS.request_ref, "flow.lifecycle.authority.invalid");
-  if (!Number.isFinite(Date.parse(authority.requested_at))) {
-    throw new FlowLifecycleError(diagnostic("flow.lifecycle.authority.invalid", operation, undefined, "$.authority.requested_at", "authority.requested_at must be a date-time"));
+  if (parseRfc3339Timestamp(authority.requested_at) === null) {
+    throw new FlowLifecycleError(diagnostic("flow.lifecycle.authority.invalid", operation, undefined, "$.authority.requested_at", "authority.requested_at must be an RFC3339 date-time"));
   }
   const allowedRequest = new Set(["reason", "authority"]);
   const allowedAuthority = new Set(["kind", "actor", "request_ref", "requested_at"]);
@@ -163,11 +164,17 @@ export function validateRunLifecycle(state: FlowRunState) {
 
   let pausedPrior: FlowResumableStatus | null = null;
   let terminal = false;
-  let priorAt = -Infinity;
+  let priorAt: ReturnType<typeof parseRfc3339Timestamp> = null;
   for (const [index, event] of lifecycle.entries()) {
     if (terminal) throw new Error(`flow.lifecycle.state.invalid: lifecycle[${index}] follows terminal cancellation`);
-    const eventTime = Date.parse(event.at);
-    if (eventTime < priorAt) throw new Error(`flow.lifecycle.state.invalid: lifecycle[${index}].at precedes the prior event`);
+    const eventTime = parseRfc3339Timestamp(event.at);
+    if (eventTime === null) throw new Error(`flow.lifecycle.state.invalid: lifecycle[${index}].at must be an RFC3339 date-time`);
+    if (parseRfc3339Timestamp(event.authority?.requested_at) === null) {
+      throw new Error(`flow.lifecycle.state.invalid: lifecycle[${index}].authority.requested_at must be an RFC3339 date-time`);
+    }
+    if (priorAt !== null && compareRfc3339Timestamps(eventTime, priorAt) < 0) {
+      throw new Error(`flow.lifecycle.state.invalid: lifecycle[${index}].at precedes the prior event`);
+    }
     priorAt = eventTime;
     if (event.action === "pause") {
       if (pausedPrior !== null || !RESUMABLE.has(event.from_status) || event.prior_status !== event.from_status || event.to_status !== "paused") {

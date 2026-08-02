@@ -132,6 +132,10 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(configSchema.$defs.trusted_producers.propertyNames.$ref, "#/$defs/safe_map_key");
   assert.equal(configSchema.$defs.gate_overrides.propertyNames.$ref, "#/$defs/safe_map_key");
   assert.equal(configSchema.$defs.gate_override.properties.expectations.propertyNames.$ref, "#/$defs/safe_map_key");
+  assert.ok(configSchema.$defs.trusted_producer_mapping.properties.authority_refs);
+  assert.equal(configSchema.$defs.trusted_producer_mapping.properties.authority_traces, undefined);
+  assert.ok(configSchema.$defs.expectation_override.properties.authority_refs);
+  assert.equal(configSchema.$defs.expectation_override.properties.authority_traces, undefined);
   assert.equal(configMergeReportSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
   assert.equal(configMergeReportSchema.properties.merged_config.$ref, "flow-config.schema.json#/$defs/flat_config");
   assert.equal(transitionValidationRequestSchema.title, "Flow Transition Validation Request");
@@ -235,6 +239,45 @@ test("runtime-generated run and report satisfy required schema fields", async ()
   assert.deepEqual(state.lifecycle, []);
   assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(report.definition_id, definition.id);
+});
+
+test("config merge report schema requires receipts exactly for applied status", async () => {
+  const [reportSchema, configSchema] = await Promise.all([
+    json("schemas/flow-config-merge-report.schema.json"),
+    json("schemas/flow-config.schema.json")
+  ]);
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  ajv.addSchema(configSchema);
+  const validate = ajv.compile(reportSchema);
+  const report = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    mode: "preview",
+    status: "ready",
+    local_config_path: "/project/.flow/config.json",
+    proposal_path: "/project/proposal.json",
+    proposed_changes: [],
+    accepted_changes: [],
+    rejected_changes: [],
+    conflicts: [],
+    unchanged: [],
+    exceptions: [],
+    merged_config: { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} },
+    summary: { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0, exceptions: 0 }
+  };
+  const receipt = {
+    api_version: "flow.kontourai.io/v1alpha1",
+    status: "applied",
+    publisher: "test-host",
+    publication_id: "publication-1",
+    config_path: report.local_config_path,
+    contents_sha256: "a".repeat(64)
+  };
+
+  assert.equal(validate(report), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...report, status: "applied" }), false, "applied without receipt must fail");
+  assert.equal(validate({ ...report, mode: "apply", status: "applied", publisher_receipt: receipt }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...report, status: "applied", publisher_receipt: receipt }), false, "preview mode cannot claim applied");
+  assert.equal(validate({ ...report, publisher_receipt: receipt }), false, "non-applied with receipt must fail");
 });
 
 test("transition-validation request schema round-trips a recovered retry-authorized state", async () => {

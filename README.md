@@ -180,7 +180,7 @@ flow ready-steps <run-id>          print the steps ready to start next
 flow report <run-id>               regenerated run report in summary, markdown, or json
 flow list                          list local runs
 flow console --run <run-id>        loopback-only local console for a run
-flow config preview|apply <file>   preview and apply project config proposals
+flow config preview|apply <file>   preview config proposals; apply requires a trusted host publisher
 flow validate-transition <file>    validate a proposed transition against run state
 flow version-release-report <file> project a versioned release report
 ```

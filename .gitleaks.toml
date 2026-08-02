@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Intentional publisher-error sanitization test marker"
+condition = "AND"
+paths = [ '''^tests/node/check-config-merge\.test\.mjs$''' ]
+regexes = [ '''^publisher-secret-9fd5$''' ]

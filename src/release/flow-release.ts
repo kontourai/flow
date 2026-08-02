@@ -96,6 +96,9 @@ function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
     bundle: {
       schemaVersion: 5,
       source: producer,
+      // Flow authorizes producer policy from this Surface-validated field.
+      // The entry-level value below only corroborates that immutable identity.
+      producerId: producer,
       claims: [
         {
           id: claimId,
@@ -142,6 +145,8 @@ function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
       producer,
       status: claim.status,
       issued_at: fields.issued_at,
+      // Provider fixture strings remain report/display provenance only. They
+      // do not become a rich Surface AuthorityTrace and cannot authorize a gate.
       authority_traces: authorityTraces,
       claims: [
         {

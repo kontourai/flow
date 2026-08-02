@@ -206,7 +206,7 @@ A `trust.bundle` expectation is satisfied only when **all** of these checks pass
 2. **Subject** — the claim matches `bundle_claim.subjectType` and `bundle_claim.subjectId` when the expectation configures them.
 3. **Status** — the latest matching claim event status is in `accepted_statuses`.
 4. **Freshness** — `issued_at` / `expires_at` are honored when present; expired artifacts are stale.
-5. **Producer trust** — the producer is trusted for this claim type per `.flow/config.json` `trusted_producers`, or an authority trace covers it.
+5. **Producer trust** — a configured producer pin matches validated `bundle.producerId`, or every configured authority scope admits one active, embedded Surface `authorityTrace` whose `authorityRef`, exact subject, claim/evidence linkage, and actor binding qualify at this evaluation's explicit `now`.
 6. **Integrity** — local integrity metadata (file hashes recorded at attach time) still matches when present.
 
 When a run returns to a gate, Flow also scopes claim evidence to that current gate visit. A reattached bundle cannot reuse a claim from before the latest transition into the gate's step: the matching claim's `createdAt`, or evidence for that claim's `observedAt`, must be at or after the transition. Re-entry, attachment, claim, and observation timestamps must be valid RFC3339 date-times; missing, malformed, calendar-invalid, or leap-second values do not satisfy a revisited gate. Lower-case RFC3339 `t` and `z` separators and arbitrary fractional precision are accepted and retained verbatim in the producer payload. Flow rejects leap-second notation because its dependencies do not provide a chronology that can compare those instants without collapsing them onto an adjacent second. Prior attachments remain in the manifest for audit.
@@ -217,8 +217,7 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | --- | --- |
 | `stale` | the artifact expired or fails freshness checks |
 | `rejected` | the claim status is not an accepted status |
-| `untrusted_producer` | the producer is not trusted for this claim type |
-| `authority_gap` | no trusted producer mapping or authority trace covers the claim |
+| `untrusted_producer` | an otherwise matching claim has no configured `producerId` or active scoped embedded authority trace; `diagnostics.claim_evaluation[].authority.code` names failures such as `no_trace`, `authority_ref_mismatch`, `subject_mismatch`, `scope_mismatch`, `actor_mismatch`, `not_yet_valid`, `expired`, or `revoked` |
 | `integrity_mismatch` | the copied artifact no longer matches its recorded integrity metadata |
 | `subject_mismatch` | the claim subject does not match the expectation |
 | `claim_not_current` | the matching claim predates the current gate visit, or has no valid current timestamp |
@@ -227,7 +226,7 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | `attachment_timestamp_invalid` | the evidence attachment timestamp is invalid |
 | `attachment_not_current` | the evidence attachment predates the current gate visit |
 
-Trusted producer mappings and gate overrides live in `.flow/config.json` — see [Project Config](project-config.md).
+Trusted producer mappings and gate overrides live in `.flow/config.json` — see [Project Config](project-config.md). `--authority-trace` and attachment `authorityTrace(s)` were removed: opaque manifest metadata has zero trust weight. Put validated rich authority records in the `trust.bundle` itself; unknown or removed attachment options reject before evidence is copied.
 
 ## Failed evidence and route metadata
 

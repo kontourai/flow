@@ -68,21 +68,33 @@ Required lanes pass only when their claim satisfies the policy; missing, pending
 
 **The pain:** the production readiness checklist is a wiki page. Teams skip steps, reviews go stale, and exceptions are granted in Slack and forgotten. The platform team cannot tell which services actually followed the path.
 
-**With Flow:** the readiness review becomes a Flow Definition — steps like `security-review → slo-signoff → capacity-check → launch` — where each gate's `expects` names the claim a producing system must supply (`security.review`, `quality.slo-signoff`). The platform team distributes its standard config as a proposal, and each repo applies it with full visibility:
+**With Flow:** the readiness review becomes a Flow Definition — steps like `security-review → slo-signoff → capacity-check → launch` — where each gate's `expects` names the claim a producing system must supply (`security.review`, `quality.slo-signoff`). The platform team distributes its standard config as a proposal, and each repo previews it with full visibility:
 
 ```sh
 flow config preview ./platform-flow-config.json --format markdown
-flow config apply ./platform-flow-config.json
 ```
 
-Local `.flow/config.json` stays authoritative: additive proposals merge, conflicting ones are rejected unless a named authority accepts them explicitly:
+The standalone CLI deliberately cannot publish config and reports
+`flow.config.merge.publisher.unavailable`. Station or another trusted platform
+host supplies the library's `FlowConfigMergePublisher` capability, verifies the
+base-config digest, atomically publishes Flow's canonical bytes, and returns a
+receipt bound to those bytes. Local `.flow/config.json` stays authoritative:
+additive proposals merge, while conflicts remain blocked unless the host passes
+a named authority, reason, and accepted path to `applyFlowConfigMerge`:
 
-```sh
-flow config apply ./platform-flow-config.json \
-  --accept-conflict '$.trusted_producers.security.review' \
-  --exception-reason 'platform team rotated the scanning producer' \
-  --authority 'platform-lead'
+```ts
+await applyFlowConfigMerge("./platform-flow-config.json", {
+  publisher: trustedHostPublisher,
+  acceptConflicts: ["$.trusted_producers.security.review"],
+  exceptionReason: "platform team rotated the scanning producer",
+  authority: "platform-lead"
+});
 ```
+
+Producer pins use the bundle's stable `producerId`. When a platform needs an
+authority alternative, its config names `authority_refs` and the producing
+bundle carries an active, subject- and actor-bound rich authority trace; copied
+attachment strings cannot substitute for that evidence.
 
 When a service launches without a passing capacity check, that is an `accept-exception` with a reason and an authority — visible in every report, instead of a forgotten thread.
 
@@ -117,7 +129,7 @@ Attempt counting is derived from persisted transitions, so neither the producer 
 - `evidence/` — *copies* of the actual evidence files, not links that rot
 - `report.md` / `report.json` — the human- and machine-readable explanation
 
-The evidence manifest records integrity metadata, and gate evaluation reports precise diagnostic reason codes (`stale`, `untrusted_producer`, `authority_gap`, `integrity_mismatch`, …) instead of hiding weak evidence as a generic pass. For versioned releases, `flow version-release-report` projects the changeset, verification evidence, release readiness result, accepted exceptions, and risks into one deterministic artifact — and missing required evidence becomes an explicit `gap` with `decision: "hold"`, never a summarized "ready."
+The evidence manifest records integrity metadata, and gate evaluation reports precise diagnostic reason codes (`stale`, `untrusted_producer`, `integrity_mismatch`, …) instead of hiding weak evidence as a generic pass. For versioned releases, `flow version-release-report` projects the changeset, verification evidence, release readiness result, accepted exceptions, and risks into one deterministic artifact — and missing required evidence becomes an explicit `gap` with `decision: "hold"`, never a summarized "ready."
 
 **What they get:** audits answered with `report.json` instead of a screenshot hunt, and an evidence trail that was produced by the process rather than reconstructed after it.
 
