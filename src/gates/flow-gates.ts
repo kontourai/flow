@@ -22,6 +22,18 @@ import type { ParsedRfc3339Timestamp } from "../shared/rfc3339.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "./trust-bundle-validator.js";
 
+export interface GateAuthorityDependencies {
+  validate(bundle: unknown): any;
+  buildReport(bundle: any, options: { now: Date }): any;
+  checkAuthorityActive(actorRef: string, traces: any[], now: Date): string;
+}
+
+export const DEFAULT_GATE_AUTHORITY_DEPENDENCIES: GateAuthorityDependencies = {
+  validate: validateTrustBundle,
+  buildReport: buildTrustReport,
+  checkAuthorityActive
+};
+
 export function expectationsForGate(gate: any, config: MutableRecord = defaultFlowConfig()) {
   const overrides = config.gate_overrides?.[gate.id]?.expectations ?? {};
   return (gate.expects ?? []).map((expectation) => ({
@@ -108,24 +120,27 @@ function evidenceVisitDiagnostic(entry: any, visit: GateVisit): string | null {
   return null;
 }
 
-function deriveBundleReport(bundle: unknown, evaluationNow?: Date): { report: any | null; error: string | null } {
+function deriveBundleReport(bundle: unknown, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): { report: any | null; error: string | null } {
+  if (!evaluationNow || !Number.isFinite(evaluationNow.getTime())) {
+    return { report: null, error: "evaluation_time_missing" };
+  }
   // First validate via Surface (referential/structural)
   let validated: any;
   try {
-    validated = validateTrustBundle(surfaceTimestampValidationView(bundle));
+    validated = dependencies.validate(surfaceTimestampValidationView(bundle));
   } catch (err: any) {
     return { report: null, error: `bundle_invalid: ${err?.message ?? String(err)}` };
   }
   // Then derive statuses via Surface
   try {
-    const report = evaluationNow ? buildTrustReport(validated, { now: evaluationNow }) : buildTrustReport(validated);
+    const report = dependencies.buildReport(validated, { now: evaluationNow });
     return { report, error: null };
   } catch (err: any) {
     return { report: null, error: `bundle_derivation_failed: ${err?.message ?? String(err)}` };
   }
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date): string | null {
+function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): string | null {
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
   if (entry.status === "failed") return "rejected";
 
@@ -139,7 +154,7 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   try {
     // Producer and authority policy only consumes the same rich bundle shape
     // that Surface validates, never a caller-authored manifest projection.
-    validateTrustBundle(surfaceTimestampValidationView(bundle));
+    dependencies.validate(surfaceTimestampValidationView(bundle));
   } catch {
     return "bundle_invalid";
   }
@@ -149,9 +164,7 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   // evaluation must re-derive it from the validated bundle at its one pinned
   // instant. Otherwise an expired/revoked authority could inherit a stale
   // report produced while it was active.
-  const report = evaluationNow
-    ? deriveBundleReport(bundle, evaluationNow).report
-    : entry.bundle_report ?? deriveBundleReport(bundle).report;
+  const report = deriveBundleReport(bundle, evaluationNow, dependencies).report;
   if (!report) return "bundle_invalid";
 
   const selector = expectation.bundle_claim ?? expectation.claim;
@@ -220,11 +233,14 @@ function trustedProducerPolicy(expectation: any, config: MutableRecord) {
 
 type ProducerAuthorityResult = { reason: "untrusted_producer"; authority?: { code: string } } | null;
 
-function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow?: Date): any[] {
+function canonicalAuthorityTimestamp(timestamp: ParsedRfc3339Timestamp): string {
+  const wholeSecond = new Date(timestamp.epochSecond * 1000).toISOString().replace(/\.000Z$/, "");
+  return `${wholeSecond}${timestamp.fractionalSecond ? `.${timestamp.fractionalSecond}` : ""}Z`;
+}
+
+function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): any[] {
   const selector = expectation.bundle_claim ?? expectation.claim;
-  const report = evaluationNow
-    ? deriveBundleReport(entry.bundle, evaluationNow).report
-    : entry.bundle_report ?? deriveBundleReport(entry.bundle).report;
+  const report = deriveBundleReport(entry.bundle, evaluationNow, dependencies).report;
   if (!selector || !report) return [];
   const accepted = selector.accepted_statuses ?? ["verified"];
   const claims = findClaimsInReport(report, selector);
@@ -232,16 +248,20 @@ function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: Par
   return current.filter((claim: any) => accepted.includes(claim.status ?? "unknown"));
 }
 
-function authorityTraceDiagnostic(entry: any, expectation: any, policies: ReturnType<typeof trustedProducerPolicy>, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow?: Date): ProducerAuthorityResult {
+function authorityTraceDiagnostic(entry: any, expectation: any, policies: ReturnType<typeof trustedProducerPolicy>, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: Date | undefined, dependencies: GateAuthorityDependencies): ProducerAuthorityResult {
   const bundle = entry.bundle;
   const traces = Array.isArray(bundle?.authorityTrace) ? bundle.authorityTrace : [];
   if (!traces.length) return { reason: "untrusted_producer", authority: { code: "no_trace" } };
   const refScoped = traces.filter((trace: any) => policies.every((policy) => policy.authorityRefs.has(trace?.authorityRef)));
   if (!refScoped.length) return { reason: "untrusted_producer", authority: { code: "authority_ref_mismatch" } };
-  const claims = acceptedClaimsForAuthority(entry, expectation, enteredAt, evaluationNow);
+  const claims = acceptedClaimsForAuthority(entry, expectation, enteredAt, evaluationNow, dependencies);
   const selector = expectation.bundle_claim ?? expectation.claim;
   const accepted = selector?.accepted_statuses ?? ["verified"];
-  let failure = "subject_mismatch";
+  const failures = new Set<string>();
+  if (!evaluationNow || !Number.isFinite(evaluationNow.getTime())) {
+    return { reason: "untrusted_producer", authority: { code: "evaluation_time_missing" } };
+  }
+  const evaluatedAt = parseRfc3339Timestamp(evaluationNow.toISOString())!;
 
   for (const trace of refScoped) {
     for (const claim of claims) {
@@ -249,14 +269,14 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
       const linkedEvidence = (bundle.evidence ?? []).filter((evidence: any) => evidence?.claimId === claim.id);
       const acceptedEvents = (bundle.events ?? []).filter((event: any) => event?.claimId === claim.id && accepted.includes(event.status));
       const linkedEvidenceIds = new Set(linkedEvidence.map((evidence: any) => evidence.id));
-      const acceptedEventEvidenceIds = new Set(acceptedEvents.flatMap((event: any) => event.evidenceIds ?? []));
+      const authorityCompatibleEvents = acceptedEvents.filter((event: any) => event.authorityRef === undefined || event.authorityRef === trace.authorityRef);
+      const acceptedEventEvidenceIds = new Set(authorityCompatibleEvents.flatMap((event: any) => event.evidenceIds ?? []));
       const claimLinked = Array.isArray(trace.claimIds) && trace.claimIds.includes(claim.id);
       const evidenceLinked = Array.isArray(trace.evidenceIds) && trace.evidenceIds.some((id: string) => linkedEvidenceIds.has(id) && acceptedEventEvidenceIds.has(id));
       if (!claimLinked && !evidenceLinked) {
-        failure = "scope_mismatch";
+        failures.add("scope_mismatch");
         continue;
       }
-      const authorityCompatibleEvents = acceptedEvents.filter((event: any) => event.authorityRef === undefined || event.authorityRef === trace.authorityRef);
       const eventActorMatches = authorityCompatibleEvents.some((event: any) => event.actor === trace.actorRef);
       const evidenceActorMatches = linkedEvidence.some((evidence: any) => (
         Array.isArray(trace.evidenceIds)
@@ -265,20 +285,47 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
         && evidence.collectedBy === trace.actorRef
       ));
       if (!eventActorMatches && !evidenceActorMatches) {
-        failure = "actor_mismatch";
+        failures.add("actor_mismatch");
         continue;
       }
-      if (!evaluationNow || !Number.isFinite(evaluationNow.getTime())) {
-        return { reason: "untrusted_producer", authority: { code: "evaluation_time_missing" } };
+
+      const normalizedTrace = structuredClone(trace);
+      let invalidTimestamp = false;
+      for (const field of ["validFrom", "validUntil", "revokedAt"] as const) {
+        if (trace[field] === undefined) continue;
+        const parsed = parseRfc3339Timestamp(trace[field]);
+        if (parsed === null) {
+          invalidTimestamp = true;
+          break;
+        }
+        normalizedTrace[field] = canonicalAuthorityTimestamp(parsed);
       }
-      if (trace.validFrom && trace.validFrom > evaluationNow.toISOString()) {
-        return { reason: "untrusted_producer", authority: { code: "not_yet_valid" } };
+      if (invalidTimestamp) {
+        failures.add("invalid_trace_timestamp");
+        continue;
       }
-      const active = checkAuthorityActive(trace.actorRef, [trace], evaluationNow);
+      const validFrom = trace.validFrom === undefined ? null : parseRfc3339Timestamp(trace.validFrom);
+      if (validFrom && compareRfc3339Timestamps(validFrom, evaluatedAt) > 0) {
+        failures.add("not_yet_valid");
+        continue;
+      }
+      const validUntil = trace.validUntil === undefined ? null : parseRfc3339Timestamp(trace.validUntil);
+      if (validUntil && compareRfc3339Timestamps(validUntil, evaluatedAt) < 0) {
+        failures.add("expired");
+        continue;
+      }
+      const revokedAt = trace.revokedAt === undefined ? null : parseRfc3339Timestamp(trace.revokedAt);
+      if (revokedAt && compareRfc3339Timestamps(revokedAt, evaluatedAt) <= 0) {
+        failures.add("revoked");
+        continue;
+      }
+      const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow);
       if (active === "active") return null;
-      return { reason: "untrusted_producer", authority: { code: active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace" } };
+      failures.add(active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace");
     }
   }
+  const failure = ["invalid_trace_timestamp", "revoked", "expired", "not_yet_valid", "actor_mismatch", "scope_mismatch", "subject_mismatch", "no_trace"]
+    .find((code) => failures.has(code)) ?? "subject_mismatch";
   return { reason: "untrusted_producer", authority: { code: failure } };
 }
 
@@ -288,33 +335,33 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
  * honest while ensuring an unattributed or untrusted otherwise-valid claim
  * can never advance a gate.
  */
-function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date): ProducerAuthorityResult {
+function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): ProducerAuthorityResult {
   // An unrelated file, malformed bundle, or non-matching claim has its own
   // established diagnostic (or no claim diagnostic at all). Producer policy
   // applies only to a bundle candidate that otherwise satisfies this selector.
   if (expectation.kind !== "trust.bundle") return null;
   if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") return null;
-  if (evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow) !== null) return null;
+  if (evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies) !== null) return null;
   const policies = trustedProducerPolicy(expectation, config);
   if (!policies.length) return null;
   const producerId = entry.bundle?.producerId;
   if (entry.producer !== undefined && entry.producer !== producerId) return { reason: "untrusted_producer", authority: { code: "producer_mismatch" } };
   if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return null;
-  return authorityTraceDiagnostic(entry, expectation, policies, enteredAt, evaluationNow);
+  return authorityTraceDiagnostic(entry, expectation, policies, enteredAt, evaluationNow, dependencies);
 }
 
-export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date) {
+export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES) {
   if (expectation.kind !== "trust.bundle") return false;
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
-  return evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow) === null
-    && evidenceProducerDiagnostic(entry, expectation, config, enteredAt, evaluationNow) === null;
+  return evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies) === null
+    && evidenceProducerDiagnostic(entry, expectation, config, enteredAt, evaluationNow, dependencies) === null;
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow?: Date) {
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
-    const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt, evaluationNow);
-    const producer = evidenceProducerDiagnostic(entry, expectation, config, visit.enteredAt, evaluationNow);
+    const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt, evaluationNow, dependencies);
+    const producer = evidenceProducerDiagnostic(entry, expectation, config, visit.enteredAt, evaluationNow, dependencies);
     const reason = evidenceVisitDiagnostic(entry, visit)
       ?? bundleReason
       ?? producer?.reason;
@@ -329,8 +376,12 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
   return diagnostics;
 }
 
-export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig(), evaluationNow?: Date): GateOutcome {
+export function evaluateGate(definition: any, state: any, manifest: any, gateId: string, config: MutableRecord = defaultFlowConfig(), evaluationNow?: Date, dependencies: GateAuthorityDependencies = DEFAULT_GATE_AUTHORITY_DEPENDENCIES): GateOutcome {
   validateFlatFlowConfig(config);
+  const stateEvaluationNow = typeof state?.updated_at === "string" && Number.isFinite(Date.parse(state.updated_at))
+    ? new Date(state.updated_at)
+    : undefined;
+  const effectiveEvaluationNow = evaluationNow ?? stateEvaluationNow;
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 
@@ -376,15 +427,15 @@ export function evaluateGate(definition: any, state: any, manifest: any, gateId:
     const expectationWithGate = { ...expectation, gate_id: gateId };
     const match = visit.revisited && (visit.awaitingReentry || visit.enteredAt === null)
       ? undefined
-      : evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config, visit.enteredAt, evaluationNow));
+      : evidence.find((entry) => evidenceMatchesExpectation(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies));
     if (match) {
       matched.push({ expectation_id: expectation.id, evidence_id: match.id });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, evaluationNow));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies));
     } else {
       missingOptional.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, evaluationNow));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies));
     }
   }
   const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics } : undefined;

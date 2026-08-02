@@ -470,7 +470,7 @@ test("trust.bundle claims must be current after a gate is revisited", () => {
   assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "gate_reentry_timestamp_invalid");
 });
 
-test("trust.bundle gate ignores producer-superseded history when selecting the live claim", async () => {
+test("trust.bundle gate never authorizes from caller-authored cached claim history", async () => {
   const definition = routeBackDefinition();
   const bundleDef = JSON.parse(JSON.stringify(definition));
   bundleDef.gates["verify-gate"].expects = [{
@@ -514,7 +514,8 @@ test("trust.bundle gate ignores producer-superseded history when selecting the l
   }]);
 
   const outcome = evaluateGate(bundleDef, state, manifest, "verify-gate", defaultFlowConfig());
-  assert.equal(outcome.status, "pass");
+  assert.equal(outcome.status, "route-back");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].reason, "claim_not_found");
 });
 
 test("surface timestamp canonicalization preserves timestamp-shaped claim identities and content strings", () => {

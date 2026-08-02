@@ -59,7 +59,7 @@ import { renderAndWriteReport, renderMarkdownReport, reportJson } from "../repor
 import { validateEvidenceManifestSchema, validateRunStateSchema } from "./flow-run-validator.js";
 import { isNonEmptyString, isObject, normalizeEvidenceKind, slugLabel } from "../shared/flow-utils.js";
 import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared/rfc3339.js";
-import { buildTrustReport, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
+import { buildTrustReport, checkAuthorityActive, validateTrustBundle, checkpointFromReport, diffFreshness } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "../gates/trust-bundle-validator.js";
 import {
   FlowLifecycleError,
@@ -101,7 +101,8 @@ export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerD
     package: "@kontourai/surface",
     version: "2.14.0",
     validate: (bundle) => validateTrustBundle(bundle) as MutableRecord,
-    buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord
+    buildReport: (bundle, options) => buildTrustReport(bundle as any, options) as MutableRecord,
+    checkAuthorityActive: (actorRef, traces, now) => checkAuthorityActive(actorRef, traces as any, now)
   }
 };
 import {
@@ -2289,7 +2290,7 @@ function blockingFreshnessRechecks(definition: any, currentStep: string, recheck
 function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, state: FlowRunState, manifest: MutableRecord, request: ReturnType<typeof pausedGateContinuationRequest>) {
   const outcome = evaluateGate(run.definition, state, manifest, request.gate, run.config, request.now);
   const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now.toISOString());
-  if (validation.status === "invalid") throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
+  if (validation.status === "invalid" || (outcome.status === "pass" && validation.valid !== true)) throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
   outcome.transition_validation = validation;
   applyEvaluation(run.definition, state, outcome, request.now.toISOString());
   return outcome;
@@ -2567,7 +2568,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     // re-checks the ancestry at write time.
     const validationState = ancestorRecheckState(run.definition, run.state, gate);
     const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, now.toISOString());
-    if (transitionValidation.status === "invalid") {
+    if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
     }
@@ -2598,7 +2599,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
       // No synthesised cursor: the jump guard in `validateRunTransition` sees
       // the run's real state and can fire for the case it exists to catch.
       const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, now.toISOString());
-      if (transitionValidation.status === "invalid") {
+      if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
         const first = transitionValidation.diagnostics[0];
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
       }

@@ -141,6 +141,7 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
 
   for (const [label, trace, expected] of [
     ["future", authorityTrace({ validFrom: "2026-06-17T00:00:00.000Z" }), "not_yet_valid"],
+    ["future-offset", authorityTrace({ validFrom: "2026-06-15T20:00:00-05:00" }), "not_yet_valid"],
     ["expired", authorityTrace({ validUntil: "2026-06-15T00:00:00.000Z" }), "expired"],
     ["revoked", authorityTrace({ revokedAt: "2026-06-15T00:00:00.000Z" }), "revoked"],
     ["wrong-ref", authorityTrace({ authorityRef: "authority:other" }), "authority_ref_mismatch"],
@@ -156,6 +157,51 @@ test("active, scoped embedded AuthorityTrace is the only authority path", async 
   const wrongIdConfig = configFor({ trusted_producers: { "quality.tests": { authority_refs: ["trace.quality"] } } });
   const wrongId = flow.evaluateGate(definition, structuredClone(state), await authorityFixture(), "verify-gate", wrongIdConfig, now);
   assert.deepEqual(claimDiagnostic(wrongId)?.authority, { code: "authority_ref_mismatch" });
+
+  const activeSibling = await authorityFixture();
+  activeSibling.evidence[0].bundle.authorityTrace = [
+    authorityTrace({ id: "trace.expired", validUntil: "2026-06-15T00:00:00.000Z" }),
+    authorityTrace({ id: "trace.active" })
+  ];
+  assert.equal(
+    flow.evaluateGate(definition, structuredClone(state), activeSibling, "verify-gate", config, now).status,
+    "pass",
+    "an inactive qualifying trace must not mask a later active qualifying trace"
+  );
+
+  const mismatchedEventAuthority = await authorityFixture(authorityTrace({ claimIds: undefined, evidenceIds: ["evidence.quality.tests.output"] }));
+  mismatchedEventAuthority.evidence[0].bundle.events[0].authorityRef = "authority:other";
+  mismatchedEventAuthority.evidence[0].bundle.events[0].actor = "ci/other";
+  const mismatchedEventOutcome = flow.evaluateGate(definition, structuredClone(state), mismatchedEventAuthority, "verify-gate", config, now);
+  assert.equal(mismatchedEventOutcome.status, "route-back");
+  assert.deepEqual(claimDiagnostic(mismatchedEventOutcome)?.authority, { code: "scope_mismatch" });
+
+  const forgedCache = await authorityFixture();
+  forgedCache.evidence[0].bundle.events[0].status = "disputed";
+  const forgedCacheOutcome = flow.evaluateGate(definition, structuredClone(state), forgedCache, "verify-gate", config, now);
+  assert.equal(forgedCacheOutcome.status, "route-back", "cached bundle_report display data must never authorize a gate");
+  assert.equal(claimDiagnostic(forgedCacheOutcome)?.reason, "disputed");
+
+  const nextStep = definition.steps.find((step) => step.id === "verify").next;
+  const transition = flow.validateRunTransition({
+    definition,
+    current_state: structuredClone(state),
+    proposed_transition: { from_step: "verify", to_step: nextStep, status: "allowed", at: now.toISOString() },
+    manifest: await authorityFixture(),
+    config,
+    now: now.toISOString()
+  });
+  assert.equal(transition.valid, true, JSON.stringify(transition.diagnostics));
+
+  const projectionState = structuredClone(state);
+  projectionState.updated_at = now.toISOString();
+  const projection = flow.projectFlowRun({
+    definition,
+    state: projectionState,
+    manifest: await authorityFixture(),
+    config
+  });
+  assert.equal(projection.gates.find((gate) => gate.id === "verify-gate").status, "pass", "Console projection must use the canonical state instant for the same authority decision");
 
   const intersection = configFor({
     trusted_producers: { "quality.tests": { authority_refs: ["authority:one"] } },

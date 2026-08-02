@@ -189,6 +189,28 @@ test("config merge apply writes only accepted changes unless conflicts are expli
   assert.deepEqual(config.trusted_producers["quality.lint"].producers, ["lint/kit"]);
 });
 
+test("concurrent config applies serialize disjoint authority additions and publish complete JSON atomically", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-concurrent-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  const initial = { schema_version: FLOW_SCHEMA_VERSION, trusted_producers: {}, gate_overrides: {} };
+  const first = { ...initial, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } } };
+  const second = { ...initial, trusted_producers: { "quality.review": { authority_refs: ["authority:review"] } } };
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(initial, null, 2)}\n`),
+    writeFile(path.join(cwd, "first.json"), `${JSON.stringify(first, null, 2)}\n`),
+    writeFile(path.join(cwd, "second.json"), `${JSON.stringify(second, null, 2)}\n`)
+  ]);
+
+  const results = await Promise.all([
+    applyFlowConfigMerge(cwd, "first.json"),
+    applyFlowConfigMerge(cwd, "second.json")
+  ]);
+  assert.deepEqual(results.map((result) => result.status), ["applied", "applied"]);
+  const stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
+  assert.deepEqual(stored.trusted_producers["quality.tests"].producers, ["ci/tests"]);
+  assert.deepEqual(stored.trusted_producers["quality.review"].authority_refs, ["authority:review"]);
+});
+
 test("config merge rejects malformed producer mappings before preview or publication", async () => {
   const malformed = {
     schema_version: FLOW_SCHEMA_VERSION,

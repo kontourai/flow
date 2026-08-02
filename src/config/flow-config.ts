@@ -1,7 +1,9 @@
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
+import { mkdir, open, unlink } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
-import { flowConfigPath, readJson, writeJson } from "../runtime/flow-files.js";
+import { flowConfigPath, readJson, stageRunArtifact, syncDirectory } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { ConfigMergeReport, FlowConfig, MutableRecord } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
@@ -283,16 +285,44 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
   const options = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
   const resolvedProposalPath = path.resolve(cwd, proposalPath);
   const localConfigPath = flowConfigPath(cwd);
-  const report = previewFlowConfigMerge(await loadFlowConfig(cwd), await readJson(resolvedProposalPath), {
-    ...options,
-    mode: "apply",
-    cwd,
-    localConfigPath,
-    proposalPath: resolvedProposalPath
-  });
-  if (report.conflicts.length) return { ...report, status: "blocked" };
-  await writeJson(localConfigPath, report.merged_config);
-  return { ...report, status: "applied" };
+  await mkdir(path.dirname(localConfigPath), { recursive: true });
+  const lockPath = `${localConfigPath}.merge.lock`;
+  const deadline = Date.now() + 30_000;
+  let lock;
+  for (;;) {
+    try {
+      lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      await lock.writeFile(`${process.pid}\n`, "utf8");
+      await lock.sync();
+      break;
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error("flow.config.merge.lock.timeout: timed out waiting for the project config merge lock");
+      await delay(10);
+    }
+  }
+  try {
+    const report = previewFlowConfigMerge(await loadFlowConfig(cwd), await readJson(resolvedProposalPath), {
+      ...options,
+      mode: "apply",
+      cwd,
+      localConfigPath,
+      proposalPath: resolvedProposalPath
+    });
+    if (report.conflicts.length) return { ...report, status: "blocked" };
+    const staged = await stageRunArtifact(localConfigPath, `${JSON.stringify(report.merged_config, null, 2)}\n`);
+    try {
+      await staged.commit();
+      await syncDirectory(path.dirname(localConfigPath));
+    } catch (error) {
+      await staged.discard();
+      throw error;
+    }
+    return { ...report, status: "applied" };
+  } finally {
+    await lock.close();
+    await unlink(lockPath).catch(() => undefined);
+  }
 }
 
 function renderConfigMergeBucket(title, entries) {

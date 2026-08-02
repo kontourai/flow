@@ -127,6 +127,9 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
   const config = request.config ?? defaultFlowConfig();
   const manifest = manifestFromTransitionRequest(request);
   const transition = proposedTransitionFromRequest(request, currentState);
+  const evaluationNow = typeof request.now === "string" && Number.isFinite(Date.parse(request.now))
+    ? new Date(request.now)
+    : undefined;
 
   const definitionResult = validateDefinitionWithDiagnostics(definition);
   diagnostics.push(...definitionResult.diagnostics);
@@ -242,7 +245,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
     diagnostics.push(transitionDiagnostic("completion.premature", "$.proposed_state.status", "run cannot complete before the current step reaches a terminal edge", { current_step: currentStepId, expected_to_step: expectedNext }));
   }
 
-  const outcomes = gates.map((gate) => evaluateGate(definition, currentState, manifest, gate.id, config));
+  const outcomes = gates.map((gate) => evaluateGate(definition, currentState, manifest, gate.id, config, evaluationNow));
   const blocking = outcomes.filter((outcome) => outcome.status !== "pass");
   diagnostics.push(...blocking.map((outcome) => transitionGateOutcomeDiagnostic(outcome)));
 
