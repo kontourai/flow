@@ -17,6 +17,14 @@ import { localConfigFixture, proposedConfigFixture, resourceConfigFixture } from
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv/dist/2020");
 
+function deepNestedObject(depth, leaf = {}) {
+  let value = leaf;
+  for (let index = 0; index < depth; index += 1) {
+    value = { [`level_${index}`]: value };
+  }
+  return value;
+}
+
 test("config merge preview reports accepted, rejected, conflicts, unchanged without mutating inputs", () => {
   const local = localConfigFixture();
   const before = JSON.stringify(local);
@@ -104,6 +112,19 @@ test("config merge preview rejects invalid path primitives and sanitizes hostile
   assert.ok(failure instanceof Error);
   assert.equal(failure.message, "flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
   assert.doesNotMatch(String(failure), /preview-path-getter-secret-2026/);
+});
+
+test("config merge preview rejects oversized conflict path snapshots before iterating them", () => {
+  const conflictPaths = new Proxy(new Array(100_000), {
+    get(target, property, receiver) {
+      if (property !== "length") throw new Error(`conflict path snapshot must not read ${String(property)}`);
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), { acceptConflicts: conflictPaths }),
+    /flow\.config\.merge\.options\.invalid: options must use valid conflict paths and path strings/
+  );
 });
 
 test("Resource-shaped project config normalizes for load and merge workflows", async () => {
@@ -702,4 +723,125 @@ test("config merge rejects malformed producer mappings before preview or publica
     /authority_traces is removed; migrate its authority references to authority_refs/
   );
   assert.equal(await readFile(existingPath, "utf8"), original, "legacy authority authoring must not rewrite config");
+});
+
+test("config merge preview rejects deeply nested config trees without recursion overflow", () => {
+  const deepLocal = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: {
+      "quality.tests": {
+        producers: ["ci/main"],
+        nested: deepNestedObject(5_000)
+      }
+    },
+    gate_overrides: {}
+  };
+  assert.throws(
+    () => previewFlowConfigMerge(deepLocal, proposedConfigFixture()),
+    /flow\.config\.input\.invalid: config input must be a bounded acyclic JSON value/
+  );
+});
+
+test("loadFlowConfig rejects deeply nested legacy authority traces without recursion overflow", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-deep-legacy-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  const deepLegacy = {
+    schema_version: FLOW_SCHEMA_VERSION,
+    trusted_producers: {
+      "quality.tests": {
+        producers: ["ci/main"],
+        nested: { wrapped: deepNestedObject(5_000, { authority_traces: ["legacy:opaque"] }) }
+      }
+    },
+    gate_overrides: {}
+  };
+  await writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(deepLegacy, null, 2)}\n`);
+  await assert.rejects(
+    () => loadFlowConfig(cwd),
+    /flow\.config\.input\.invalid: config input must be a bounded acyclic JSON value/
+  );
+});
+
+test("config preflight rejects cyclic and oversized sparse inputs before recursive consumers", () => {
+  const cyclic = proposedConfigFixture();
+  cyclic.self = cyclic;
+  assert.throws(
+    () => previewFlowConfigMerge(localConfigFixture(), cyclic),
+    /flow\.config\.input\.invalid: config input must be a bounded acyclic JSON value/
+  );
+  assert.equal(cyclic.self, cyclic, "preflight must not mutate a rejected cyclic input");
+
+  const privateMarker = "sparse-config-secret-2026";
+  let elementReads = 0;
+  const sparse = new Proxy(new Array(4_097), {
+    get(target, property, receiver) {
+      if (property === "length") return Reflect.get(target, property, receiver);
+      elementReads += 1;
+      throw new Error(`preflight must not read sparse array elements: ${privateMarker}`);
+    }
+  });
+  const oversized = proposedConfigFixture();
+  oversized.trusted_producers = sparse;
+  let failure;
+  try {
+    previewFlowConfigMerge(localConfigFixture(), oversized);
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.equal(failure.message, "flow.config.input.invalid: config input must be a bounded acyclic JSON value");
+  assert.doesNotMatch(String(failure), /sparse-config-secret-2026/);
+  assert.equal(elementReads, 0, "array length must be bounded before any sparse or Proxy element read");
+});
+
+test("config merge bounds accepted conflict aliases before copy, publisher invocation, or mutation", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-conflict-bounds-"));
+  const configPath = path.join(cwd, ".flow", "config.json");
+  const original = `${JSON.stringify(localConfigFixture(), null, 2)}\n`;
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await Promise.all([
+    writeFile(configPath, original),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify(proposedConfigFixture(), null, 2)}\n`)
+  ]);
+  let publisherCalls = 0;
+  const publisher = async () => {
+    publisherCalls += 1;
+    throw new Error("publisher must not run for rejected conflict input");
+  };
+
+  for (const alias of ["acceptConflicts", "acceptedConflicts"]) {
+    const privateMarker = `${alias}-sparse-secret-2026`;
+    let elementReads = 0;
+    const hugeSparse = new Proxy(new Array(4_097), {
+      get(target, property, receiver) {
+        if (property === "length") return Reflect.get(target, property, receiver);
+        elementReads += 1;
+        throw new Error(`must not read ${String(property)}: ${privateMarker}`);
+      }
+    });
+    await assert.rejects(
+      () => applyFlowConfigMerge(cwd, "proposal.json", { [alias]: hugeSparse, publisher }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics");
+        assert.equal(error.cause?.message, "flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
+        assert.doesNotMatch(String(error), new RegExp(privateMarker));
+        return true;
+      }
+    );
+    assert.equal(elementReads, 0, `${alias} must reject a huge sparse alias before item reads`);
+
+    const overlongPath = new Proxy(["x".repeat(2_049)], {
+      get(target, property, receiver) {
+        if (property === "0" || property === "length") return Reflect.get(target, property, receiver);
+        throw new Error(`must not enumerate overlong ${alias} path`);
+      }
+    });
+    await assert.rejects(
+      () => applyFlowConfigMerge(cwd, "proposal.json", { [alias]: overlongPath, publisher }),
+      /flow\.config\.merge\.publisher\.failed/
+    );
+  }
+  assert.equal(publisherCalls, 0);
+  assert.equal(await readFile(configPath, "utf8"), original);
 });

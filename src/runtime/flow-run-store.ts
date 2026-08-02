@@ -2157,35 +2157,44 @@ function continuationNow(value: unknown) {
 }
 
 function pausedGateContinuationRequest(options: FlowPausedGateContinuationOptions) {
-  if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+  let requestOptions: FlowPausedGateContinuationOptions;
+  try {
+    requestOptions = structuredClone(options) as FlowPausedGateContinuationOptions;
+  } catch {
+    throw new Error("flow.paused_gate_continuation.request.invalid: options must be structured-cloneable");
+  }
+  if (!isObject(requestOptions) || Array.isArray(requestOptions)) {
+    throw new Error("flow.paused_gate_continuation.request.invalid: options must be an object");
+  }
+  if (typeof requestOptions.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(requestOptions.expectedRunHead)) {
     throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
   }
-  if (!isNonEmptyString(options.gate)) {
+  if (!isNonEmptyString(requestOptions.gate)) {
     throw new Error("flow.paused_gate_continuation.request.invalid: gate must be a non-empty string");
   }
-  if (!isObject(options.evidence) || !isNonEmptyString(options.evidence.file)) {
+  if (!isObject(requestOptions.evidence) || !isNonEmptyString(requestOptions.evidence.file)) {
     throw new Error("flow.paused_gate_continuation.request.invalid: evidence.file must be a non-empty string");
   }
-  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const cwd = path.resolve(requestOptions.cwd ?? process.cwd());
   const evidence = validateEvidenceAttachmentOptions({
-    ...(options.evidence as MutableRecord),
+    ...(requestOptions.evidence as MutableRecord),
     cwd,
-    gate: options.gate
+    gate: requestOptions.gate
   });
-  if (typeof options.resumeOnPass !== "boolean") {
+  if (typeof requestOptions.resumeOnPass !== "boolean") {
     throw new Error("flow.paused_gate_continuation.request.invalid: resumeOnPass must be a boolean");
   }
-  if (options.resumeOnPass && !options.resume) {
+  if (requestOptions.resumeOnPass && !requestOptions.resume) {
     throw new Error("flow.paused_gate_continuation.request.invalid: resume is required when resumeOnPass is true");
   }
-  if (!options.resumeOnPass && options.resume !== undefined) {
+  if (!requestOptions.resumeOnPass && requestOptions.resume !== undefined) {
     throw new Error("flow.paused_gate_continuation.request.invalid: resume is only allowed when resumeOnPass is true");
   }
-  const evaluationTime = continuationNow(options.now);
-  const resumeOptions = options.resumeOnPass && options.resume!.at === undefined
-    ? { ...options.resume!, at: evaluationTime.exact }
-    : options.resume;
-  const resume = options.resumeOnPass
+  const evaluationTime = continuationNow(requestOptions.now);
+  const resumeOptions = requestOptions.resumeOnPass && requestOptions.resume!.at === undefined
+    ? { ...requestOptions.resume!, at: evaluationTime.exact }
+    : requestOptions.resume;
+  const resume = requestOptions.resumeOnPass
     ? { request: validateLifecycleRequest("resume", { reason: resumeOptions!.reason, authority: resumeOptions!.authority }), at: lifecycleTimestamp(resumeOptions!, "resume") }
     : undefined;
   if (resume) {
@@ -2200,10 +2209,10 @@ function pausedGateContinuationRequest(options: FlowPausedGateContinuationOption
   }
   return {
     cwd,
-    expectedRunHead: options.expectedRunHead.toLowerCase(),
-    gate: options.gate,
+    expectedRunHead: requestOptions.expectedRunHead.toLowerCase(),
+    gate: requestOptions.gate,
     evidence,
-    resumeOnPass: options.resumeOnPass,
+    resumeOnPass: requestOptions.resumeOnPass,
     resume,
     now: evaluationTime.exact,
     surfaceNow: evaluationTime.surfaceNow

@@ -240,6 +240,29 @@ test("paused gate continuation snapshots evidence before waiting for the mutatio
   assert.deepEqual(result.evidence.analytics, { loop_key: "original", nested: { value: "original" } });
 });
 
+test("paused gate continuation snapshots an access-varying gate before validation and persistence", async () => {
+  const fixtureData = await fixture("gate-accessor-snapshot");
+  const evidencePath = path.join(fixtureData.cwd, "accepted-review.json");
+  await writeFile(evidencePath, `${JSON.stringify(bundle())}\n`);
+  const continuation = request(fixtureData, evidencePath);
+  let gateReads = 0;
+  Object.defineProperty(continuation, "gate", {
+    enumerable: true,
+    get() {
+      gateReads += 1;
+      return gateReads === 1 ? "verify-gate" : "not-current-gate";
+    }
+  });
+
+  const result = await continuePausedGate(fixtureData.runId, continuation);
+  const persisted = await loadRun(fixtureData.runId, fixtureData.cwd);
+  assert.equal(gateReads, 1);
+  assert.equal(result.committed, true);
+  assert.equal(result.evidence.gate_id, "verify-gate");
+  assert.deepEqual(persisted.manifest.evidence.map((entry) => entry.gate_id), ["verify-gate"]);
+  assert.equal(persisted.state.current_step, "publish");
+});
+
 test("paused continuation enforces the same active scoped authority trace as canonical and pure evaluation", async () => {
   const config = {
     schema_version: "0.1",

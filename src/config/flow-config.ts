@@ -18,7 +18,7 @@ import type {
   MutableRecord
 } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
-import { validateFlatFlowConfig } from "./flow-config-validator.js";
+import { FLOW_CONFIG_INPUT_LIMITS, preflightFlowConfigInput, validateFlatFlowConfig } from "./flow-config-validator.js";
 
 const FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION = "flow.kontourai.io/v1alpha1";
 const FLOW_PROJECT_CONFIG_RESOURCE_KIND = "FlowProjectConfig";
@@ -89,10 +89,13 @@ function snapshotConflictPaths(paths: unknown): readonly string[] | undefined {
   // conflict path during a later spread/iterator read. Snapshot each element
   // once by index, validate the plain copy, and only then freeze it.
   const length = paths.length;
-  if (!Number.isSafeInteger(length) || length < 0) throw configMergeOptionsInvalidError();
-  const snapshot: unknown[] = [];
-  for (let index = 0; index < length; index += 1) snapshot.push(paths[index]);
-  if (!snapshot.every((pathValue): pathValue is string => isNonEmptyString(pathValue))) throw configMergeOptionsInvalidError();
+  if (!Number.isSafeInteger(length) || length < 0 || length > FLOW_CONFIG_INPUT_LIMITS.conflictPaths) throw configMergeOptionsInvalidError();
+  const snapshot: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const pathValue = paths[index];
+    if (typeof pathValue !== "string" || pathValue.length === 0 || pathValue.length > FLOW_CONFIG_INPUT_LIMITS.conflictPathLength) throw configMergeOptionsInvalidError();
+    snapshot.push(pathValue);
+  }
   return Object.freeze(snapshot);
 }
 
@@ -235,6 +238,7 @@ function isFlowProjectConfigResource(config: any) {
 }
 
 function normalizeFlowConfig(config: any) {
+  preflightFlowConfigInput(config);
   if (!isFlowProjectConfigResource(config)) return config;
   if (config.apiVersion !== FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION) {
     throw new Error(`config.apiVersion must be ${FLOW_PROJECT_CONFIG_RESOURCE_API_VERSION}`);
@@ -254,10 +258,14 @@ function assertSafeConfigKey(segment) {
 }
 
 function assertSafeConfigTree(value: any) {
-  if (!isObject(value) || Array.isArray(value)) return;
-  for (const [key, entry] of Object.entries(value)) {
-    assertSafeConfigKey(key);
-    assertSafeConfigTree(entry);
+  const stack = [value];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!isObject(current) || Array.isArray(current)) continue;
+    for (const [key, entry] of Object.entries(current)) {
+      assertSafeConfigKey(key);
+      stack.push(entry);
+    }
   }
 }
 
@@ -321,6 +329,7 @@ function collectMergePaths(value: any, segments: string[] = []): string[][] {
 }
 
 function proposedConfigFromEnvelope(proposal) {
+  preflightFlowConfigInput(proposal);
   return normalizeFlowConfig(proposal?.flow_config ?? proposal?.config ?? proposal);
 }
 
