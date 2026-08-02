@@ -574,6 +574,16 @@ export interface TransitionValidationResult extends MutableRecord {
   transition: MutableRecord | null;
 }
 
+/** Exact count fields emitted by the config-merge report schema. */
+export interface ConfigMergeSummary {
+  proposed: number;
+  accepted: number;
+  rejected: number;
+  conflicts: number;
+  unchanged: number;
+  exceptions: number;
+}
+
 interface ConfigMergeReportFields extends MutableRecord {
   schema_version: string;
   mode: "preview" | "apply";
@@ -586,7 +596,7 @@ interface ConfigMergeReportFields extends MutableRecord {
   unchanged: MutableRecord[];
   exceptions: MutableRecord[];
   merged_config: FlowConfig;
-  summary: MutableRecord;
+  summary: ConfigMergeSummary;
 }
 
 /** A config merge result that has not been published by a trusted host. */

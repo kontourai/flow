@@ -5,6 +5,7 @@ import {
 import type {
   ConfigMergeAppliedReport,
   ConfigMergeReport,
+  ConfigMergeSummary,
   ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowConfigMergeApplyOptions,
@@ -78,8 +79,20 @@ const configMergeReportFields = {
   unchanged: [],
   exceptions: [],
   merged_config: { schema_version: "0.1", trusted_producers: {}, gate_overrides: {} },
-  summary: {}
+  summary: { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0, exceptions: 0 }
 };
+const configMergeSummary: ConfigMergeSummary = {
+  proposed: 0,
+  accepted: 0,
+  rejected: 0,
+  conflicts: 0,
+  unchanged: 0,
+  exceptions: 0
+};
+// @ts-expect-error config merge summaries are the six schema-defined counters, not an open record.
+const configMergeSummaryWithExtraField: ConfigMergeUnpublishedReport["summary"] = { ...configMergeSummary, other: 1 };
+// @ts-expect-error config merge summaries require every schema-defined counter.
+const configMergeSummaryWithMissingField: ConfigMergeUnpublishedReport["summary"] = { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0 };
 const unpublishedConfigMergeReport: ConfigMergeUnpublishedReport = {
   ...configMergeReportFields,
   status: "ready"
@@ -105,6 +118,9 @@ void [
   previewUnsupportedMode,
   configMergeRequest,
   configMergeReceipt,
+  configMergeSummary,
+  configMergeSummaryWithExtraField,
+  configMergeSummaryWithMissingField,
   unpublishedConfigMergeReport,
   appliedConfigMergeReport,
   configMergeReportWithInvalidMode,

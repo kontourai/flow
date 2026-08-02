@@ -14,6 +14,7 @@ import type {
   FlowConfigMergePublisher,
   FlowConfigMergePublisherReceipt,
   FlowConfigMergePublisherRequest,
+  ConfigMergeSummary,
   MutableRecord
 } from "../contracts/flow-types.js";
 import { cloneJson, isNonEmptyString, isObject, valueEquals } from "../shared/flow-utils.js";
@@ -39,7 +40,7 @@ function publisherInvalidError() {
 }
 
 function configMergeOptionsInvalidError() {
-  return new Error("flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+  return new Error("flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
 }
 
 class ConfigMergePublisherReceiptInvalidError extends Error {
@@ -81,8 +82,25 @@ type FlowConfigMergeInternalOptions = Readonly<{
 
 function snapshotConflictPaths(paths: unknown): readonly string[] | undefined {
   if (paths === undefined) return undefined;
-  if (!Array.isArray(paths) || !paths.every(isNonEmptyString)) throw configMergeOptionsInvalidError();
-  return Object.freeze([...paths]);
+  if (!Array.isArray(paths)) throw configMergeOptionsInvalidError();
+
+  // Do not validate an array and then copy it. A caller-owned Proxy can
+  // return safe values while validation walks it, then substitute an accepted
+  // conflict path during a later spread/iterator read. Snapshot each element
+  // once by index, validate the plain copy, and only then freeze it.
+  const length = paths.length;
+  if (!Number.isSafeInteger(length) || length < 0) throw configMergeOptionsInvalidError();
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) snapshot.push(paths[index]);
+  if (!snapshot.every((pathValue): pathValue is string => isNonEmptyString(pathValue))) throw configMergeOptionsInvalidError();
+  return Object.freeze(snapshot);
+}
+
+function snapshotOptionalPath(value: unknown, { allowNull = false, nonEmpty = false } = {}): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (allowNull && value === null) return null;
+  if (typeof value !== "string" || (nonEmpty && value.length === 0)) throw configMergeOptionsInvalidError();
+  return value;
 }
 
 /**
@@ -99,7 +117,7 @@ function snapshotConfigMergeApplyOptions(options: FlowConfigMergeApplyOptions | 
       acceptedConflicts: snapshotConflictPaths(source.acceptedConflicts),
       exceptionReason: source.exceptionReason,
       authority: source.authority,
-      cwd: source.cwd
+      cwd: snapshotOptionalPath(source.cwd, { nonEmpty: true }) as string | undefined
     });
   } catch (error) {
     // Reading a host capability crosses the same trust boundary as invoking
@@ -122,9 +140,9 @@ function snapshotConfigMergePreviewOptions(options: FlowConfigMergePreviewOption
       acceptedConflicts: snapshotConflictPaths(source.acceptedConflicts),
       exceptionReason: source.exceptionReason,
       authority: source.authority,
-      cwd: source.cwd,
-      localConfigPath: source.localConfigPath,
-      proposalPath: source.proposalPath
+      cwd: snapshotOptionalPath(source.cwd, { nonEmpty: true }) as string | undefined,
+      localConfigPath: snapshotOptionalPath(source.localConfigPath, { nonEmpty: true }) as string | undefined,
+      proposalPath: snapshotOptionalPath(source.proposalPath, { allowNull: true })
     });
   } catch {
     // Preview has no host capability boundary, but caller-owned accessors must
@@ -326,7 +344,7 @@ function conflictAccepted(pathValue, acceptedPaths) {
   return acceptedPaths.has(pathValue) || [...acceptedPaths].some((acceptedPath) => pathValue.startsWith(`${acceptedPath}.`));
 }
 
-function configMergeSummary(report: ConfigMergeReport) {
+function configMergeSummary(report: ConfigMergeReport): ConfigMergeSummary {
   return {
     proposed: report.proposed_changes.length,
     accepted: report.accepted_changes.length,
@@ -375,7 +393,7 @@ function mergeFlowConfigPreview(localConfig: MutableRecord, kitProposal: Mutable
     unchanged: [],
     exceptions: [],
     merged_config: merged,
-    summary: {}
+    summary: { proposed: 0, accepted: 0, rejected: 0, conflicts: 0, unchanged: 0, exceptions: 0 }
   };
 
   for (const section of ["trusted_producers", "gate_overrides"]) {

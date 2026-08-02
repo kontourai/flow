@@ -13,6 +13,7 @@ export type {
   FlowConfigMergePublisherRequest,
   ConfigMergeAppliedReport,
   ConfigMergeReport,
+  ConfigMergeSummary,
   ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowActiveStepClaim,

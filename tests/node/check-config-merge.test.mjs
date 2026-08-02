@@ -72,8 +72,38 @@ test("config merge preview rejects hostile option accessors without leaking thei
     failure = error;
   }
   assert.ok(failure instanceof Error);
-  assert.equal(failure.message, "flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+  assert.equal(failure.message, "flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
   assert.doesNotMatch(String(failure), /preview-option-getter-secret-2026/);
+});
+
+test("config merge preview rejects invalid path primitives and sanitizes hostile path getters", () => {
+  for (const options of [
+    { localConfigPath: "" },
+    { localConfigPath: null },
+    { proposalPath: 42 },
+    { cwd: { private: "not-a-path" } }
+  ]) {
+    assert.throws(
+      () => previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), options),
+      /flow\.config\.merge\.options\.invalid: options must use valid conflict paths and path strings/
+    );
+  }
+
+  const getterSecret = "preview-path-getter-secret-2026";
+  const hostileOptions = Object.defineProperty({}, "proposalPath", {
+    get() {
+      throw new Error(`private preview path failed: ${getterSecret}`);
+    }
+  });
+  let failure;
+  try {
+    previewFlowConfigMerge(localConfigFixture(), proposedConfigFixture(), hostileOptions);
+  } catch (error) {
+    failure = error;
+  }
+  assert.ok(failure instanceof Error);
+  assert.equal(failure.message, "flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
+  assert.doesNotMatch(String(failure), /preview-path-getter-secret-2026/);
 });
 
 test("Resource-shaped project config normalizes for load and merge workflows", async () => {
@@ -457,7 +487,7 @@ test("config merge snapshots caller options before selecting a publisher capabil
     (error) => {
       assert.ok(error instanceof Error);
       assert.match(error.message, /flow\.config\.merge\.publisher\.failed/);
-      assert.equal(error.cause?.message, "flow.config.merge.options.invalid: conflict paths must be arrays of non-empty strings");
+      assert.equal(error.cause?.message, "flow.config.merge.options.invalid: options must use valid conflict paths and path strings");
       return true;
     }
   );
@@ -485,6 +515,48 @@ test("config merge snapshots accepted conflict paths before asynchronous reads",
   const report = await result;
   assert.equal(report.status, "blocked");
   assert.ok(report.conflicts.some((change) => change.path.startsWith("$.trusted_producers.quality.tests")));
+});
+
+test("config merge copies each hostile conflict alias before validation and never publishes a swapped path", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-config-merge-proxy-conflicts-"));
+  await mkdir(path.join(cwd, ".flow"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(cwd, ".flow", "config.json"), `${JSON.stringify(localConfigFixture(), null, 2)}\n`),
+    writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({
+      schema_version: FLOW_SCHEMA_VERSION,
+      trusted_producers: { "quality.tests": { producers: ["ci/kit"] } },
+      gate_overrides: {}
+    }, null, 2)}\n`)
+  ]);
+
+  for (const alias of ["acceptConflicts", "acceptedConflicts"]) {
+    let pathReads = 0;
+    let publisherCalls = 0;
+    const conflictPaths = new Proxy(["$.trusted_producers.quality.lint"], {
+      get(target, property, receiver) {
+        if (property === "0") {
+          pathReads += 1;
+          return pathReads === 1
+            ? "$.trusted_producers.quality.lint"
+            : "$.trusted_producers.quality.tests";
+        }
+        return Reflect.get(target, property, receiver);
+      }
+    });
+    const report = await applyFlowConfigMerge(cwd, "proposal.json", {
+      [alias]: conflictPaths,
+      exceptionReason: "a swapped conflict path must not authorize publication",
+      authority: "test-authority",
+      publisher: async () => {
+        publisherCalls += 1;
+        throw new Error("a swapped conflict path must never publish");
+      }
+    });
+    assert.equal(report.status, "blocked", alias);
+    assert.equal(pathReads, 1, `${alias} is read once by index before validation`);
+    assert.equal(publisherCalls, 0, `${alias} cannot authorize publication after its first read`);
+    assert.ok(report.conflicts.some((change) => change.path === "$.trusted_producers.quality.tests.producers"), alias);
+  }
 });
 
 test("config merge rejects invalid and failed publisher capabilities", async () => {
