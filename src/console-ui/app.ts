@@ -32,7 +32,7 @@ function createLiveIndicator(): HTMLElement {
   el.setAttribute("title", _liveConnected ? "Live updates active" : "Connecting…");
 
   const dot = document.createElement("span");
-  dot.className = "live-dot live-dot-off";
+  dot.className = `live-dot ${_liveConnected ? "live-dot-on" : "live-dot-off"}`;
   dot.setAttribute("aria-hidden", "true");
 
   const label = document.createElement("span");

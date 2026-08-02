@@ -236,12 +236,15 @@ test("live stream closes when the page lifecycle ends", async ({ page }) => {
     () => (window as typeof window & { __flowEventSourceCloseCount?: number })
       .__flowEventSourceCloseCount ?? 0
   )).toBe(1);
+  await expect(page.getByTestId("live-indicator")).toHaveAttribute("data-connected", "false");
+  await expect(page.getByTestId("live-indicator").locator(".live-dot")).toHaveClass(/live-dot-off/);
 
   await page.evaluate(() => window.dispatchEvent(
     new PageTransitionEvent("pageshow", { persisted: true })
   ));
   await expect(page.getByTestId("live-indicator"))
     .toHaveAttribute("data-connected", "true", { timeout: 5000 });
+  await expect(page.getByTestId("live-indicator").locator(".live-dot")).toHaveClass(/live-dot-on/);
 
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
   await expect.poll(() => page.evaluate(
@@ -250,7 +253,7 @@ test("live stream closes when the page lifecycle ends", async ({ page }) => {
   )).toBe(2);
 });
 
-test("live update: mutating run state file updates header status and timeline without reload", async ({ page }) => {
+test("live update: a projection re-render preserves the connected indicator", async ({ page }) => {
   test.skip(test.info().project.name === "chromium-mobile", "live update tested on desktop");
   const consoleErrors = await loadFlowConsole(page);
 
@@ -281,6 +284,11 @@ test("live update: mutating run state file updates header status and timeline wi
 
     // Status badge should still be visible (header re-rendered)
     await expect(page.getByTestId("flow-console-status")).toBeVisible();
+    // `renderApp` replaces the header, so the newly-created indicator must
+    // reflect the connection that was already established by the SSE client.
+    await expect(indicator).toHaveAttribute("data-connected", "true");
+    await expect(indicator.locator(".live-label")).toHaveText("live");
+    await expect(indicator.locator(".live-dot")).toHaveClass(/live-dot-on/);
   } finally {
     await writeFile(STATE_FILE, originalState);
   }
