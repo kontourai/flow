@@ -148,6 +148,56 @@ Flow matches `bundle_claim` selectors against bundle claims and derives the clai
 
 This is a neutral contract: Flow does not import Surface services or Veritas-specific schema fields at runtime. Any tool that can write this JSON shape — CI, Veritas, a review bot, a script — is an evidence producer.
 
+## The run-output TrustBundle
+
+`projectRunOutputBundle` emits a TrustBundle for the run itself, so a parent
+flow can consume a whole run as one referenceable claim.
+
+**Flow does not compute the run-level verdict.** It emits one member claim per
+stage plus an `all-required` claim group, and a consumer — Surface — folds them.
+That delegation is only meaningful if the consumer receives the failures, so the
+group's membership is **every** stage of the definition, never the passing
+subset. Flow puts no producer-asserted `status` on a member claim either; the
+ledger of events is what it emits, and the status is derived from it.
+
+Each stage's event is drawn from its recorded gate outcomes:
+
+| Stage | Event | Derived status |
+| --- | --- | --- |
+| all gates passed on evidence | `verified`, citing the stage's evidence records | `verified` |
+| passed on an accepted exception | `assumed`, carrying a waiver | `assumed` |
+| a gate blocked or routed back | `rejected` | `rejected` |
+| not appraised yet | *no event* | `unknown` |
+
+A stage the run has not reached carries no event at all, so it derives `unknown`
+— "nothing to appraise" — rather than Flow asserting anything about it.
+
+### Accepted exceptions appear as waivers
+
+`evaluateGate` short-circuits on an accepted exception and returns `pass` with no
+evidence. That stage did not pass on evidence, and the bundle says so: its event
+is `assumed`, not `verified`, and the claim carries a
+[hachure `waivers.md`](https://github.com/hachure-org/spec/blob/main/waivers.md)
+waiver in `metadata`:
+
+```json
+{
+  "metadata": {
+    "waiver": {
+      "reason": "CI runner unavailable; checked by hand on staging",
+      "approved_by": "ops@example.test",
+      "approved_at": "2026-08-02T00:00:00.000Z",
+      "exceptionId": "ex.1785651688817.1",
+      "gateId": "verify-gate"
+    }
+  }
+}
+```
+
+Per that profile a waiver documents an accepted gap; it never upgrades a derived
+status. A consumer can therefore tell "this stage was verified" from "someone
+decided not to block on this stage, and here is who and why".
+
 ## How claim evidence is evaluated
 
 A `trust.bundle` expectation is satisfied only when **all** of these checks pass:
