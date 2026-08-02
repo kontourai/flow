@@ -48,6 +48,7 @@ test("Resource-shaped project config normalizes for load and merge workflows", a
 
   const preview = await previewFlowConfigMergeFile("proposal.json", { cwd });
   assert.equal(preview.status, "conflicts");
+  assert.equal("publisher_receipt" in preview, false);
   assert.deepEqual(preview.merged_config.trusted_producers["quality.tests"].producers, ["ci/main"]);
   assert.equal(preview.merged_config.apiVersion, undefined);
 
@@ -56,6 +57,7 @@ test("Resource-shaped project config normalizes for load and merge workflows", a
   };
   const blocked = await applyFlowConfigMerge(cwd, "proposal.json", { publisher: notCalled });
   assert.equal(blocked.status, "blocked");
+  assert.equal("publisher_receipt" in blocked, false);
   let stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
   assert.equal(stored.kind, "FlowProjectConfig");
 
@@ -76,6 +78,7 @@ test("Resource-shaped project config normalizes for load and merge workflows", a
     })
   });
   assert.equal(applied.status, "applied");
+  assert.ok(applied.publisher_receipt);
   assert.equal(applied.publisher_receipt.publisher, "test-host");
   stored = JSON.parse(await readFile(path.join(cwd, ".flow", "config.json"), "utf8"));
   assert.equal(stored.kind, "FlowProjectConfig", "Flow does not perform an unsafe fallback publication");
@@ -237,10 +240,25 @@ test("config merge rejects invalid and failed publisher capabilities", async () 
     writeFile(path.join(cwd, "proposal.json"), `${JSON.stringify({ schema_version: FLOW_SCHEMA_VERSION, trusted_producers: { "quality.tests": { producers: ["ci/tests"] } }, gate_overrides: {} }, null, 2)}\n`)
   ]);
   await assert.rejects(() => applyFlowConfigMerge(cwd, "proposal.json", { publisher: true }), /flow\.config\.merge\.publisher\.invalid/);
-  await assert.rejects(
-    () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => { throw new Error("host refused unsafe target"); } }),
-    /flow\.config\.merge\.publisher\.failed:.*host refused unsafe target/
+  const privateMarker = "token=publisher-secret-9fd5";
+  const privatePath = "/internal/publisher/tenant-42/config.json";
+  let publisherFailure;
+  try {
+    await applyFlowConfigMerge(cwd, "proposal.json", {
+      publisher: async () => {
+        throw new Error(`host refused ${privatePath}; ${privateMarker}`);
+      }
+    });
+  } catch (error) {
+    publisherFailure = error;
+  }
+  assert.ok(publisherFailure instanceof Error);
+  assert.equal(
+    publisherFailure.message,
+    "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics"
   );
+  assert.doesNotMatch(String(publisherFailure), /publisher-secret-9fd5|\/internal\/publisher\/tenant-42/);
+  assert.match(publisherFailure.cause?.message, /publisher-secret-9fd5/);
   await assert.rejects(
     () => applyFlowConfigMerge(cwd, "proposal.json", { publisher: async () => ({ status: "applied" }) }),
     /flow\.config\.merge\.publisher\.receipt\.invalid/

@@ -2,6 +2,9 @@ import {
   finalizeRunRecoveryFence
 } from "../../src/index.js";
 import type {
+  ConfigMergeAppliedReport,
+  ConfigMergeReport,
+  ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowConfigMergeApplyOptions,
   FlowConfigMergePublisher,
@@ -54,7 +57,46 @@ const configMergeReceipt: FlowConfigMergePublisherReceipt = {
   config_path: configMergeRequest.config_path,
   contents_sha256: configMergeRequest.contents_sha256
 };
-void [configMergeOptions, configMergeRequest, configMergeReceipt];
+const configMergeReportFields = {
+  schema_version: "0.1",
+  mode: "preview",
+  local_config_path: "/project/.flow/config.json",
+  proposal_path: "/project/proposal.json",
+  proposed_changes: [],
+  accepted_changes: [],
+  rejected_changes: [],
+  conflicts: [],
+  unchanged: [],
+  exceptions: [],
+  merged_config: { schema_version: "0.1", trusted_producers: {}, gate_overrides: {} },
+  summary: {}
+};
+const unpublishedConfigMergeReport: ConfigMergeUnpublishedReport = {
+  ...configMergeReportFields,
+  status: "ready"
+};
+const appliedConfigMergeReport: ConfigMergeAppliedReport = {
+  ...configMergeReportFields,
+  mode: "apply",
+  status: "applied",
+  publisher_receipt: configMergeReceipt
+};
+// @ts-expect-error applied reports require a publisher receipt.
+const appliedWithoutPublisherReceipt: ConfigMergeReport = { ...configMergeReportFields, status: "applied" };
+// @ts-expect-error unpublished reports must not carry a publisher receipt.
+const previewWithPublisherReceipt: ConfigMergeReport = { ...configMergeReportFields, status: "ready", publisher_receipt: configMergeReceipt };
+// @ts-expect-error an applied report cannot be emitted by preview mode.
+const appliedPreviewReport: ConfigMergeReport = { ...configMergeReportFields, status: "applied", publisher_receipt: configMergeReceipt };
+void [
+  configMergeOptions,
+  configMergeRequest,
+  configMergeReceipt,
+  unpublishedConfigMergeReport,
+  appliedConfigMergeReport,
+  appliedWithoutPublisherReceipt,
+  previewWithPublisherReceipt,
+  appliedPreviewReport
+];
 
 const activeStepClaimRequest: FlowActiveStepClaimRequest = {
   claim_id: "claim-render-1",

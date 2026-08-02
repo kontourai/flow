@@ -68,20 +68,27 @@ Required lanes pass only when their claim satisfies the policy; missing, pending
 
 **The pain:** the production readiness checklist is a wiki page. Teams skip steps, reviews go stale, and exceptions are granted in Slack and forgotten. The platform team cannot tell which services actually followed the path.
 
-**With Flow:** the readiness review becomes a Flow Definition — steps like `security-review → slo-signoff → capacity-check → launch` — where each gate's `expects` names the claim a producing system must supply (`security.review`, `quality.slo-signoff`). The platform team distributes its standard config as a proposal, and each repo applies it with full visibility:
+**With Flow:** the readiness review becomes a Flow Definition — steps like `security-review → slo-signoff → capacity-check → launch` — where each gate's `expects` names the claim a producing system must supply (`security.review`, `quality.slo-signoff`). The platform team distributes its standard config as a proposal, and each repo previews it with full visibility:
 
 ```sh
 flow config preview ./platform-flow-config.json --format markdown
-flow config apply ./platform-flow-config.json
 ```
 
-Local `.flow/config.json` stays authoritative: additive proposals merge, conflicting ones are rejected unless a named authority accepts them explicitly:
+The standalone CLI deliberately cannot publish config and reports
+`flow.config.merge.publisher.unavailable`. Station or another trusted platform
+host supplies the library's `FlowConfigMergePublisher` capability, verifies the
+base-config digest, atomically publishes Flow's canonical bytes, and returns a
+receipt bound to those bytes. Local `.flow/config.json` stays authoritative:
+additive proposals merge, while conflicts remain blocked unless the host passes
+a named authority, reason, and accepted path to `applyFlowConfigMerge`:
 
-```sh
-flow config apply ./platform-flow-config.json \
-  --accept-conflict '$.trusted_producers.security.review' \
-  --exception-reason 'platform team rotated the scanning producer' \
-  --authority 'platform-lead'
+```ts
+await applyFlowConfigMerge("./platform-flow-config.json", {
+  publisher: trustedHostPublisher,
+  acceptConflicts: ["$.trusted_producers.security.review"],
+  exceptionReason: "platform team rotated the scanning producer",
+  authority: "platform-lead"
+});
 ```
 
 Producer pins use the bundle's stable `producerId`. When a platform needs an

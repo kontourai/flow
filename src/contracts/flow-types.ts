@@ -574,10 +574,9 @@ export interface TransitionValidationResult extends MutableRecord {
   transition: MutableRecord | null;
 }
 
-export interface ConfigMergeReport extends MutableRecord {
+interface ConfigMergeReportFields extends MutableRecord {
   schema_version: string;
   mode: string;
-  status: string;
   local_config_path: string;
   proposal_path: string | null;
   proposed_changes: MutableRecord[];
@@ -588,8 +587,26 @@ export interface ConfigMergeReport extends MutableRecord {
   exceptions: MutableRecord[];
   merged_config: FlowConfig;
   summary: MutableRecord;
-  publisher_receipt?: FlowConfigMergePublisherReceipt;
 }
+
+/** A config merge result that has not been published by a trusted host. */
+export interface ConfigMergeUnpublishedReport extends ConfigMergeReportFields {
+  status: "ready" | "conflicts" | "blocked";
+  publisher_receipt?: never;
+}
+
+/** A config merge result acknowledged by a trusted host publisher. */
+export interface ConfigMergeAppliedReport extends ConfigMergeReportFields {
+  mode: "apply";
+  status: "applied";
+  publisher_receipt: FlowConfigMergePublisherReceipt;
+}
+
+/**
+ * Discriminated by `status`: applied reports always carry a publisher receipt,
+ * while preview/conflict/blocked reports can never carry one.
+ */
+export type ConfigMergeReport = ConfigMergeUnpublishedReport | ConfigMergeAppliedReport;
 
 /**
  * Immutable hand-off from Flow's deterministic config merge engine to a host

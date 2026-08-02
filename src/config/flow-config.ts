@@ -7,6 +7,7 @@ import { flowConfigPath, readJson } from "../runtime/flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type {
   ConfigMergeReport,
+  ConfigMergeUnpublishedReport,
   FlowConfig,
   FlowConfigMergeApplyOptions,
   FlowConfigMergePublisher,
@@ -225,7 +226,7 @@ function configChange({ path: pathValue, operation, reason, localValue, proposed
   };
 }
 
-export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeReport {
+export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowConfig(), kitProposal: MutableRecord = defaultFlowConfig(), options: MutableRecord = {}): ConfigMergeUnpublishedReport {
   const normalizedLocal = normalizeFlowConfig(localConfig);
   const normalizedProposed = proposedConfigFromEnvelope(kitProposal);
   assertSafeConfigTree(normalizedLocal);
@@ -240,7 +241,7 @@ export function previewFlowConfigMerge(localConfig: MutableRecord = defaultFlowC
     throw new Error("accepting config merge conflicts requires exception reason and authority");
   }
 
-  const report: ConfigMergeReport = {
+  const report: ConfigMergeUnpublishedReport = {
     schema_version: FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION,
     mode: options.mode ?? "preview",
     status: "ready",
@@ -348,7 +349,7 @@ export async function previewFlowConfigMergeFile(proposalPath: string, options: 
   });
 }
 
-export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPathOrOptions?: string | FlowConfigMergeApplyOptions, maybeOptions: FlowConfigMergeApplyOptions = {}) {
+export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPathOrOptions?: string | FlowConfigMergeApplyOptions, maybeOptions: FlowConfigMergeApplyOptions = {}): Promise<ConfigMergeReport> {
   const cwd = typeof proposalPathOrOptions === "string" ? cwdOrProposalPath : (maybeOptions.cwd ?? process.cwd());
   const proposalPath = typeof proposalPathOrOptions === "string" ? proposalPathOrOptions : cwdOrProposalPath;
   const options: FlowConfigMergeApplyOptions = typeof proposalPathOrOptions === "string" ? maybeOptions : (proposalPathOrOptions ?? {});
@@ -387,10 +388,15 @@ export async function applyFlowConfigMerge(cwdOrProposalPath: string, proposalPa
   try {
     response = await publisher(request);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`flow.config.merge.publisher.failed: trusted config merge publisher failed: ${detail}`);
+    // Publisher failures can contain credentials, internal paths, or other
+    // host-only diagnostics. Keep that value available to trusted embedders as
+    // the cause, but never reflect it through Flow's public/CLI error message.
+    throw new Error(
+      "flow.config.merge.publisher.failed: trusted config merge publisher failed; inspect the trusted host's internal diagnostics",
+      { cause: error }
+    );
   }
-  return { ...report, status: "applied", publisher_receipt: publisherReceipt(response, request) };
+  return { ...report, mode: "apply", status: "applied", publisher_receipt: publisherReceipt(response, request) };
 }
 
 function renderConfigMergeBucket(title, entries) {
