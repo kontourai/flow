@@ -257,6 +257,82 @@ test("stageStatuses linear: failed gate outcome", () => {
 });
 
 // ---------------------------------------------------------------------------
+// stageStatuses — terminal runs (#211: cursor step must not mask outcomes)
+// ---------------------------------------------------------------------------
+
+/** Linear definition with a gate on the terminal step. */
+function linearDefinitionWithTerminalGate() {
+  return {
+    ...linearDefinition(),
+    gates: {
+      ...linearDefinition().gates,
+      "publish-gate": { step: "publish", expects: [] }
+    }
+  };
+}
+
+test("stageStatuses: completed run — gated terminal step reports passed, not current (#211)", () => {
+  const def = linearDefinitionWithTerminalGate();
+  const state = {
+    ...makeState("publish", ["plan-gate", "implement-gate", "verify-gate", "publish-gate"]),
+    status: "completed"
+  };
+  const statuses = stageStatuses(def, state, emptyManifest);
+  assert.equal(statuses["plan"],      "passed");
+  assert.equal(statuses["implement"], "passed");
+  assert.equal(statuses["verify"],    "passed");
+  // The terminal step's gate passed and the run completed — it must not be
+  // parked as "current" forever.
+  assert.equal(statuses["publish"],   "passed");
+});
+
+test("stageStatuses: completed run — gateless terminal step reports passed (#211)", () => {
+  const def = linearDefinition();
+  const state = {
+    ...makeState("publish", ["plan-gate", "implement-gate", "verify-gate"]),
+    status: "completed"
+  };
+  const statuses = stageStatuses(def, state, emptyManifest);
+  assert.equal(statuses["plan"],      "passed");
+  assert.equal(statuses["implement"], "passed");
+  assert.equal(statuses["verify"],    "passed");
+  // Gateless terminal step of a completed run — no gate to pass, but the run
+  // reached it and completed.
+  assert.equal(statuses["publish"],   "passed");
+});
+
+test("stageStatuses: accepted_by_exception run — terminal step reports passed (#211)", () => {
+  const def = linearDefinitionWithTerminalGate();
+  const state = {
+    ...makeState("publish", ["plan-gate", "implement-gate", "verify-gate"]),
+    status: "accepted_by_exception",
+    gate_outcomes: [
+      ...makeState("publish", ["plan-gate", "implement-gate", "verify-gate"]).gate_outcomes,
+      { gate_id: "publish-gate", status: "pass", summary: "accepted exception", accepted_exception_id: "exc-1" }
+    ]
+  };
+  const statuses = stageStatuses(def, state, emptyManifest);
+  assert.equal(statuses["publish"], "passed");
+});
+
+test("stageStatuses: failed run — cursor step with blocking gate reports failed (#211)", () => {
+  const def = linearDefinition();
+  const base = makeState("implement", ["plan-gate"]);
+  const state = {
+    ...base,
+    status: "failed",
+    gate_outcomes: [
+      ...base.gate_outcomes,
+      { gate_id: "implement-gate", status: "block", summary: "evidence missing" }
+    ]
+  };
+  const statuses = stageStatuses(def, state, emptyManifest);
+  assert.equal(statuses["plan"], "passed");
+  // Terminal failed run: the blocking gate on the cursor step must be visible.
+  assert.equal(statuses["implement"], "failed");
+});
+
+// ---------------------------------------------------------------------------
 // stageStatuses — fan-in
 // ---------------------------------------------------------------------------
 
