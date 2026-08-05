@@ -27,6 +27,10 @@ function canonicalRunDir(cwd, runId) {
   return path.join(cwd, ".kontourai", "flow", "runs", runId);
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function legacyRunDir(cwd, runId) {
   return path.join(cwd, ".flow", "runs", runId);
 }
@@ -131,6 +135,42 @@ test("AC-111-04 init refuses linked authored-file destinations", async () => {
   await symlink(outside, path.join(cwd, ".flow", "definitions", "agent-dev-flow.json"));
   await assert.rejects(() => flow.ensureFlowLayout(cwd), /flow\.run_location\.symlink_not_allowed/);
   assert.equal(await readFile(outside, "utf8"), marker);
+});
+
+test("AC-111-04 reports a distinct, actionable code when the working directory does not exist", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "flow-runtime-missing-cwd-"));
+  const missing = path.join(base, "does-not-exist");
+  const resolvedMissing = path.resolve(missing);
+
+  await assert.rejects(
+    () => flow.startRun(definitionPath, { cwd: missing, runId: "missing-cwd" }),
+    (error) => {
+      assert.equal(error.code, "flow.run_location.working_directory_not_found");
+      assert.match(
+        error.message,
+        new RegExp(`flow\\.run_location\\.working_directory_not_found: working directory ${escapeRegExp(resolvedMissing)} does not exist; create it first or pass an existing directory with --cwd`)
+      );
+      return true;
+    }
+  );
+  assert.equal(await exists(path.join(base, ".kontourai")), false);
+
+  let cliResult;
+  try {
+    cliResult = await execFile(process.execPath, [cliPath, "init", "--cwd", missing]);
+  } catch (error) {
+    cliResult = error;
+  }
+  assert.equal(cliResult.code, 1, "flow init against a missing cwd must exit non-zero");
+  const output = `${cliResult.stdout ?? ""}${cliResult.stderr ?? ""}`;
+  assert.match(output, /flow\.run_location\.working_directory_not_found/);
+  assert.match(output, /does not exist/);
+  assert.match(output, /--cwd/);
+  assert.equal(
+    await exists(path.join(missing, ".flow")),
+    false,
+    "init must not materialize the missing working directory"
+  );
 });
 
 test("AC-111-04 rejects a symlink supplied as the project cwd", async () => {
