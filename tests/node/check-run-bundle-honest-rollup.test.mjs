@@ -197,6 +197,60 @@ test("an all-passed run still rolls up as verified", async () => {
   assert.equal(rollup.status, "verified", "the honest rollup must still say verified when it is true");
 });
 
+// ---------------------------------------------------------------------------
+// #198: an exception may not override explicitly failed evidence
+// ---------------------------------------------------------------------------
+
+test("#198: an accepted exception does not override explicitly failed evidence", async () => {
+  const cwd = await startRollupRun("exc-vs-failed");
+  await passGate("exc-vs-failed", cwd, "plan-gate", "plan.ready", "plan");
+
+  // Accept an exception for the current gate (verify-gate).
+  await acceptException("exc-vs-failed", {
+    cwd,
+    gate: "verify-gate",
+    reason: "waived",
+    authority: "ops@example.test"
+  });
+
+  // Attach FAILED evidence for the same gate. Pre-fix the exception would
+  // short-circuit the gate to pass without ever seeing this failure.
+  const file = path.join(cwd, "failed-evidence.json");
+  await writeFile(file, `${JSON.stringify(gateBundle("quality.tests", "verify"))}\n`);
+  await attachEvidence("exc-vs-failed", { cwd, gate: "verify-gate", file, kind: "trust.bundle", bundle: true, status: "failed" });
+
+  await evaluateRun("exc-vs-failed", { cwd });
+
+  const run = await loadRun("exc-vs-failed", cwd);
+  // The gate must NOT pass — failed evidence takes priority over the exception.
+  assert.equal(run.state.current_step, "verify", "failed evidence blocks the gate even with an exception");
+  assert.notEqual(run.state.status, "completed");
+  const verifyOutcome = (run.state.gate_outcomes ?? []).find((o) => o.gate_id === "verify-gate");
+  assert.ok(verifyOutcome, "verify-gate was evaluated");
+  assert.notEqual(verifyOutcome.status, "pass", "a gate with failed evidence must not pass via exception");
+});
+
+test("#198: an accepted exception still overrides missing evidence", async () => {
+  const cwd = await startRollupRun("exc-vs-missing");
+  await passGate("exc-vs-missing", cwd, "plan-gate", "plan.ready", "plan");
+
+  // Accept an exception for the current gate with NO evidence attached.
+  await acceptException("exc-vs-missing", {
+    cwd,
+    gate: "verify-gate",
+    reason: "waived — no evidence available",
+    authority: "ops@example.test"
+  });
+  await evaluateRun("exc-vs-missing", { cwd });
+
+  const run = await loadRun("exc-vs-missing", cwd);
+  // The gate passes on the exception — evidence is missing, not failed.
+  assert.equal(run.state.current_step, "publish", "exception overrides missing evidence and advances");
+  const verifyOutcome = (run.state.gate_outcomes ?? []).find((o) => o.gate_id === "verify-gate");
+  assert.equal(verifyOutcome.status, "pass");
+  assert.equal(verifyOutcome.summary, "accepted exception");
+});
+
 // This one passes against pre-fix code too, and deliberately so: the pre-fix
 // bundle was schema-valid, it was just dishonest. It is here for AC4 — proving
 // the L1 validator actually compiled with its sibling $refs resolved, rather

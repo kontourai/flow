@@ -1004,17 +1004,6 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
   const gate = findGate(definition, gateId);
   if (!gate) throw new Error(`unknown gate: ${gateId}`);
 
-  const exception = acceptedExceptionFor(state, gateId);
-  if (exception) {
-    return {
-      gate_id: gateId,
-      status: "pass",
-      summary: "accepted exception",
-      evidence_refs: exception.evidence_refs ?? [],
-      accepted_exception_id: exception.id
-    };
-  }
-
   // Superseded entries stay in the manifest for audit but no longer drive
   // gate outcomes: replacing failing evidence is how a route-back recovers.
   const visit = currentGateVisit(definition, state, gate.step);
@@ -1026,6 +1015,9 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
     || (entry.status === "failed" && visit.awaitingReentry)
   ));
   const failed = evidence.filter((entry) => entry.status === "failed");
+  // An exception waives the evidence REQUIREMENT (missing evidence) but may
+  // not override an explicit FAILURE. Failed evidence is a stronger signal
+  // than "no evidence provided" — the work was attempted and rejected (#198).
   if (failed.length) {
     const routeReason = routeReasonForFailedEvidence(failed[0]);
     const route = routeBackDecision(state, gate, routeReason, failed);
@@ -1034,6 +1026,17 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
       status: route.status,
       summary: `${slugLabel(gate.id)} has failing evidence`,
       ...route
+    };
+  }
+
+  const exception = acceptedExceptionFor(state, gateId);
+  if (exception) {
+    return {
+      gate_id: gateId,
+      status: "pass",
+      summary: "accepted exception",
+      evidence_refs: exception.evidence_refs ?? [],
+      accepted_exception_id: exception.id
     };
   }
 
