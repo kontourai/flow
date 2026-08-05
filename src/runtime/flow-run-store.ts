@@ -23,7 +23,8 @@ import {
   publishRunArtifacts,
   readJson,
   runDir,
-  writeJson
+  writeJson,
+  type PublishRunArtifactsHooks
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
@@ -131,6 +132,22 @@ const activeRunMutationTicket = new AsyncLocalStorage<{
   directory: { device: string; inode: string };
 }>();
 const RETRY_MUTATION_AFTER_RECOVERY = Symbol("retry-mutation-after-recovery");
+
+/**
+ * Test-only fault-injection hooks for the atomic publication path used by
+ * saveRun and saveLifecycleState. When set, every publishRunArtifacts call
+ * from those two functions receives these hooks, allowing the crash-
+ * interleaving matrix to inject faults at each stage boundary without
+ * threading optional parameters through every public mutating API.
+ *
+ * Production code never sets this; it defaults to undefined (no hooks).
+ */
+let _publishRunArtifactsFaultHooks: PublishRunArtifactsHooks | undefined;
+
+/** @internal Test-only setter for crash-interleaving fault injection. */
+export function __setPublishRunArtifactsFaultHooks(hooks?: PublishRunArtifactsHooks) {
+  _publishRunArtifactsFaultHooks = hooks;
+}
 
 function flowRunsRoot(cwd = process.cwd()) {
   return path.join(flowRuntimeRoot(cwd), "runs");
@@ -488,9 +505,17 @@ export async function startRun(definitionPath: string, options: MutableRecord = 
     cwd,
     path.relative(path.resolve(cwd), path.join(dir, FLOW_RUN_EVIDENCE_DIR))
   );
+  const faultInjection = options.faultInjection;
+  if (faultInjection !== undefined && typeof faultInjection !== "function") {
+    throw new Error("flow.start_run.options.invalid: faultInjection must be a function");
+  }
+  faultInjection?.("before_definition");
   await writeJson(path.join(dir, FLOW_RUN_DEFINITION_FILE), definition);
+  faultInjection?.("before_state");
   await writeJson(path.join(dir, FLOW_RUN_STATE_FILE), state);
+  faultInjection?.("before_manifest");
   await writeJson(path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH), manifest);
+  faultInjection?.("before_reports");
   await renderAndWriteReport(definition, state, manifest, dir);
   return { runId, dir, state };
 }
@@ -634,7 +659,7 @@ async function saveRun(run) {
     { path: reportMarkdownPath, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
     { path: manifestPath, contents: serializeJson(run.manifest) },
     { path: statePath, contents: serializeJson(run.state) }
-  ]);
+  ], _publishRunArtifactsFaultHooks);
 }
 
 /** Canonical on-disk JSON encoding for run artifacts. */
@@ -654,7 +679,7 @@ async function saveLifecycleState(run) {
     { path: reportJsonPath, contents: serializeJson(reportJson(run.definition, run.state, run.manifest)) },
     { path: reportMarkdownPath, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
     { path: statePath, contents: serializeJson(run.state) }
-  ]);
+  ], _publishRunArtifactsFaultHooks);
 }
 
 function lifecycleTimestamp(options: MutableRecord, operation: FlowLifecycleAction) {
@@ -1718,7 +1743,7 @@ export async function finalizeRunRecoveryFence(
   });
 }
 
-async function saveRetryAuthorizationState(run: any) {
+async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: string) => void) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
@@ -1728,25 +1753,27 @@ async function saveRetryAuthorizationState(run: any) {
   const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);
   const suffix = `.retry-${randomUUID()}.tmp`;
   const staged = [
-    { target: reportJsonPath, temp: `${reportJsonPath}${suffix}`, contents: `${JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2)}\n` },
-    { target: reportMarkdownPath, temp: `${reportMarkdownPath}${suffix}`, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
-    { target: statePath, temp: `${statePath}${suffix}`, contents: `${JSON.stringify(run.state, null, 2)}\n` }
+    { target: reportJsonPath, temp: `${reportJsonPath}${suffix}`, contents: `${JSON.stringify(reportJson(run.definition, run.state, run.manifest), null, 2)}\n`, stage: "report_json" },
+    { target: reportMarkdownPath, temp: `${reportMarkdownPath}${suffix}`, contents: renderMarkdownReport(run.definition, run.state, run.manifest), stage: "report_markdown" },
+    { target: statePath, temp: `${statePath}${suffix}`, contents: `${JSON.stringify(run.state, null, 2)}\n`, stage: "state" }
   ];
   const priorReports = [
     { target: reportJsonPath, contents: await readFile(reportJsonPath, "utf8") },
     { target: reportMarkdownPath, contents: await readFile(reportMarkdownPath, "utf8") }
   ];
-  let committed = false;
+  let stateCommitted = false;
   try {
-    for (const entry of staged) await writeFile(entry.temp, entry.contents, { flag: "wx", mode: 0o600 });
-    // Derived projections land first. state.json is the final atomic commit point.
-    for (const entry of staged) await rename(entry.temp, entry.target);
-    committed = true;
+    for (const entry of staged) {
+      faultInjection?.(`before_stage_${entry.stage}`);
+      await writeFile(entry.temp, entry.contents, { flag: "wx", mode: 0o600 });
+    }
+    for (const entry of staged) {
+      faultInjection?.(`before_rename_${entry.stage}`);
+      await rename(entry.temp, entry.target);
+      if (entry.stage === "state") stateCommitted = true;
+    }
   } catch (error) {
-    if (!committed) {
-      // A normal I/O failure before the state commit restores both derived
-      // projections to the prior authoritative state. Crash recovery still
-      // treats state.json as the commit point and regenerates projections.
+    if (!stateCommitted) {
       await publishRunArtifacts(run.dir, priorReports.map((entry) => ({ path: entry.target, contents: entry.contents })));
     }
     throw error;
@@ -1967,7 +1994,7 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
   if (Object.hasOwn(options, "at")) {
     throw new FlowRetryAuthorizationError("flow.retry_authorization.request.invalid", "$.at", "authorization timestamps are runtime-derived and cannot be supplied by callers");
   }
-  const requestValue = options.request ?? Object.fromEntries(Object.entries(options).filter(([key]) => key !== "cwd"));
+  const requestValue = options.request ?? Object.fromEntries(Object.entries(options).filter(([key]) => !["cwd", "faultInjection"].includes(key)));
   const request = validateRetryAuthorizationRequest(requestValue) as FlowRetryAuthorizationRequest;
   const cwd = path.resolve(options.cwd ?? process.cwd());
   // Reject all semantic failures before lock initialization. Exact replay is
@@ -2022,7 +2049,7 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
       next_action: nextActionForStep(run.definition, request.target_step),
       updated_at: at
     };
-    await saveRetryAuthorizationState(run);
+    await saveRetryAuthorizationState(run, typeof options.faultInjection === "function" ? options.faultInjection : undefined);
     return { ...run, transition, idempotent: false };
   });
 }
