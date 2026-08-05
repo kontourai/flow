@@ -477,18 +477,107 @@ export function routeTargetForReason(gate, routeReason) {
   return gate.step;
 }
 
-export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep }) {
+/**
+ * Count distinct logical route-back failures for one exact loop.
+ *
+ * Route-back attempts are derived from **persisted transitions only** — never
+ * from timestamps, caller counters, or classifier data. Within one retry
+ * epoch, a fresh route-back transition is a *new* logical attempt only when
+ * something material has changed since the immediately preceding matching
+ * route-back. Otherwise the new transition is a *replay* of the same logical
+ * failure and inherits its attempt number.
+ *
+ * A material change is one of:
+ *
+ *   1. The prior route-back left `fromStep` (non-self-loop target), or the run
+ *      has since re-entered `fromStep` from a different step. Either marks a
+ *      new gate visit.
+ *   2. The current evaluation's failed-evidence set contains an id that was
+ *      not present in the prior route-back's `failed_evidence_refs`. This
+ *      prevents incremental synchronization within one failed visit — e.g.
+ *      repeated `missing_evidence` self-loops where each re-evaluation sees
+ *      the same failed set — from exhausting the budget, while a genuinely
+ *      new failed entry still increments exactly once.
+ *
+ * Idempotency is at the recording layer: a replay produces a route-back
+ * transition that carries the same attempt number as the prior one. The
+ * proof machinery (`flow-run-retry-proof`) recomputes this derivation from
+ * the persisted transition prefix plus the record's own `failed_evidence_refs`.
+ */
+export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep, failedEvidenceRefs = [] }) {
   const retryEpoch = routeBackEpoch(state, { gateId, routeReason, fromStep, toStep });
   const reasonKey = routeReason ?? "default";
-  const priorMatches = (state.transitions ?? []).filter((transition) => {
-    return transition.type === "route_back"
+  const transitions = state.transitions ?? [];
+
+  const matching = [];
+  for (let index = 0; index < transitions.length; index += 1) {
+    const transition = transitions[index];
+    if (transition?.type === "route_back"
       && transition.gate_id === gateId
-      && (transition.route_reason ?? transition.reason) === reasonKey
+      && (transition.route_reason ?? transition.reason ?? "default") === reasonKey
       && transition.from_step === fromStep
       && transition.to_step === toStep
-      && (transition.retry_epoch ?? 1) === retryEpoch;
-  });
-  return priorMatches.length + 1;
+      && (transition.retry_epoch ?? 1) === retryEpoch) {
+      matching.push({ transition, index });
+    }
+  }
+
+  if (matching.length === 0) return 1;
+
+  let attemptCount = 1;
+  let prevFailedSet = new Set(Array.isArray(matching[0].transition.failed_evidence_refs) ? matching[0].transition.failed_evidence_refs : []);
+  for (let i = 1; i < matching.length; i += 1) {
+    const prev = matching[i - 1];
+    const curr = matching[i];
+    const currFailedSet = new Set(Array.isArray(curr.transition.failed_evidence_refs) ? curr.transition.failed_evidence_refs : []);
+    if (routeBackVisitBoundary(transitions, prev, curr, fromStep) || routeBackHasNewFailed(prevFailedSet, currFailedSet)) {
+      attemptCount += 1;
+    }
+    prevFailedSet = currFailedSet;
+  }
+
+  const last = matching[matching.length - 1];
+  const lastFailedSet = new Set(Array.isArray(last.transition.failed_evidence_refs) ? last.transition.failed_evidence_refs : []);
+  const newFailedSet = new Set(Array.isArray(failedEvidenceRefs) ? failedEvidenceRefs : []);
+  const isNewAttempt = routeBackVisitBoundarySince(transitions, last, fromStep) || routeBackHasNewFailed(lastFailedSet, newFailedSet);
+
+  return isNewAttempt ? attemptCount + 1 : attemptCount;
+}
+
+/**
+ * A visit boundary separates two route-backs that belong to different gate
+ * visits. The prior route-back itself ends the current visit when it leaves
+ * `fromStep` to a different step (non-self-loop); any re-entry into
+ * `fromStep` from a different step between the two route-backs also begins a
+ * new visit. Self-loop route-backs (`from === to === fromStep`) do neither.
+ */
+function routeBackVisitBoundary(transitions, prev, curr, fromStep) {
+  if (prev.transition.from_step === fromStep && prev.transition.to_step !== fromStep) return true;
+  for (let j = prev.index + 1; j < curr.index; j += 1) {
+    if (isRouteBackReentry(transitions[j], fromStep)) return true;
+  }
+  return false;
+}
+
+function routeBackVisitBoundarySince(transitions, last, fromStep) {
+  if (last.transition.from_step === fromStep && last.transition.to_step !== fromStep) return true;
+  for (let j = last.index + 1; j < transitions.length; j += 1) {
+    if (isRouteBackReentry(transitions[j], fromStep)) return true;
+  }
+  return false;
+}
+
+function isRouteBackReentry(transition, fromStep) {
+  if (!transition) return false;
+  if (transition.to_step !== fromStep || transition.from_step === fromStep || transition.to_step === null) return false;
+  return transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized";
+}
+
+function routeBackHasNewFailed(prevSet, currSet) {
+  for (const id of currSet) {
+    if (!prevSet.has(id)) return true;
+  }
+  return false;
 }
 
 /** The current persisted retry epoch for one exact route-back loop. */
@@ -522,11 +611,21 @@ export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep })
 export function routeBackDecision(state: any, gate: any, routeReason: string | null | undefined, evidence: any[] = [], options: MutableRecord = {}) {
   const selectedTarget = routeTargetForReason(gate, routeReason);
   const maxAttempts = gate.route_back_policy?.max_attempts;
+  // The "logical identity" of a route-back is carried by the failed-evidence
+  // ids that drove it. The failed branch hands us only failed entries; the
+  // missing-evidence branch hands us all attached entries, none of which are
+  // failed (otherwise we would have taken the failed branch). Filter on
+  // status so both branches produce the same shape and the missing-evidence
+  // replay case (always-empty failed set) is idempotent.
+  const failedEvidenceRefs = evidence
+    .filter((entry) => entry?.status === "failed")
+    .map((entry) => entry.id);
   const attempt = routeBackAttempt(state, {
     gateId: gate.id,
     routeReason,
     fromStep: gate.step,
-    toStep: selectedTarget
+    toStep: selectedTarget,
+    failedEvidenceRefs
   });
   const retryEpoch = routeBackEpoch(state, {
     gateId: gate.id,
@@ -549,6 +648,7 @@ export function routeBackDecision(state: any, gate: any, routeReason: string | n
     max_attempts: maxAttempts,
     limit_exceeded: limitExceeded,
     evidence_refs: evidence.map((entry) => entry.id),
+    failed_evidence_refs: failedEvidenceRefs,
     expectation_ids: options.expectationIds ?? evidence.flatMap((entry) => entry.expectation_ids ?? [])
   };
   const firstEvidence = evidence[0] ?? {};

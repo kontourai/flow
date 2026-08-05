@@ -129,9 +129,14 @@ async function addUnrelatedCanonicalRouteHistory(fixture, corrupt = undefined) {
         max_attempts: 1, limit_exceeded: false, gate_id: "recover-gate", at: "2026-07-19T14:51:00.000Z"
       },
       {
+        // The exceeded escalation carries a new failed-evidence id so its
+        // logical-failure identity differs from the prior in-budget recover-gate
+        // route-back. Without this discriminator the second visit would replay
+        // attempt 1 and never reach the recovery step.
         type: "route_back", from_step: "recover", to_step: "plan", status: "blocked",
         reason: "default", selected_route: "recover", recovery_step: "plan", attempt: 2,
         retry_epoch: 1, max_attempts: 1, limit_exceeded: true,
+        failed_evidence_refs: ["ev.recover-escalation"],
         gate_id: "recover-gate", at: "2026-07-19T14:52:00.000Z"
       }
     ];
@@ -1064,7 +1069,12 @@ test("self-route recovery cannot reuse evidence attached before authorization", 
   state.transitions = [1, 2, 3, 4].map((attempt) => ({
     type: "route_back", from_step: "verify", to_step: "verify", status: "blocked", reason: "missing_evidence",
     route_reason: "missing_evidence", selected_route: "verify", attempt, retry_epoch: 1, max_attempts: 3,
-    limit_exceeded: attempt === 4, gate_id: "verify-gate", at: `2026-01-01T00:0${attempt}:00.000Z`
+    limit_exceeded: attempt === 4, gate_id: "verify-gate",
+    // Each persisted route-back carries a distinct failed-evidence id so the
+    // logical-failure discriminator counts these as four separate failed
+    // visits rather than four replays of one self-loop synchronization.
+    failed_evidence_refs: [`ev.exhausted-${attempt}`],
+    at: `2026-01-01T00:0${attempt}:00.000Z`
   }));
   state.updated_at = "2026-01-01T00:04:00.000Z";
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);

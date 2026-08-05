@@ -311,10 +311,16 @@ test("transition-validation request schema round-trips a recovered retry-authori
   await writeFile(definitionPath, `${JSON.stringify(definition, null, 2)}\n`);
   await writeFile(evidencePath, "failed\n");
   const started = await startRun(definitionPath, { cwd, runId: "schema-recovered-retry" });
-  await attachEvidence(started.runId, {
-    cwd, gate: "verify-gate", file: evidencePath, status: "failed", route_reason: "implementation_defect"
-  });
   for (let attempt = 1; attempt <= 4; attempt += 1) {
+    // Each iteration attaches a fresh failed-evidence file so each evaluation
+    // drives a materially new failed set and the route-back counts as a new
+    // logical attempt. Re-evaluating the same failed evidence would replay the
+    // prior attempt under the #153 idempotency rule and never exhaust.
+    const evidencePath = path.join(cwd, `failed-${attempt}.txt`);
+    await writeFile(evidencePath, `failed ${attempt}\n`);
+    await attachEvidence(started.runId, {
+      cwd, gate: "verify-gate", file: evidencePath, status: "failed", route_reason: "implementation_defect"
+    });
     await evaluateRun(started.runId, { cwd, gate: "verify-gate", now: `2026-07-19T15:0${attempt}:00.000Z` });
   }
   const exhausted = await loadRun(started.runId, cwd);
