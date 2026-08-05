@@ -183,3 +183,47 @@ test("a gate with no recorded outcome reports unknown, not wait", async () => {
   assert.equal(after["verify-gate"].status, "unknown");
   assert.equal(after["publish-gate"].status, "unknown");
 });
+
+// ---------------------------------------------------------------------------
+// #212: acceptException for an unreached gate must not misreport run status
+// ---------------------------------------------------------------------------
+
+test("#212: exception for an unreached gate is recorded as pending, not accepted_by_exception", async () => {
+  const cwd = await startJumpRun("exc-unreached-1");
+
+  // Block the plan gate: no evidence is attached.
+  await evaluateRun("exc-unreached-1", { cwd });
+  const blocked = await loadRun("exc-unreached-1", cwd);
+  assert.equal(blocked.state.status, "blocked");
+  assert.equal(blocked.state.current_step, "plan");
+
+  // Accept an exception for verify-gate — two steps ahead.
+  await acceptException("exc-unreached-1", { cwd, gate: "verify-gate", reason: "pre-accepted", authority: "operator:test" });
+
+  const after = await loadRun("exc-unreached-1", cwd);
+  // The exception IS recorded.
+  assert.equal(after.state.exceptions.length, 1);
+  assert.equal(after.state.exceptions[0].gate_id, "verify-gate");
+  // The run status must NOT change — the exception is pending, not effective.
+  assert.equal(after.state.status, "blocked", "exception for unreached gate must not flip run status");
+  assert.equal(after.state.current_step, "plan", "cursor must not move");
+  assert.doesNotMatch(after.state.next_action ?? "", /verify/, "next_action must not name the unreached gate");
+});
+
+test("#212: exception for the current gate immediately flips status to accepted_by_exception", async () => {
+  const cwd = await startJumpRun("exc-current-1");
+
+  // Block the plan gate.
+  await evaluateRun("exc-current-1", { cwd });
+  const blocked = await loadRun("exc-current-1", cwd);
+  assert.equal(blocked.state.status, "blocked");
+  assert.equal(blocked.state.current_step, "plan");
+
+  // Accept an exception for plan-gate — the CURRENT gate.
+  await acceptException("exc-current-1", { cwd, gate: "plan-gate", reason: "unblock", authority: "operator:test" });
+
+  const after = await loadRun("exc-current-1", cwd);
+  assert.equal(after.state.exceptions.length, 1);
+  assert.equal(after.state.status, "accepted_by_exception", "exception for current gate immediately applies");
+  assert.match(after.state.next_action ?? "", /plan/, "next_action names the current gate");
+});
