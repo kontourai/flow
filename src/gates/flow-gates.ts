@@ -735,6 +735,21 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
 }
 
 /**
+ * Evidence integrity is re-verified by the run store before gate evaluation:
+ * each attached artifact carrying a recorded `sha256` is re-hashed on disk and
+ * the result is carried as a transient `integrity` field on the manifest entry
+ * (never persisted — see manifestWithIntegrity in the run store). A digest
+ * mismatch or an unreadable/missing copied file fails closed with the documented
+ * `integrity_mismatch` reason. Flow's gate evaluator stays pure and synchronous;
+ * it consumes the pre-computed status rather than performing file I/O itself.
+ */
+const INTEGRITY_FAILURE_STATES = new Set(["mismatch", "missing", "unreadable"]);
+
+function evidenceIntegrityDiagnostic(entry: any): string | null {
+  return INTEGRITY_FAILURE_STATES.has(entry?.integrity) ? "integrity_mismatch" : null;
+}
+
+/**
  * Resolve the producer and authority pins which apply to one expectation.
  *
  * Claim-type pins are the project-wide baseline. An expectation may add a
@@ -924,6 +939,7 @@ function evidenceProducerDiagnostic(entry: any, expectation: any, config: Mutabl
 }
 
 function evidenceMatchesExpectationForEvaluation(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle) {
+  if (evidenceIntegrityDiagnostic(entry) !== null) return false;
   if (expectation.kind !== "trust.bundle") return false;
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
   const derived = derivedBundle ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies);
@@ -938,6 +954,13 @@ export function evidenceMatchesExpectation(entry: any, expectation: any, config:
 function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedFor?: (entry: any) => DerivedBundle) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
+    // A tampered or missing copied artifact fails closed before any expensive
+    // bundle/authority derivation, emitting the documented reason code.
+    const integrityReason = evidenceIntegrityDiagnostic(entry);
+    if (integrityReason) {
+      diagnostics.push({ expectation_id: expectation.id, evidence_id: entry.id, reason: integrityReason });
+      continue;
+    }
     const trustEntry = entry?.kind === "trust.bundle" || entry?.requested_kind === "trust.bundle";
     const derived = trustEntry ? (derivedFor?.(entry) ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies)) : undefined;
     const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt, evaluationNow, dependencies, derived);

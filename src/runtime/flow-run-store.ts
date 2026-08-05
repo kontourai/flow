@@ -981,9 +981,11 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     if (claim.liveness_id !== options.liveness_id || !sameClaimActor(claim, multiCursorActor(options.actor))) throw new FlowMultiCursorError("flow.multi_cursor.claim.owner_mismatch", "only the exact claim actor and liveness identity may settle a claim");
     const gates = Object.entries(run.definition.gates ?? {}).filter(([, gate]: [string, any]) => gate.step === claim.step_id).map(([gateId]) => gateId).sort();
     if (!gates.length) throw new FlowMultiCursorError("flow.multi_cursor.gate.required", `claimed step ${claim.step_id} has no gate to evaluate`);
+    const integrityById = await evidenceIntegrityStatusById(run.manifest, run.dir);
+    const evaluationManifest = manifestWithIntegrity(run.manifest, integrityById);
     const outcomes: GateOutcome[] = [];
     for (const gateId of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gateId, run.config, evaluationTime.exact);
+      const outcome = evaluateGate(run.definition, run.state, evaluationManifest, gateId, run.config, evaluationTime.exact);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;
     }
@@ -2030,6 +2032,96 @@ export async function sha256File(file) {
 }
 
 /**
+ * Resolve a manifest entry's `stored_path` against the run directory, rejecting
+ * absolute paths, traversal, null bytes, and anything outside the evidence
+ * directory. Mirrors the write-time safety of assertSafeRunArtifactWritePath.
+ */
+function resolveEvidenceArtifactPath(runDir: string, storedPath: string): string {
+  if (
+    typeof storedPath !== "string" || !storedPath
+    || path.isAbsolute(storedPath) || storedPath.includes("\0")
+    || storedPath.split(/[\\/]/).some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error(`flow.evidence.integrity.unsafe_path: ${storedPath}`);
+  }
+  const parts = storedPath.split(/[\\/]/);
+  if (parts[0] !== FLOW_RUN_EVIDENCE_DIR) {
+    throw new Error(`flow.evidence.integrity.unsafe_path: ${storedPath}`);
+  }
+  const root = path.resolve(runDir);
+  const resolved = path.resolve(root, storedPath);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`flow.evidence.integrity.unsafe_path: ${storedPath}`);
+  }
+  return resolved;
+}
+
+/**
+ * Re-hash one copied evidence artifact and compare against its recorded digest.
+ * Missing, unsafe, or unreadable files fail closed as integrity failures so a
+ * deleted/locked artifact can never silently satisfy a gate.
+ */
+async function checkEvidenceIntegrity(entry: any, runDir: string): Promise<string> {
+  let file: string;
+  try {
+    file = resolveEvidenceArtifactPath(runDir, entry.stored_path);
+  } catch {
+    return "missing";
+  }
+  try {
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const fileStat = await handle.stat();
+      if (!fileStat.isFile()) return "missing";
+      const data = await handle.readFile();
+      const digest = createHash("sha256").update(data).digest("hex");
+      const recorded = typeof entry.sha256 === "string" ? entry.sha256.toLowerCase() : "";
+      return digest === recorded ? "verified" : "mismatch";
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (isMissingPathError(error)) return "missing";
+    return "unreadable";
+  }
+}
+
+/**
+ * Recompute the integrity of every non-superseded attached artifact that
+ * carries a recorded digest, returning a map of evidence id to transient
+ * verification status ("verified" | "mismatch" | "missing" | "unreadable").
+ */
+async function evidenceIntegrityStatusById(manifest: any, runDir: string): Promise<Map<string, string>> {
+  const statusById = new Map<string, string>();
+  for (const entry of manifest?.evidence ?? []) {
+    if (entry.superseded_by) continue;
+    if (typeof entry.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(entry.sha256)) continue;
+    if (typeof entry.stored_path !== "string" || !entry.stored_path) continue;
+    statusById.set(entry.id, await checkEvidenceIntegrity(entry, runDir));
+  }
+  return statusById;
+}
+
+/**
+ * Return a shallow manifest clone whose evidence entries carry a transient
+ * `integrity` field when a digest was re-verified. The original manifest is
+ * untouched so persisted state never records a computed verification label —
+ * the exact defect (recorded-but-unchecked) this re-verification exists to
+ * prevent. evaluateGate performs its own structuredClone, so shallow sharing
+ * here is safe.
+ */
+function manifestWithIntegrity(manifest: any, statusById: Map<string, string>): any {
+  if (!statusById.size) return manifest;
+  return {
+    ...manifest,
+    evidence: (manifest.evidence ?? []).map((entry: any) => {
+      const status = statusById.get(entry.id);
+      return status ? { ...entry, integrity: status } : entry;
+    })
+  };
+}
+
+/**
  * Normalize and validate a Hachure TrustBundle, returning the bundle and its
  * derived TrustReport. Throws on invalid bundle.
  */
@@ -2336,7 +2428,14 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
     if (rechecks.length) return { committed: false, outcomes: [staleContinuationOutcome(request.gate, rechecks)], run };
     const { nextState, event } = resumedContinuationState(run.state, request);
     if (request.resumeOnPass) validateRunStateConsistency(run.startDefinition, nextState, { runId });
-    const outcome = evaluatePausedContinuation(run, nextState, manifest, request);
+    // Re-verify copied artifacts before evaluating the paused gate. Verify
+    // against the PRE-ATTACHMENT manifest: the newly staged entry's file is not
+    // written until commit, so it must be excluded from the disk re-hash. The
+    // annotated clone is used for evaluation only; the committed run persists
+    // the clean `manifest` (no recorded integrity label).
+    const integrityById = await evidenceIntegrityStatusById(run.manifest, run.dir);
+    const evaluationManifest = manifestWithIntegrity(manifest, integrityById);
+    const outcome = evaluatePausedContinuation(run, nextState, evaluationManifest, request);
     if (outcome.status !== "pass" || !request.resumeOnPass) return { committed: false, outcomes: [outcome], run };
     const committedRun = { ...run, state: nextState, manifest };
     validateRunStateConsistency(run.startDefinition, nextState, { runId });
@@ -2611,6 +2710,11 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   // chronology decision and persisted transition.
   const now = new Date(evaluationInstant);
   const freshnessTransitions = reDeriveBundleReports(run.manifest, evaluationInstant);
+  // Re-verify each attached artifact's recorded sha256 against its copied file
+  // BEFORE gate evaluation. The result annotates a transient clone only; the
+  // persisted manifest never carries a computed integrity label.
+  const integrityById = await evidenceIntegrityStatusById(run.manifest, run.dir);
+  const evaluationManifest = manifestWithIntegrity(run.manifest, integrityById);
   const outcomes: GateOutcome[] = [];
 
   // A passed ancestor may become stale after the cursor has advanced. Queue
@@ -2629,7 +2733,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!rechecks?.length) continue;
     const gate = findGate(run.definition, gateId);
     if (!gate || !descendantsOf(run.definition, gate.step).includes(run.state.current_step)) continue;
-    const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
+    const outcome = evaluateGate(run.definition, run.state, evaluationManifest, gate.id, run.config, evaluationInstant);
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
@@ -2640,7 +2744,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     // a stage the run already passed, never a forward jump. `applyEvaluation`
     // re-checks the ancestry at write time.
     const validationState = ancestorRecheckState(run.definition, run.state, gate);
-    const transitionValidation = validateEvaluationTransition(run.definition, validationState, run.manifest, outcome, run.config, evaluationInstant);
+    const transitionValidation = validateEvaluationTransition(run.definition, validationState, evaluationManifest, outcome, run.config, evaluationInstant);
     if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
@@ -2667,11 +2771,11 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     if (!gates.length || gates.some((gate) => !gate)) throw new Error(options.gate ? `unknown gate: ${options.gate}` : "no gate for current step");
     if (options.gate) prepareOffCurrentGateEvaluation(run.definition, run.state, gates[0], evaluationInstant);
     for (const gate of gates) {
-      const outcome = evaluateGate(run.definition, run.state, run.manifest, gate.id, run.config, evaluationInstant);
+      const outcome = evaluateGate(run.definition, run.state, evaluationManifest, gate.id, run.config, evaluationInstant);
       if (options.gate) assertOffCurrentOutcomeCannotAdvance(run.definition, run.state, gate, outcome);
       // No synthesised cursor: the jump guard in `validateRunTransition` sees
       // the run's real state and can fire for the case it exists to catch.
-      const transitionValidation = validateEvaluationTransition(run.definition, run.state, run.manifest, outcome, run.config, evaluationInstant);
+      const transitionValidation = validateEvaluationTransition(run.definition, run.state, evaluationManifest, outcome, run.config, evaluationInstant);
       if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
         const first = transitionValidation.diagnostics[0];
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
