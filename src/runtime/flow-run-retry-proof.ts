@@ -75,9 +75,14 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
   const selectedRouteDeclared = (definition.steps ?? []).some((step) => step.id === decision.selected_route);
   // For max_attempts, tolerate undefined on legacy records when the gate had
   // no explicit policy — those records were recorded before the bounded
-  // default was applied (#197).
-  const maxAttemptsMatch = record.max_attempts === decision.max_attempts
-    || (record.max_attempts === undefined && !hasExplicitMax);
+  // default was applied (#197). The same tolerance must cover limit_exceeded:
+  // a legacy policy-less gate was unbounded (limit_exceeded always false),
+  // and replaying it against the new default (attempt > 10) derives true —
+  // without tolerance the run becomes un-loadable on its 11th route-back.
+  const legacyNoPolicy = record.max_attempts === undefined && !hasExplicitMax;
+  const maxAttemptsMatch = record.max_attempts === decision.max_attempts || legacyNoPolicy;
+  const limitExceededMatch = record.limit_exceeded === decision.limit_exceeded
+    || (legacyNoPolicy && record.limit_exceeded === false);
   const valid = record.gate_id === gate.id
     && record.from_step === gate.step
     && record.reason === decision.reason
@@ -94,7 +99,7 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
     && record.attempt === decision.attempt
     // Missing epoch is the sole legacy compatibility form and means epoch 1.
     && (record.retry_epoch ?? 1) === decision.retry_epoch
-    && record.limit_exceeded === decision.limit_exceeded;
+    && limitExceededMatch;
   return valid ? { record, gate, decision, routeReason } : null;
 }
 

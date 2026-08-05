@@ -89,8 +89,9 @@ function stageWaiver(state: any, stepGateIds: string[]): MutableRecord | null {
  * The ledger line for a stage, or `null` when the run has not appraised it.
  *
  * Derived from the stage's recorded gate outcomes rather than from the display
- * status alone: `stageStatuses` reports the cursor's own step as `current` even
- * when its gate blocked, and a blocked stage has very much been appraised.
+ * status alone: while a run is active, `stageStatuses` reports the cursor's
+ * own step as `current` even when its gate blocked, and a blocked stage has
+ * very much been appraised.
  *
  * A stage with no event derives `unknown` through Surface — the status
  * function's "nothing to appraise" — which is the honest reading of a stage the
@@ -130,11 +131,12 @@ function stageEvent(
  * Whether a stage actually passed, read from its recorded gate outcomes rather
  * than from the display status.
  *
- * `stageStatuses` reports whichever step the cursor sits on as `current`, and a
- * completed run leaves its cursor on the terminal step (`applyEvaluation` sets
- * `current_step = nextStep ?? gate.step`). So the FINAL stage of a fully green
- * run is never reported `passed` — which, while membership was filtered to the
- * passing subset, silently dropped it from the bundle altogether.
+ * Belt-and-suspenders against the display layer: while a run is active,
+ * `stageStatuses` reports whichever step the cursor sits on as `current`, and
+ * a completed run leaves its cursor on the terminal step (`applyEvaluation`
+ * sets `current_step = nextStep ?? gate.step`). Since #211 the terminal step
+ * of a completed run is correctly reported `passed`, but this check still
+ * reads the outcomes so the bundle never depends on display-status ordering.
  */
 function stagePassedOnOutcomes(status: string, stepGateIds: string[], state: any): boolean {
   if (isPassed(status)) return true;

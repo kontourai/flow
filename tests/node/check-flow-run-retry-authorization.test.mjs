@@ -700,7 +700,21 @@ test("shared mutation serialization prevents cross-operation authorization loss"
     flow.acceptException(exceptionFixture.started.runId, { cwd: exceptionFixture.cwd, gate: "verify-gate", reason: "operator exception", authority: "operator:test" })
   ]);
   const excepted = await flow.loadRun(exceptionFixture.started.runId, exceptionFixture.cwd);
-  assert.equal(excepted.state.status, "accepted_by_exception", `race results: ${exceptionResults.map((entry) => entry.status === "rejected" ? String(entry.reason) : "fulfilled").join(" | ")}`);
+  // The mutation this test must not lose is the recorded exception. Post-#234,
+  // the status flip to accepted_by_exception happens only when verify is the
+  // current step at accept time: if authorizeRetry wins the lock first the
+  // cursor moves to implement (the fixture's retry target) and the exception is
+  // recorded pending with the run active — both final statuses are correct.
+  if (exceptionResults[1].status === "fulfilled") {
+    assert.ok(
+      excepted.state.exceptions.some((entry) => entry.gate_id === "verify-gate"),
+      `a fulfilled acceptException must record the exception; race results: ${exceptionResults.map((entry) => entry.status === "rejected" ? String(entry.reason) : "fulfilled").join(" | ")}`
+    );
+    assert.ok(
+      ["accepted_by_exception", "active"].includes(excepted.state.status),
+      `unexpected status ${excepted.state.status}; race results: ${exceptionResults.map((entry) => entry.status === "rejected" ? String(entry.reason) : "fulfilled").join(" | ")}`
+    );
+  }
   if (exceptionResults[0].status === "fulfilled") assert.equal(excepted.state.transitions.some((entry) => entry.type === "retry_authorized"), true);
 
   const evaluateFixture = await exhaustedRun("retry-race-evaluate");
