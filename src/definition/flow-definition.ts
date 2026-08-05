@@ -932,10 +932,17 @@ export type StageStatus = "passed" | "current" | "ready" | "blocked" | "failed" 
  *
  * Rules (checked in order):
  *  - "failed"  — the step has a gate with a non-pass, non-wait outcome
- *                (i.e., block or route-back) and it is not the current step.
- *  - "current" — step.id === state.current_step
+ *                (i.e., block or route-back). Suppressed for the cursor step
+ *                while the run is active, but reported once the run is terminal
+ *                so a blocked terminal step is honestly labelled.
+ *  - "current" — step.id === state.current_step AND the run is still active.
+ *                A terminal run (completed, failed, canceled,
+ *                accepted_by_exception) has no active cursor: the terminal
+ *                step is evaluated by its outcomes, not parked as "current".
  *  - "passed"  — all gates for this step have a pass outcome, or the step
- *                appears in an allowed transition and has no gates.
+ *                appears in an allowed transition and has no gates. For a
+ *                completed run the gateless terminal step is passed by
+ *                definition — it was reached and the run finished.
  *  - "ready"   — in readySteps().
  *  - "blocked" — some predecessor has not passed.
  *  - "pending" — fallback.
@@ -945,6 +952,8 @@ export function stageStatuses(definition: any, state: any, manifest: any): Recor
   const steps: any[] = normalizedSteps(def);
   const readySet = new Set(readySteps(def, state, manifest));
   const result: Record<string, StageStatus> = {};
+
+  const isTerminal = ["completed", "failed", "canceled", "accepted_by_exception"].includes(state.status);
 
   for (const step of steps) {
     const stepGates = Object.entries(def.gates ?? {})
@@ -958,7 +967,10 @@ export function stageStatuses(definition: any, state: any, manifest: any): Recor
       )
     );
 
-    // Passed: all gates have pass outcomes (or gate-less step appeared in allowed transition).
+    // Passed: all gates have pass outcomes, or a gate-less step that completed.
+    // A gateless terminal step of a completed run has no from_step transition
+    // (there is no gate to trigger one), so stepCompletionIsCurrent is not
+    // sufficient — the run status itself is the proof the step was reached.
     const allGatesPassed =
       stepGates.length > 0 &&
       stepGates.every((gateId) =>
@@ -968,12 +980,13 @@ export function stageStatuses(definition: any, state: any, manifest: any): Recor
       );
     const gatelessPassed =
       stepGates.length === 0 &&
-      stepCompletionIsCurrent(state, step.id);
+      (stepCompletionIsCurrent(state, step.id) ||
+        (state.status === "completed" && step.id === state.current_step));
     const passed = allGatesPassed || gatelessPassed;
 
-    if (hasFailed && step.id !== state.current_step) {
+    if (hasFailed && (isTerminal || step.id !== state.current_step)) {
       result[step.id] = "failed";
-    } else if (step.id === state.current_step) {
+    } else if (!isTerminal && step.id === state.current_step) {
       result[step.id] = "current";
     } else if (passed) {
       result[step.id] = "passed";
