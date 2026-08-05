@@ -13,9 +13,12 @@ import { test } from "node:test";
 import {
   applyEvaluation,
   evaluateGate,
+  findGate,
   FLOW_SCHEMA_VERSION,
   initialState,
-  routeBackAttempt
+  routeBackAttempt,
+  routeBackDecision,
+  DEFAULT_ROUTE_BACK_MAX_ATTEMPTS
 } from "../../dist/index.js";
 
 // Linear flow with a self-loop missing_evidence gate. The verify step's gate
@@ -199,6 +202,8 @@ test("routeBackAttempt treats consecutive non-self-loop route-backs as distinct 
   // non-self-loop route-back ends the current visit, so the next one starts a
   // new logical attempt. This preserves the OLD counting behavior for any
   // persisted history built before #153.
+  const def = selfLoopMissingEvidenceDefinition();
+  const gate = findGate(def, "verify-gate");
   const state = baselineState("verify");
   state.transitions = [
     { type: "route_back", gate_id: "verify-gate", route_reason: "implementation_defect", from_step: "verify", to_step: "implement", status: "blocked", reason: "implementation_defect", at: "2026-07-19T15:01:00.000Z" },
@@ -207,9 +212,138 @@ test("routeBackAttempt treats consecutive non-self-loop route-backs as distinct 
 
   const attempt = routeBackAttempt(state, {
     gateId: "verify-gate",
+    gate,
     routeReason: "implementation_defect",
     fromStep: "verify",
     toStep: "implement"
   });
   assert.equal(attempt, 3, "prior non-self-loop route-backs each count as a new visit");
+});
+
+// ---------------------------------------------------------------------------
+// #197: novel route reasons must not mint fresh budget buckets
+// ---------------------------------------------------------------------------
+
+test("#197: novel route reason strings do not mint a fresh budget — they normalize to default", () => {
+  const def = selfLoopMissingEvidenceDefinition();
+  const gate = findGate(def, "verify-gate");
+  const state = baselineState("verify");
+  // Three prior route-backs with undeclared reason strings (normalize to "default").
+  state.transitions = [
+    { type: "route_back", gate_id: "verify-gate", route_reason: undefined, from_step: "verify", to_step: "verify", status: "blocked", reason: "default", at: "2026-07-19T15:01:00.000Z", failed_evidence_refs: ["e1"] },
+    { type: "route_back", gate_id: "verify-gate", route_reason: undefined, from_step: "verify", to_step: "verify", status: "blocked", reason: "default", at: "2026-07-19T15:02:00.000Z", failed_evidence_refs: ["e2"] },
+    { type: "route_back", gate_id: "verify-gate", route_reason: undefined, from_step: "verify", to_step: "verify", status: "blocked", reason: "default", at: "2026-07-19T15:03:00.000Z", failed_evidence_refs: ["e3"] }
+  ];
+
+  // A novel, never-declared reason — pre-fix this would be attempt 1; post-fix
+  // it normalizes to "default" and shares the budget with prior route-backs.
+  const inventedAttempt = routeBackAttempt(state, {
+    gateId: "verify-gate",
+    gate,
+    routeReason: "totally-fake-reason-xyz",
+    fromStep: "verify",
+    toStep: "verify",
+    failedEvidenceRefs: ["e4"]
+  });
+  assert.ok(inventedAttempt > 1, `novel reason must not start a fresh budget (got attempt ${inventedAttempt})`);
+});
+
+test("#197: N+1 route-backs with N+1 distinct invented reasons still exceed the budget", () => {
+  const def = {
+    ...selfLoopMissingEvidenceDefinition(),
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [],
+        on_route_back: { default: "verify" },
+        route_back_policy: { max_attempts: 3, on_exceeded: "block" }
+      }
+    }
+  };
+  const gate = findGate(def, "verify-gate");
+  const state = baselineState("verify");
+
+  // Simulate 4 route-backs, each with a DIFFERENT invented reason string.
+  for (let i = 1; i <= 4; i++) {
+    const decision = routeBackDecision(
+      state,
+      gate,
+      `fake-reason-${i}`,
+      [{ id: `e${i}`, status: "failed" }]
+    );
+    if (i <= 3) {
+      assert.equal(decision.limit_exceeded, false, `attempt ${i} should not exceed budget`);
+      // Record the transition to simulate persistence.
+      state.transitions.push({
+        type: "route_back",
+        gate_id: "verify-gate",
+        route_reason: `fake-reason-${i}`,
+        from_step: "verify",
+        to_step: "verify",
+        status: "blocked",
+        reason: `fake-reason-${i}`,
+        at: `2026-07-19T15:0${i}:00.000Z`,
+        failed_evidence_refs: [`e${i}`],
+        attempt: decision.attempt,
+        retry_epoch: 1,
+        max_attempts: decision.max_attempts,
+        limit_exceeded: decision.limit_exceeded
+      });
+    } else {
+      // The 4th invented reason must still exceed the 3-attempt budget.
+      assert.equal(decision.limit_exceeded, true, "4th distinct invented reason must exceed the 3-attempt budget");
+      assert.equal(decision.status, "block", "exhausted budget with on_exceeded: block must block");
+    }
+  }
+});
+
+test("#197: gate without route_back_policy inherits a bounded default and blocks when exceeded", () => {
+  const def = {
+    id: "no-policy-flow",
+    version: "1",
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [],
+        on_route_back: { default: "verify" }
+        // No route_back_policy — should inherit DEFAULT_ROUTE_BACK_MAX_ATTEMPTS
+      }
+    }
+  };
+  const gate = findGate(def, "verify-gate");
+  const state = initialState(def, "no-policy-run");
+  state.current_step = "verify";
+
+  // Exhaust the default budget.
+  for (let i = 1; i <= DEFAULT_ROUTE_BACK_MAX_ATTEMPTS; i++) {
+    const decision = routeBackDecision(
+      state,
+      gate,
+      null,
+      [{ id: `e${i}`, status: "failed" }]
+    );
+    assert.equal(decision.limit_exceeded, false, `attempt ${i} should not exceed default budget of ${DEFAULT_ROUTE_BACK_MAX_ATTEMPTS}`);
+    assert.equal(decision.max_attempts, DEFAULT_ROUTE_BACK_MAX_ATTEMPTS, "gate without policy inherits default max_attempts");
+    state.transitions.push({
+      type: "route_back",
+      gate_id: "verify-gate",
+      route_reason: undefined,
+      from_step: "verify",
+      to_step: "verify",
+      status: "blocked",
+      reason: "default",
+      at: `2026-07-19T15:${String(i).padStart(2, "0")}:00.000Z`,
+      failed_evidence_refs: [`e${i}`],
+      attempt: decision.attempt,
+      retry_epoch: 1,
+      max_attempts: decision.max_attempts,
+      limit_exceeded: decision.limit_exceeded
+    });
+  }
+
+  // One more — must block.
+  const blocked = routeBackDecision(state, gate, null, [{ id: "e-final", status: "failed" }]);
+  assert.equal(blocked.limit_exceeded, true, "must exceed default budget after N+1 attempts");
+  assert.equal(blocked.status, "block", "gate without on_exceeded blocks by default when budget exhausted");
 });

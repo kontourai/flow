@@ -1,4 +1,4 @@
-import { descendantsOf, findGate, routeBackAttempt, routeBackDecision } from "../definition/flow-definition.js";
+import { descendantsOf, findGate, routeBackAttempt, routeBackDecision, DEFAULT_ROUTE_BACK_MAX_ATTEMPTS } from "../definition/flow-definition.js";
 import { isObject } from "../shared/flow-utils.js";
 import {
   FlowRetryAuthorizationError,
@@ -49,6 +49,7 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
     { transitions: transitions.slice(0, index) },
     {
       gateId: gate.id,
+      gate,
       routeReason,
       fromStep: gate.step,
       toStep: decision.route_back_to,
@@ -60,13 +61,23 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
   // limit_exceeded, route_back_to, recovery_step, and status all derive from
   // (attempt, max_attempts, on_exceeded). Re-derive them after the attempt
   // override so the proof validates the same escalation the record claims.
-  const replayedLimitExceeded = Number.isInteger(decision.max_attempts) && replayedAttempt > decision.max_attempts;
+  // The proof uses the same effective max_attempts (explicit or default) and
+  // enforcement semantics as routeBackDecision (#197).
+  const hasExplicitMax = Number.isInteger(gate.route_back_policy?.max_attempts);
+  const effectiveMax = hasExplicitMax ? gate.route_back_policy.max_attempts : DEFAULT_ROUTE_BACK_MAX_ATTEMPTS;
+  const replayedLimitExceeded = replayedAttempt > effectiveMax;
   const replayedExceededTarget = gate.route_back_policy?.on_exceeded;
   decision.limit_exceeded = replayedLimitExceeded;
   decision.route_back_to = replayedLimitExceeded && replayedExceededTarget && replayedExceededTarget !== "block" ? replayedExceededTarget : decision.selected_route;
   decision.recovery_step = replayedLimitExceeded && replayedExceededTarget && replayedExceededTarget !== "block" ? replayedExceededTarget : undefined;
-  decision.status = replayedLimitExceeded && replayedExceededTarget === "block" ? "block" : "route-back";
+  const blocksOnExceed = !replayedExceededTarget || replayedExceededTarget === "block";
+  decision.status = replayedLimitExceeded && blocksOnExceed ? "block" : "route-back";
   const selectedRouteDeclared = (definition.steps ?? []).some((step) => step.id === decision.selected_route);
+  // For max_attempts, tolerate undefined on legacy records when the gate had
+  // no explicit policy — those records were recorded before the bounded
+  // default was applied (#197).
+  const maxAttemptsMatch = record.max_attempts === decision.max_attempts
+    || (record.max_attempts === undefined && !hasExplicitMax);
   const valid = record.gate_id === gate.id
     && record.from_step === gate.step
     && record.reason === decision.reason
@@ -79,7 +90,7 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
     && record.selected_route === decision.selected_route
     && record.recovery_step === decision.recovery_step
     && selectedRouteDeclared
-    && record.max_attempts === decision.max_attempts
+    && maxAttemptsMatch
     && record.attempt === decision.attempt
     // Missing epoch is the sole legacy compatibility form and means epoch 1.
     && (record.retry_epoch ?? 1) === decision.retry_epoch
@@ -117,8 +128,6 @@ function isTerminalBlock(proof: any) {
 export function exhaustedRouteBackProof(definition: any, transitions: any[], blockedIndex: number) {
   const proof = routeBackRecordProof(definition, transitions, blockedIndex);
   if (!proof
-    || proof.gate.route_back_policy?.on_exceeded !== "block"
-    || !Number.isInteger(proof.gate.route_back_policy?.max_attempts)
     || proof.decision.status !== "block"
     || proof.decision.limit_exceeded !== true) return null;
   let suffixStart = blockedIndex;
