@@ -347,3 +347,52 @@ test("#197: gate without route_back_policy inherits a bounded default and blocks
   assert.equal(blocked.limit_exceeded, true, "must exceed default budget after N+1 attempts");
   assert.equal(blocked.status, "block", "gate without on_exceeded blocks by default when budget exhausted");
 });
+
+test("#197: legacy policy-less run with 11+ route-backs remains loadable (review MEDIUM-1)", async () => {
+  // Regression for the retry-proof tolerance gap: a run persisted BEFORE the
+  // bounded default — max_attempts absent from its route-back records and
+  // limit_exceeded always false (unbounded) — became un-loadable the moment
+  // the replay derived limit_exceeded=true from the new default of 10.
+  const { mkdtemp, writeFile, readFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { loadRun, startRun } = await import("../../dist/index.js");
+
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-legacy-nopolicy-"));
+  const def = {
+    id: "legacy-nopolicy",
+    version: "1",
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": { step: "verify", expects: [], on_route_back: { default: "verify" } }
+    }
+  };
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, JSON.stringify(def));
+  const started = await startRun(definitionPath, { cwd, runId: "legacy-11" });
+
+  const statePath = path.join(started.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.current_step = "verify";
+  state.status = "blocked";
+  // Legacy shape: no max_attempts persisted, limit_exceeded always false.
+  state.transitions = Array.from({ length: 11 }, (_, i) => ({
+    type: "route_back",
+    from_step: "verify",
+    to_step: "verify",
+    status: "blocked",
+    reason: "default",
+    selected_route: "verify",
+    attempt: i + 1,
+    retry_epoch: 1,
+    limit_exceeded: false,
+    gate_id: "verify-gate",
+    failed_evidence_refs: [`ev.${i + 1}`],
+    at: `2026-01-01T00:${String(i).padStart(2, "0")}:00.000Z`
+  }));
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  // Pre-fix this threw flow.retry_authorization.history.invalid at load.
+  const loaded = await loadRun("legacy-11", cwd);
+  assert.equal(loaded.state.transitions.length, 11);
+});
