@@ -119,6 +119,10 @@ export {
   runDir,
   writeJson
 } from "./runtime/flow-files.js";
+export type {
+  PublishRunArtifactsHooks,
+  StageRunArtifactHooks
+} from "./runtime/flow-files.js";
 export {
   FLOW_RUN_RECOVERY_FINALIZE_BEFORE_OPEN,
   FLOW_RUN_RECOVERY_FENCE_PROTOCOL,
@@ -253,6 +257,7 @@ export {
   validateDefinitionAmendmentRequest
 } from "./runtime/flow-run-definition-amendment.js";
 export {
+  __setPublishRunArtifactsFaultHooks,
   acceptException,
   amendRunDefinition,
   authorizeRetry,

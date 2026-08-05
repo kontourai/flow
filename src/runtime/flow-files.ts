@@ -151,6 +151,22 @@ export async function writeJson(file, value) {
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** Fault-stage hooks for a single artifact staging, mirroring the recovery-fence precedent. */
+export type StageRunArtifactHooks = {
+  afterTempWrite?: () => Promise<void> | void;
+  afterTempFsync?: () => Promise<void> | void;
+};
+
+/** Fault-stage hooks for multi-artifact atomic publication. */
+export type PublishRunArtifactsHooks = {
+  /** Fired after entry *index* is fully staged (temp written + fsynced). */
+  afterStage?: (index: number, target: string) => Promise<void> | void;
+  /** Fired after entry *index* is committed (renamed into place). */
+  afterCommit?: (index: number, target: string) => Promise<void> | void;
+  /** Fired after the parent directory is fsynced. */
+  afterDirectoryFsync?: () => Promise<void> | void;
+};
+
 /** Default mode for a freshly published run artifact when no prior file exists. */
 const RUN_ARTIFACT_DEFAULT_MODE = 0o600;
 
@@ -176,7 +192,11 @@ async function existingFileMode(file: string): Promise<number | undefined> {
  * for a reader on POSIX. The prior mode is preserved so publishing atomically
  * does not silently narrow who can read a run.
  */
-export async function stageRunArtifact(target: string, contents: string) {
+export async function stageRunArtifact(
+  target: string,
+  contents: string,
+  hooks: StageRunArtifactHooks = {}
+) {
   const temporary = path.join(
     path.dirname(target),
     `.${path.basename(target)}.${randomUUID()}.tmp`
@@ -191,10 +211,12 @@ export async function stageRunArtifact(target: string, contents: string) {
     );
     await handle.writeFile(contents, "utf8");
     if (mode !== undefined && mode !== RUN_ARTIFACT_DEFAULT_MODE) await handle.chmod(mode);
+    await hooks.afterTempWrite?.();
     // Durability: the temp file's bytes must reach the disk before the rename
     // publishes it, otherwise a crash can expose an empty file under the
     // canonical name.
     await handle.sync();
+    await hooks.afterTempFsync?.();
   } catch (error) {
     await handle?.close().catch(() => undefined);
     await rm(temporary, { force: true }).catch(() => undefined);
@@ -228,17 +250,25 @@ export async function syncDirectory(dir: string) {
  */
 export async function publishRunArtifacts(
   dir: string,
-  entries: Array<{ path: string; contents: string }>
+  entries: Array<{ path: string; contents: string }>,
+  hooks: PublishRunArtifactsHooks = {}
 ) {
   const staged: Array<Awaited<ReturnType<typeof stageRunArtifact>>> = [];
   try {
-    for (const entry of entries) staged.push(await stageRunArtifact(entry.path, entry.contents));
-    for (const entry of staged) await entry.commit();
+    for (const [index, entry] of entries.entries()) {
+      staged.push(await stageRunArtifact(entry.path, entry.contents));
+      await hooks.afterStage?.(index, entry.path);
+    }
+    for (const [index, entry] of staged.entries()) {
+      await entry.commit();
+      await hooks.afterCommit?.(index, entry.target);
+    }
   } catch (error) {
     await Promise.all(staged.map((entry) => entry.discard()));
     throw error;
   }
   await syncDirectory(dir);
+  await hooks.afterDirectoryFsync?.();
 }
 
 export function moduleRoot() {
