@@ -204,6 +204,7 @@ test("applyEvaluation route-back: preserves attempt counting across the cascade"
   // with the same params counts as attempt #2.
   const nextAttempt = routeBackAttempt(state, {
     gateId: "verify-gate",
+    gate: def.gates["verify-gate"],
     routeReason: "tests_failed",
     fromStep: "verify",
     toStep: "plan"

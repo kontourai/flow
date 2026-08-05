@@ -470,6 +470,22 @@ export function routeReasonForFailedEvidence(entry) {
   return typeof entry?.route_reason === "string" && entry.route_reason.length ? entry.route_reason : null;
 }
 
+/**
+ * Normalise a route reason for budget keying.
+ *
+ * A reason that names a declared `on_route_back` route keeps its identity
+ * (different declared routes may legitimately carry different budgets). Any
+ * other reason — including novel, unrecognised strings an agent invents to
+ * reset the counter — collapses to `"default"`. This prevents a caller from
+ * minting a fresh, always-empty budget bucket by supplying a string the
+ * definition never declared (#197).
+ */
+export function normalizeRouteReasonForBudget(gate: any, reason: string | null | undefined): string {
+  if (!reason) return "default";
+  const routes = gate?.on_route_back ?? {};
+  return Object.prototype.hasOwnProperty.call(routes, reason) ? reason : "default";
+}
+
 export function routeTargetForReason(gate, routeReason) {
   const routes = gate.on_route_back ?? {};
   if (routeReason && routes[routeReason]) return routes[routeReason];
@@ -504,9 +520,9 @@ export function routeTargetForReason(gate, routeReason) {
  * proof machinery (`flow-run-retry-proof`) recomputes this derivation from
  * the persisted transition prefix plus the record's own `failed_evidence_refs`.
  */
-export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep, failedEvidenceRefs = [] }) {
-  const retryEpoch = routeBackEpoch(state, { gateId, routeReason, fromStep, toStep });
-  const reasonKey = routeReason ?? "default";
+export function routeBackAttempt(state, { gateId, gate, routeReason, fromStep, toStep, failedEvidenceRefs = [] }) {
+  const retryEpoch = routeBackEpoch(state, { gateId, gate, routeReason, fromStep, toStep });
+  const reasonKey = normalizeRouteReasonForBudget(gate, routeReason);
   const transitions = state.transitions ?? [];
 
   const matching = [];
@@ -514,7 +530,7 @@ export function routeBackAttempt(state, { gateId, routeReason, fromStep, toStep,
     const transition = transitions[index];
     if (transition?.type === "route_back"
       && transition.gate_id === gateId
-      && (transition.route_reason ?? transition.reason ?? "default") === reasonKey
+      && normalizeRouteReasonForBudget(gate, transition.route_reason ?? transition.reason) === reasonKey
       && transition.from_step === fromStep
       && transition.to_step === toStep
       && (transition.retry_epoch ?? 1) === retryEpoch) {
@@ -581,8 +597,8 @@ function routeBackHasNewFailed(prevSet, currSet) {
 }
 
 /** The current persisted retry epoch for one exact route-back loop. */
-export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep }) {
-  const reasonKey = routeReason ?? "default";
+export function routeBackEpoch(state, { gateId, gate, routeReason, fromStep, toStep }) {
+  const reasonKey = normalizeRouteReasonForBudget(gate, routeReason);
   const transitions = state.transitions ?? [];
   for (let index = transitions.length - 1; index >= 0; index -= 1) {
     const authorization = transitions[index];
@@ -590,7 +606,7 @@ export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep })
     if (authorization?.type === "retry_authorized"
       && authorization.status === "retry-authorized"
       && authorization.gate_id === gateId
-      && (authorization.route_reason ?? authorization.reason) === reasonKey
+      && normalizeRouteReasonForBudget(gate, authorization.route_reason ?? authorization.reason) === reasonKey
       && authorization.from_step === fromStep
       && authorization.to_step === toStep
       && blocked?.type === "route_back"
@@ -599,7 +615,7 @@ export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep })
       && blocked.gate_id === gateId
       && blocked.from_step === fromStep
       && blocked.selected_route === toStep
-      && (blocked.route_reason ?? blocked.reason) === reasonKey
+      && normalizeRouteReasonForBudget(gate, blocked.route_reason ?? blocked.reason) === reasonKey
       && authorization.prior_retry_epoch === (blocked.retry_epoch ?? 1)
       && authorization.retry_epoch === authorization.prior_retry_epoch + 1) {
       return authorization.retry_epoch;
@@ -608,9 +624,19 @@ export function routeBackEpoch(state, { gateId, routeReason, fromStep, toStep })
   return 1;
 }
 
+/**
+ * The bounded default applied when a gate has no explicit
+ * `route_back_policy.max_attempts`. Generous enough not to break existing
+ * flows that legitimately retry, bounded enough to prevent an infinite loop
+ * (#197).
+ */
+export const DEFAULT_ROUTE_BACK_MAX_ATTEMPTS = 10;
+
 export function routeBackDecision(state: any, gate: any, routeReason: string | null | undefined, evidence: any[] = [], options: MutableRecord = {}) {
   const selectedTarget = routeTargetForReason(gate, routeReason);
-  const maxAttempts = gate.route_back_policy?.max_attempts;
+  const policy = gate.route_back_policy;
+  const hasExplicitMax = Number.isInteger(policy?.max_attempts);
+  const maxAttempts = hasExplicitMax ? policy.max_attempts : DEFAULT_ROUTE_BACK_MAX_ATTEMPTS;
   // The "logical identity" of a route-back is carried by the failed-evidence
   // ids that drove it. The failed branch hands us only failed entries; the
   // missing-evidence branch hands us all attached entries, none of which are
@@ -622,6 +648,7 @@ export function routeBackDecision(state: any, gate: any, routeReason: string | n
     .map((entry) => entry.id);
   const attempt = routeBackAttempt(state, {
     gateId: gate.id,
+    gate,
     routeReason,
     fromStep: gate.step,
     toStep: selectedTarget,
@@ -629,14 +656,18 @@ export function routeBackDecision(state: any, gate: any, routeReason: string | n
   });
   const retryEpoch = routeBackEpoch(state, {
     gateId: gate.id,
+    gate,
     routeReason,
     fromStep: gate.step,
     toStep: selectedTarget
   });
-  const limitExceeded = Number.isInteger(maxAttempts) && attempt > maxAttempts;
-  const exceededTarget = gate.route_back_policy?.on_exceeded;
+  const limitExceeded = attempt > maxAttempts;
+  const exceededTarget = policy?.on_exceeded;
+  // When the budget is exhausted and no explicit recovery step is configured,
+  // the gate blocks — `limit_exceeded: true` is never a no-op field (#197).
   const toStep = limitExceeded && exceededTarget && exceededTarget !== "block" ? exceededTarget : selectedTarget;
-  const status = limitExceeded && exceededTarget === "block" ? "block" : "route-back";
+  const blocksOnExceed = !exceededTarget || exceededTarget === "block";
+  const status = limitExceeded && blocksOnExceed ? "block" : "route-back";
   const routeData: MutableRecord = {
     route_back_to: toStep,
     selected_route: selectedTarget,
