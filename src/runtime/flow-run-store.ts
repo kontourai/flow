@@ -38,6 +38,7 @@ import {
   normalizeRunStateLifecycle,
   openGates,
   nextActionForStep,
+  readySteps,
   descendantsOf,
   invalidateDescendants,
   validateDefinition
@@ -2372,8 +2373,58 @@ function normalizedEvidenceBundle(sourceBytes: Buffer, options: MutableRecord, p
   return preparation.normalizeBundle(raw);
 }
 
+/**
+ * Refuse an evidence write for a gate the run cannot legitimately appraise
+ * from its present position.
+ *
+ * A gate's step is attachable when ANY of the following holds:
+ *
+ *  - it is the cursor step (the ordinary case);
+ *  - it is on the current frontier (a ready step — covers multi-cursor
+ *    fan-in siblings awaiting a claim);
+ *  - the run has occupied it (re-evaluation, supersede, and route-back
+ *    recovery writes remain legal);
+ *  - it is reachable from the cursor by walking forward through gateless
+ *    steps only — the same honest walk `evaluate --gate` performs (#202), so
+ *    pre-staging evidence for the gate the walk lands on stays legal
+ *    (examples/adversarial-pass-flow.json is built this way).
+ *
+ * Everything else is a write for a stage the run cannot appraise without
+ * first passing an intervening gate: persisting it writes the record of
+ * trust attributed to nobody, distinguishable from legitimate evidence only
+ * by timestamp arithmetic (#223). Pre-staging beyond the walk is a
+ * legitimate-sounding workflow the definition should opt into per gate; no
+ * such opt-in exists yet, so the write is refused.
+ */
+function assertEvidenceGateReached(run: Awaited<ReturnType<typeof loadRun>>, gate: any) {
+  if (gate.step === run.state.current_step) return;
+  if (readySteps(run.definition, run.state, run.manifest).includes(gate.step)) return;
+  if (occupiedSteps(run.definition, run.state).has(gate.step)) return;
+  if (reachableThroughGatelessSteps(run.definition, run.state, gate.step)) return;
+  const error = new Error(
+    `flow.evidence.gate.unreached: refusing to attach evidence for gate "${gate.id}" on step "${gate.step}" — the run is on "${run.state.current_step}" and an unevaluated gate stands between the cursor and that step`
+  );
+  (error as Error & { code?: string }).code = "flow.evidence.gate.unreached";
+  throw error;
+}
+
+/** Read-only twin of advanceThroughGatelessSteps: would the #202 walk land on targetStep? */
+function reachableThroughGatelessSteps(definition: any, state: any, targetStep: string): boolean {
+  let cursor: string | null = state.current_step;
+  const seen = new Set<string>();
+  while (cursor && cursor !== targetStep && !seen.has(cursor)) {
+    // A real gate stands between the cursor and the target. The walk stops.
+    if (gatesForStep(definition, cursor).length) return false;
+    seen.add(cursor);
+    cursor = getStep(definition, cursor)?.next ?? null;
+  }
+  return cursor === targetStep;
+}
+
 async function prepareEvidenceAttachment(run: Awaited<ReturnType<typeof loadRun>>, options: FlowEvidenceAttachmentOptions, preparation: EvidencePreparation): Promise<PreparedEvidenceAttachment> {
-  if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
+  const gate = findGate(run.definition, options.gate);
+  if (!gate) throw new Error(`unknown gate: ${options.gate}`);
+  assertEvidenceGateReached(run, gate);
   const { source, sourceBytes, sourceSha256 } = await readEvidenceSource(options);
   const kind = normalizeEvidenceKind(options.kind);
   const requestedKind = options.kind ?? "file";
@@ -2828,7 +2879,8 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
 async function acceptExceptionUnlocked(runId, options) {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("accept_exception", run.state.status);
-  if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
+  const gate = findGate(run.definition, options.gate);
+  if (!gate) throw new Error(`unknown gate: ${options.gate}`);
   const exception = {
     id: `ex.${Date.now()}.${run.state.exceptions.length + 1}`,
     gate_id: options.gate,
@@ -2837,8 +2889,15 @@ async function acceptExceptionUnlocked(runId, options) {
     accepted_at: new Date().toISOString()
   };
   run.state.exceptions.push(exception);
-  run.state.status = "accepted_by_exception";
-  run.state.next_action = `evaluate ${slugLabel(options.gate)} with accepted exception`;
+  // Only flip the run status when the exception applies to the current step.
+  // An exception for a gate the run has not reached is pending — it is
+  // recorded and will take effect when the run evaluates that gate, but it
+  // must not misreport the run's present state as accepted_by_exception (#212).
+  const isCurrentGate = gate.step === run.state.current_step;
+  if (isCurrentGate) {
+    run.state.status = "accepted_by_exception";
+    run.state.next_action = `evaluate ${slugLabel(options.gate)} with accepted exception`;
+  }
   await saveRun(run);
   return exception;
 }

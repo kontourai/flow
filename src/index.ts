@@ -183,6 +183,8 @@ export {
   routeBackDecision,
   routeReasonForFailedEvidence,
   routeTargetForReason,
+  normalizeRouteReasonForBudget,
+  DEFAULT_ROUTE_BACK_MAX_ATTEMPTS,
   stageStatuses,
   validateDefinition,
   validateDefinitionWithDiagnostics

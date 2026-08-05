@@ -26,6 +26,7 @@ test("package runtime points at emitted TypeScript output", async () => {
 test("package root exports stay stable across source-domain splits", () => {
   const expectedRuntimeExports = [
     "BUILTIN_EVIDENCE_KINDS",
+    "DEFAULT_ROUTE_BACK_MAX_ATTEMPTS",
     "EvidenceReferenceCycleError",
     "FLOW_CONFIG_MERGE_REPORT_SCHEMA_VERSION",
     "FLOW_DURABLE_CLAIM_DEFAULT_LEASE_SECONDS",
@@ -131,6 +132,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "moduleRoot",
     "nextActionForStep",
     "normalizeEvidenceKind",
+    "normalizeRouteReasonForBudget",
     "normalizeRunStateLifecycle",
     "normalizeTrustAttachmentBundle",
     "normalizeTrustBundle",

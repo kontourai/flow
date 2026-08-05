@@ -113,9 +113,11 @@ Route reason ids are open strings. Flow documents four standard ids without enfo
 
 Custom ids are allowed: add them to `on_route_back` when they should select a specific step, and include `default` for unknown or omitted reasons. If failed evidence has no `route_reason`, Flow uses `default` when present, otherwise the gate's own `step`.
 
+**Budget keying.** Route reasons that name a declared `on_route_back` route carry their own budget identity. Any reason not declared in `on_route_back` — including a novel string invented by an agent or adapter — normalises to `"default"` for attempt-counting purposes, so it shares the budget with every other undeclared or omitted reason. A caller cannot mint a fresh, always-empty budget bucket by supplying a string the definition never declared.
+
 ### Deterministic attempt counting
 
-Route-back attempts are derived from **persisted state**, not memory. Flow counts prior `route_back` transitions in `state.transitions` with the same gate id, route reason (or `default`), source step, selected target step, and retry epoch. Legacy transitions without an epoch are epoch 1. Timestamps, classifier data, diagnostics, analytics metadata, and caller-supplied counters never affect routing or attempt counts — so neither an agent nor an adapter can fudge the loop budget.
+Route-back attempts are derived from **persisted state**, not memory. Flow counts prior `route_back` transitions in `state.transitions` with the same gate id, normalised route reason (declared reasons keep their identity; undeclared reasons collapse to `default`), source step, selected target step, and retry epoch. Legacy transitions without an epoch are epoch 1. Timestamps, classifier data, diagnostics, analytics metadata, and caller-supplied counters never affect routing or attempt counts — so neither an agent nor an adapter can fudge the loop budget.
 
 #### Counting logical failures, not evidence re-evaluations
 
@@ -136,6 +138,9 @@ When `max_attempts` is exceeded, `on_exceeded` decides the outcome:
 
 - a **step id** routes the run to that recovery step, recording both the selected route and the recovery step
 - **`block`** stops the run at the current step while recording the exceeded attempt
+- **omitted** defaults to `block` — a gate whose budget is exhausted with no explicit recovery target blocks rather than looping forever
+
+A gate without an explicit `route_back_policy` inherits a bounded default (`max_attempts: 10`, `on_exceeded: block`). Authors should declare an explicit policy for any gate that needs a different bound or a recovery step.
 
 Flow validates route targets against defined step ids; `block` is special only inside `route_back_policy.on_exceeded`.
 
