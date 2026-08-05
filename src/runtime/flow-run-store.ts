@@ -2801,7 +2801,8 @@ export async function evaluateRun(runId: string, options: MutableRecord = {}) {
 async function acceptExceptionUnlocked(runId, options) {
   const run = await loadRun(runId, options.cwd);
   assertLifecycleEligible("accept_exception", run.state.status);
-  if (!findGate(run.definition, options.gate)) throw new Error(`unknown gate: ${options.gate}`);
+  const gate = findGate(run.definition, options.gate);
+  if (!gate) throw new Error(`unknown gate: ${options.gate}`);
   const exception = {
     id: `ex.${Date.now()}.${run.state.exceptions.length + 1}`,
     gate_id: options.gate,
@@ -2810,8 +2811,15 @@ async function acceptExceptionUnlocked(runId, options) {
     accepted_at: new Date().toISOString()
   };
   run.state.exceptions.push(exception);
-  run.state.status = "accepted_by_exception";
-  run.state.next_action = `evaluate ${slugLabel(options.gate)} with accepted exception`;
+  // Only flip the run status when the exception applies to the current step.
+  // An exception for a gate the run has not reached is pending — it is
+  // recorded and will take effect when the run evaluates that gate, but it
+  // must not misreport the run's present state as accepted_by_exception (#212).
+  const isCurrentGate = gate.step === run.state.current_step;
+  if (isCurrentGate) {
+    run.state.status = "accepted_by_exception";
+    run.state.next_action = `evaluate ${slugLabel(options.gate)} with accepted exception`;
+  }
   await saveRun(run);
   return exception;
 }
