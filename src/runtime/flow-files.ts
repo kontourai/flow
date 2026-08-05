@@ -64,6 +64,13 @@ export async function assertSafeWorkingDirectory(cwd: string) {
   try {
     entry = await lstat(resolved);
   } catch (error) {
+    if (isMissingPathError(error)) {
+      const missing = new Error(
+        `flow.run_location.working_directory_not_found: working directory ${resolved} does not exist; create it first or pass an existing directory with --cwd`
+      );
+      (missing as Error & { code?: string }).code = "flow.run_location.working_directory_not_found";
+      throw missing;
+    }
     const wrapped = new Error(`flow.run_location.unsafe_working_directory: cannot inspect ${resolved}: ${error instanceof Error ? error.message : String(error)}`);
     (wrapped as Error & { code?: string }).code = "flow.run_location.unsafe_working_directory";
     throw wrapped;
