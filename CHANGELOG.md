@@ -19,6 +19,31 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.0.0](https://github.com/kontourai/flow/compare/v4.0.0...v5.0.0) (2026-08-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gates:** trusted authority metadata remains removed and project config application requires a trusted publisher; migration guidance now targets Flow 5.0.0.
+
+### Features
+
+* **kit:** declare builder.build workflow routing ([#214](https://github.com/kontourai/flow/issues/214)) ([23a84ac](https://github.com/kontourai/flow/commit/23a84ac2f5ed1139723503f89ed0db7724825489))
+
+
+### Fixes
+
+* **evidence:** refuse evidence writes for gates the run cannot appraise ([#223](https://github.com/kontourai/flow/issues/223)) ([#236](https://github.com/kontourai/flow/issues/236)) ([d2252d4](https://github.com/kontourai/flow/commit/d2252d4fd947e5da65818bb69dd896af76475967))
+* **exception:** do not misreport run status when accepting exception for unreached gate ([#212](https://github.com/kontourai/flow/issues/212)) ([#234](https://github.com/kontourai/flow/issues/234)) ([1915421](https://github.com/kontourai/flow/commit/19154214279c53c43a373901e49083e3427d3d23))
+* **gates:** enforce trusted producer pins ([#215](https://github.com/kontourai/flow/issues/215)) ([9db117e](https://github.com/kontourai/flow/commit/9db117e8d822ae807928f7274644ae2626f0e3a4))
+* **gates:** exception may not override explicitly failed evidence ([#198](https://github.com/kontourai/flow/issues/198)) ([#235](https://github.com/kontourai/flow/issues/235)) ([3a5c60f](https://github.com/kontourai/flow/commit/3a5c60f8c93d1727d6523e0c5050e579d36f6e9e))
+* **gates:** re-verify evidence artifact integrity at evaluation time ([#205](https://github.com/kontourai/flow/issues/205)) ([#228](https://github.com/kontourai/flow/issues/228)) ([22498b4](https://github.com/kontourai/flow/commit/22498b4e71f530f198fe789eabf4d9e3eb7921c1))
+* **init:** report a distinct, actionable error when --cwd does not exist ([#156](https://github.com/kontourai/flow/issues/156)) ([#227](https://github.com/kontourai/flow/issues/227)) ([ae28c5c](https://github.com/kontourai/flow/commit/ae28c5cce1821fc72ed7333041e4e4878683525c))
+* **reports:** report terminal step of completed run as passed, not current ([#211](https://github.com/kontourai/flow/issues/211)) ([#232](https://github.com/kontourai/flow/issues/232)) ([ecf3e89](https://github.com/kontourai/flow/commit/ecf3e893ec84b6936610bcd6cda579c4915af672))
+* **route-back:** count logical failures, not evidence re-evaluations ([#153](https://github.com/kontourai/flow/issues/153)) ([#229](https://github.com/kontourai/flow/issues/229)) ([20ccaf3](https://github.com/kontourai/flow/commit/20ccaf30b3dbf89a86dfa0b931733112451d476a))
+* **route-back:** normalise unrecognised reasons to default and bound gates without policy ([#197](https://github.com/kontourai/flow/issues/197)) ([#233](https://github.com/kontourai/flow/issues/233)) ([43a1a0d](https://github.com/kontourai/flow/commit/43a1a0d70cb66478f81de622b77e48d6d5031d8e))
+* **route-back:** tolerate legacy unbounded limit_exceeded in retry proof; race-test and comment follow-ups ([#240](https://github.com/kontourai/flow/issues/240)) ([0c03702](https://github.com/kontourai/flow/commit/0c03702a1efe8c3a0c5630e0660894f9ab5a475e))
+
 ## [4.0.0](https://github.com/kontourai/flow/compare/v3.12.0...v4.0.0) (2026-08-02)
 
 
