@@ -1,4 +1,4 @@
-import { descendantsOf, findGate, routeBackDecision } from "../definition/flow-definition.js";
+import { descendantsOf, findGate, routeBackAttempt, routeBackDecision } from "../definition/flow-definition.js";
 import { isObject } from "../shared/flow-utils.js";
 import {
   FlowRetryAuthorizationError,
@@ -37,6 +37,35 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
     gate,
     routeReason
   );
+  // routeBackDecision recomputes attempt with an empty current failed-evidence
+  // set (no manifest at proof time). Replay the attempt derivation against the
+  // record's own persisted `failed_evidence_refs` so the proof validates the
+  // record's claimed attempt under the same logical-identity inputs that
+  // produced it at evaluation time. The failed-evidence refs themselves are
+  // proof-carrying on the transition; the rest of the decision (route target,
+  // reason, epoch, exceeded state) is still derived from history alone.
+  const recordFailedRefs = Array.isArray(record.failed_evidence_refs) ? record.failed_evidence_refs : [];
+  const replayedAttempt = routeBackAttempt(
+    { transitions: transitions.slice(0, index) },
+    {
+      gateId: gate.id,
+      routeReason,
+      fromStep: gate.step,
+      toStep: decision.route_back_to,
+      failedEvidenceRefs: recordFailedRefs
+    }
+  );
+  decision.attempt = replayedAttempt;
+  decision.failed_evidence_refs = recordFailedRefs;
+  // limit_exceeded, route_back_to, recovery_step, and status all derive from
+  // (attempt, max_attempts, on_exceeded). Re-derive them after the attempt
+  // override so the proof validates the same escalation the record claims.
+  const replayedLimitExceeded = Number.isInteger(decision.max_attempts) && replayedAttempt > decision.max_attempts;
+  const replayedExceededTarget = gate.route_back_policy?.on_exceeded;
+  decision.limit_exceeded = replayedLimitExceeded;
+  decision.route_back_to = replayedLimitExceeded && replayedExceededTarget && replayedExceededTarget !== "block" ? replayedExceededTarget : decision.selected_route;
+  decision.recovery_step = replayedLimitExceeded && replayedExceededTarget && replayedExceededTarget !== "block" ? replayedExceededTarget : undefined;
+  decision.status = replayedLimitExceeded && replayedExceededTarget === "block" ? "block" : "route-back";
   const selectedRouteDeclared = (definition.steps ?? []).some((step) => step.id === decision.selected_route);
   const valid = record.gate_id === gate.id
     && record.from_step === gate.step

@@ -117,6 +117,21 @@ Custom ids are allowed: add them to `on_route_back` when they should select a sp
 
 Route-back attempts are derived from **persisted state**, not memory. Flow counts prior `route_back` transitions in `state.transitions` with the same gate id, route reason (or `default`), source step, selected target step, and retry epoch. Legacy transitions without an epoch are epoch 1. Timestamps, classifier data, diagnostics, analytics metadata, and caller-supplied counters never affect routing or attempt counts — so neither an agent nor an adapter can fudge the loop budget.
 
+#### Counting logical failures, not evidence re-evaluations
+
+Within one retry epoch, a fresh route-back transition is a **new logical attempt** only when something material has changed since the immediately preceding matching route-back. Otherwise the new transition is a **replay** of the same logical failure and inherits the prior attempt number. This keeps the budget tied to distinct failed gate visits rather than to the number of `flow attach-evidence` + `flow evaluate` cycles a consumer runs while recovering from one failure — the same failed visit re-evaluated any number of times consumes exactly one attempt.
+
+The logical-identity discriminator is computed from persisted state alone, in two parts:
+
+| Signal | Persisted-state evidence | Effect |
+| --- | --- | --- |
+| **New gate visit** | The prior route-back's target step differs from its source step (the run left the gate's step), **or** a subsequent allowed/route-back/retry-authorized transition re-enters the gate's source step from a different step. | New attempt. |
+| **New failed-evidence id** | The new route-back carries a `failed_evidence_refs` entry that was not present on the immediately preceding matching route-back. | New attempt. |
+
+If neither signal is present, the new transition is a replay: it is persisted (for audit and downstream reports) carrying the same attempt number as the prior one. Two replays of the same missing-evidence self-loop therefore record two route-back transitions, both at attempt 1, instead of consuming attempts 1, 2, and exhausting a `max_attempts: 3` budget without a single new implementation cycle.
+
+The `failed_evidence_refs` field is itself persisted on every route-back transition (it is the list of failed evidence ids that drove the route-back decision) and is proof-carrying: the route-back record validator (`flow-run-retry-proof`) replays the attempt derivation against the record's own `failed_evidence_refs` so a forged record cannot claim an attempt number its failed set does not produce.
+
 When `max_attempts` is exceeded, `on_exceeded` decides the outcome:
 
 - a **step id** routes the run to that recovery step, recording both the selected route and the recovery step

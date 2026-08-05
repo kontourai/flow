@@ -304,7 +304,8 @@
         "analytics": { "type": "object", "additionalProperties": true },
         "analytics_loop_key": { "type": "string" },
         "accepted_exception_id": { "type": "string" },
-        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+        "evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "failed_evidence_refs": { "type": "array", "items": { "type": "string" }, "description": "Ids of failed gate evidence that drove this route-back decision. Used to derive the logical-failure identity so re-evaluation that sees the same failed set replays the prior attempt instead of consuming a new one." }
       }
     },
     "transition": {
@@ -381,6 +382,7 @@
         "limit_exceeded": { "type": "boolean" },
         "invalidated_steps": { "type": "array", "items": { "type": "string" }, "description": "Steps whose gate outcomes were cleared by the route-back cascade (descendants of the route-back target)." },
         "evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "failed_evidence_refs": { "type": "array", "items": { "type": "string" }, "description": "Ids of failed gate evidence that drove this route-back decision. Used to derive the logical-failure identity so re-evaluation that sees the same failed set replays the prior attempt instead of consuming a new one." },
         "expectation_ids": { "type": "array", "items": { "type": "string" } },
         "classifier": { "type": "object", "additionalProperties": true },
         "diagnostics": { "type": "object", "additionalProperties": true },
