@@ -17,6 +17,7 @@ import { test } from "node:test";
 import {
   acceptException,
   applyEvaluation,
+  attachEvidence,
   evaluateRun,
   initialState,
   loadRun,
@@ -110,6 +111,89 @@ test("a refused gate jump writes nothing at all", async () => {
     stateBefore,
     "a refused evaluation leaves the record byte-identical"
   );
+});
+
+// ---------------------------------------------------------------------------
+// #223: evidence writes are refused for gates the run cannot appraise
+// ---------------------------------------------------------------------------
+
+test("#223: attach-evidence for a gate past an unevaluated gate is refused and writes nothing", async () => {
+  const cwd = await startJumpRun("ev-unreached-1");
+  const before = await loadRun("ev-unreached-1", cwd);
+  const stateBefore = await readFile(path.join(before.dir, "state.json"), "utf8");
+  const manifestBefore = await readFile(path.join(before.dir, "evidence", "manifest.json"), "utf8");
+
+  // The run is on plan (never evaluated). publish-gate sits past the
+  // unevaluated plan-gate AND verify-gate — the walk cannot reach it.
+  const evidencePath = path.join(cwd, "premature.json");
+  await writeFile(evidencePath, `${JSON.stringify({ premature: true })}\n`);
+  await assert.rejects(
+    attachEvidence("ev-unreached-1", { cwd, gate: "publish-gate", file: evidencePath }),
+    (error) => {
+      assert.equal(error.code, "flow.evidence.gate.unreached");
+      assert.match(error.message, /publish-gate/);
+      assert.match(error.message, /plan/);
+      return true;
+    }
+  );
+
+  assert.equal(await readFile(path.join(before.dir, "state.json"), "utf8"), stateBefore, "state untouched");
+  assert.equal(await readFile(path.join(before.dir, "evidence", "manifest.json"), "utf8"), manifestBefore, "manifest untouched");
+});
+
+test("#223: attach-evidence for the gate the gateless walk lands on remains legal", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-ev-gateless-"));
+  const gatelessDefinition = {
+    id: "ev-gateless-flow",
+    version: "1",
+    steps: [
+      { id: "produce", next: "review" },
+      { id: "review", next: "signoff" },
+      { id: "signoff", next: null }
+    ],
+    gates: {
+      "review-gate": { step: "review", expects: [] },
+      "signoff-gate": { step: "signoff", expects: [] }
+    }
+  };
+  const definitionPath = path.join(cwd, "definition.json");
+  await writeFile(definitionPath, `${JSON.stringify(gatelessDefinition, null, 2)}\n`);
+  await startRun(definitionPath, { cwd, runId: "ev-gateless-1", params: { subject: "pre-stage" } });
+
+  // Cursor is on gateless `produce`; review-gate is what the walk lands on.
+  const evidencePath = path.join(cwd, "review.json");
+  await writeFile(evidencePath, `${JSON.stringify({ ok: true })}\n`);
+  const entry = await attachEvidence("ev-gateless-1", { cwd, gate: "review-gate", file: evidencePath });
+  assert.equal(entry.gate_id, "review-gate");
+
+  // But signoff-gate sits past the unevaluated review-gate — refused.
+  await assert.rejects(
+    attachEvidence("ev-gateless-1", { cwd, gate: "signoff-gate", file: evidencePath }),
+    (error) => {
+      assert.equal(error.code, "flow.evidence.gate.unreached");
+      return true;
+    }
+  );
+
+  // The cursor was NOT moved by the refused write.
+  const run = await loadRun("ev-gateless-1", cwd);
+  assert.equal(run.state.current_step, "produce");
+});
+
+test("#223: attach-evidence for an already-occupied step remains legal", async () => {
+  const cwd = await startJumpRun("ev-occupied-1");
+
+  // Evaluate plan-gate with an accepted exception so the cursor advances to verify.
+  await acceptException("ev-occupied-1", { cwd, gate: "plan-gate", reason: "probe", authority: "probe-operator" });
+  await evaluateRun("ev-occupied-1", { cwd, gate: "plan-gate" });
+  const atVerify = await loadRun("ev-occupied-1", cwd);
+  assert.equal(atVerify.state.current_step, "verify");
+
+  // plan-gate's step is now behind the cursor — supersede/refresh writes stay legal.
+  const evidencePath = path.join(cwd, "refresh.json");
+  await writeFile(evidencePath, `${JSON.stringify({ refreshed: true })}\n`);
+  const entry = await attachEvidence("ev-occupied-1", { cwd, gate: "plan-gate", file: evidencePath });
+  assert.equal(entry.gate_id, "plan-gate");
 });
 
 test("a gateless step is left by an honest recorded transition, not a synthesised cursor", async () => {

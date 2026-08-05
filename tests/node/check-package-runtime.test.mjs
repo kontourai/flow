@@ -57,6 +57,7 @@ test("package root exports stay stable across source-domain splits", () => {
     "HostedConsoleSink",
     "TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID",
     "TRUST_ATTACHMENT_REDUCER_VERSION",
+    "__setPublishRunArtifactsFaultHooks",
     "acceptException",
     "acceptedExceptionFor",
     "amendRunDefinition",
