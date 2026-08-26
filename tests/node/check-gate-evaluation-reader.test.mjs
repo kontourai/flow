@@ -116,6 +116,16 @@ test("reader re-derives only the retained selected bundle at its explicit as-of 
   assert.equal(stale.evaluation.externalRevocation, "not-observed");
   assert.equal(stale.evaluation.originalVerdict, "pass");
   assert.deepEqual(await Promise.all([readFile(statePath), readFile(manifestPath)]), bytes, "reader must not write or re-evaluate the run");
+
+  // The manifest's attachment-time convenience bundle is mutable metadata.
+  // It cannot heal the persisted receipt when the copied artifact still says
+  // the selected claim expired at 12:05.
+  const tamperedManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  tamperedManifest.evidence[0].bundle.claims[0].expiresAt = "2099-01-01T00:00:00.000Z";
+  await writeFile(manifestPath, `${JSON.stringify(tamperedManifest)}\n`);
+  const afterManifestTamper = await readGateEvaluation(outcome.evaluation_ref, { cwd, now: "2026-08-25T12:06:00.000Z", authorize: () => true });
+  assert.equal(afterManifestTamper.status, "found");
+  assert.equal(afterManifestTamper.evaluation.selectedEvidence[0].freshness, "stale", "reader derives from verified artifact bytes, not manifest.bundle");
 });
 
 test("denial and unknown IDs are opaque missing before a run load", async () => {
@@ -124,6 +134,54 @@ test("denial and unknown IDs are opaque missing before a run load", async () => 
   assert.deepEqual(await readGateEvaluation(fixtureData.ref, { cwd: fixtureData.cwd, authorize: () => { calls += 1; return false; } }), { status: "missing" });
   assert.equal(calls, 1);
   assert.deepEqual(await readGateEvaluation({ ...fixtureData.ref, evaluationId: "00000000-0000-4000-8000-000000000000" }, { cwd: fixtureData.cwd, authorize: () => true }), { status: "missing" });
+});
+
+test("read-result parser matches the closed schema for optional receipt scalars", async () => {
+  const fixtureData = await fixture("parser-optionals");
+  const valid = {
+    status: "found",
+    evaluation: {
+      ref: fixtureData.ref,
+      evaluatedAt: at,
+      originalVerdict: "route-back",
+      kind: "initial",
+      trigger: "ordinary",
+      exceptionId: "exception:valid",
+      routeBack: { attempt: 1, maxAttempts: 2, retryEpoch: 1, reason: "missing_evidence", selectedRoute: "verify" },
+      currentStanding: "current",
+      currentRun: { status: "active", currentStep: "verify" },
+      currentPersistedGateRef: fixtureData.ref,
+      validityAsOf: at,
+      validityScope: "retained-immutable-bundle",
+      externalRevocation: "not-observed",
+      selectedEvidence: [{ evidenceId: "ev.valid", sha256: "a".repeat(64), standing: "current", freshness: "recorded", revocationCodes: [], authority: "not-used" }]
+    }
+  };
+  const [schema, refSchema] = await Promise.all([json("schemas/gate-evaluation-read-result.schema.json"), json("schemas/gate-evaluation-ref.schema.json")]);
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  addFormats(ajv);
+  ajv.addSchema(refSchema);
+  const validate = ajv.compile(schema);
+  assert.deepEqual(parseGateEvaluationReadResult(valid), valid);
+  assert.equal(validate(valid), true, JSON.stringify(validate.errors));
+
+  for (const [label, change] of [
+    ["attempt", (value) => { value.evaluation.routeBack.attempt = -1; }],
+    ["maxAttempts", (value) => { value.evaluation.routeBack.maxAttempts = 0; }],
+    ["retryEpoch", (value) => { value.evaluation.routeBack.retryEpoch = 1.5; }],
+    ["reason", (value) => { value.evaluation.routeBack.reason = {}; }],
+    ["selectedRoute", (value) => { value.evaluation.routeBack.selectedRoute = []; }],
+    ["sha256", (value) => { value.evaluation.selectedEvidence[0].sha256 = "not-a-digest"; }]
+  ]) {
+    const invalid = structuredClone(valid);
+    change(invalid);
+    assert.equal(parseGateEvaluationReadResult(invalid), undefined, label);
+    assert.equal(validate(invalid), false, label);
+  }
+
+  const accessor = structuredClone(valid);
+  Object.defineProperty(accessor.evaluation.routeBack, "attempt", { enumerable: true, get() { throw new Error("must not execute"); } });
+  assert.equal(parseGateEvaluationReadResult(accessor), undefined, "accessor-backed optional fields are rejected without execution");
 });
 
 test("legacy, future, and malformed ledger states do not produce a found projection", async () => {

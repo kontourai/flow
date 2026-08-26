@@ -2,7 +2,7 @@ import { compareRfc3339Timestamps, parseRfc3339Timestamp } from "../shared/rfc33
 import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { parseGateEvaluationLedger, parseGateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 import type { GateEvaluationReadProjection, GateEvaluationReadResult, GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
-import { loadRun, verifyPinnedEvidenceDigest } from "./flow-run-store.js";
+import { loadRun, readVerifiedPinnedEvidenceBytes } from "./flow-run-store.js";
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 export type { GateEvaluationReadProjection, GateEvaluationReadResult, GateEvaluationReadStatus } from "../contracts/gate-evaluation-contract.js";
@@ -59,9 +59,13 @@ function pinnedAuthorityState(bundle: any, witness: Exclude<GateEvaluationRecord
 }
 
 async function retainedReport(runDir: string, entry: any, selection: GateEvaluationRecord["selections"][number], time: ReaderTime) {
-  if (!entry || !entry.bundle || !await verifyPinnedEvidenceDigest(runDir, entry, selection.sha256)) return undefined;
+  const bytes = await readVerifiedPinnedEvidenceBytes(runDir, entry, selection.sha256);
+  if (!bytes) return undefined;
   try {
-    const bundle = structuredClone(entry.bundle);
+    // This parsed value comes from the same immutable byte buffer we hashed.
+    // `entry.bundle` is only an attachment-time convenience projection and can
+    // never heal the receipt if a manifest is later modified.
+    const bundle = JSON.parse(bytes.toString("utf8"));
     const validated = validateTrustBundle(surfaceTimestampValidationView(bundle));
     return { bundle, report: buildTrustReport(validated, { now: time.surfaceNow }) };
   } catch {

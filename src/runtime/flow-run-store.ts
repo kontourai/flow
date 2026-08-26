@@ -2397,6 +2397,33 @@ export async function verifyPinnedEvidenceDigest(runDir: string, entry: any, dig
 }
 
 /**
+ * Read the one retained artifact through a no-follow descriptor and return the
+ * exact bytes only when they hash to both the manifest and ledger receipt.
+ * Consumers must derive from these bytes, never the mutable manifest bundle.
+ */
+export async function readVerifiedPinnedEvidenceBytes(runDir: string, entry: any, digest: string | undefined): Promise<Buffer | undefined> {
+  if (typeof digest !== "string" || typeof entry?.sha256 !== "string" || entry.sha256.toLowerCase() !== digest) return undefined;
+  let file: string;
+  try {
+    file = resolveEvidenceArtifactPath(runDir, entry.stored_path);
+  } catch {
+    return undefined;
+  }
+  try {
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      if (!(await handle.stat()).isFile()) return undefined;
+      const bytes = await handle.readFile();
+      return createHash("sha256").update(bytes).digest("hex") === digest ? bytes : undefined;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Recompute the integrity of every non-superseded attached artifact that
  * carries a recorded digest, returning a map of evidence id to transient
  * verification status ("verified" | "mismatch" | "missing" | "unreadable").
