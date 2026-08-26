@@ -82,8 +82,8 @@ test("reader retains original selected evidence when a replacement or current po
   assert.equal(result.evaluation.selectedEvidence.length, 1);
   assert.equal(result.evaluation.selectedEvidence[0].evidenceId, old.id);
   assert.equal(result.evaluation.selectedEvidence[0].standing, "superseded");
-  assert.equal(result.evaluation.selectedEvidence[0].freshness, "stale");
-  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, ["revoked"]);
+  assert.equal(result.evaluation.selectedEvidence[0].freshness, "unavailable", "v1 refuses bundle-wide claim freshness that could be unrelated to the selected expectation");
+  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, []);
 });
 
 test("reader honors the native recovery fence without repairing or mutating the run", async () => {

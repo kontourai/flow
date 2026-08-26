@@ -58,7 +58,7 @@ export interface GateEvaluationReadProjection extends GateEvaluationProjection {
   exceptionId?: string;
   routeBack?: GateEvaluationRecord["routeBack"];
   currentStanding: "current" | "superseded" | "invalidated";
-  currentRun: { status: string; currentStep: string };
+  currentRun: { status: string; currentStep: string | null };
   currentPersistedGateRef?: GateEvaluationRef;
   selectedEvidence: Array<{
     evidenceId: string;
@@ -89,7 +89,13 @@ function nonEmpty(value: unknown): value is string {
 }
 
 function dateTime(value: unknown): value is string {
-  return nonEmpty(value) && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+  if (!nonEmpty(value)) return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match || !Number.isFinite(Date.parse(value))) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 /** Snapshot only own data properties. Getters/Proxies are invalid, never invoked. */
@@ -120,10 +126,12 @@ export function parseGateEvaluationRef(value: unknown): GateEvaluationRef | unde
 
 /** Total parser: accepts only the closed v1 ledger shape needed by Phase 1. */
 export function parseGateEvaluationLedger(value: unknown): GateEvaluationLedger | undefined {
-  const source = closedObject(value, ["version", "records"]);
-  if (!source || source.version !== GATE_EVALUATION_CONTRACT_VERSION || !Array.isArray(source.records)) return undefined;
-  const records: GateEvaluationRecord[] = [];
-  for (const rawCandidate of source.records) {
+  try {
+    const source = closedObject(value, ["version", "records"]);
+    if (!source || source.version !== GATE_EVALUATION_CONTRACT_VERSION || !Array.isArray(source.records)) return undefined;
+    const records: GateEvaluationRecord[] = [];
+    for (let index = 0; index < source.records.length; index += 1) {
+    const rawCandidate = source.records[index];
     const candidate = closedObject(rawCandidate, ["version", "ref", "evaluatedAt", "trigger", "definition", "gate", "originalVerdict", "selections"], ["previousRef", "exceptionId", "routeBack"]);
     if (!candidate || candidate.version !== "1" || !dateTime(candidate.evaluatedAt) || !nonEmpty(candidate.originalVerdict) || !verdicts.has(candidate.originalVerdict) || !nonEmpty(candidate.trigger) || !triggers.has(candidate.trigger)) return undefined;
     const ref = parseGateEvaluationRef(candidate.ref);
@@ -149,7 +157,10 @@ export function parseGateEvaluationLedger(value: unknown): GateEvaluationLedger 
     }
     records.push({ version: "1", ref, evaluatedAt: candidate.evaluatedAt as string, trigger: candidate.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), definition: { id: definition.id as string, version: definition.version as string, digest: definition.digest as string }, gate: { id: gate.id as string, digest: gate.digest as string }, originalVerdict: candidate.originalVerdict as GateEvaluationRecord["originalVerdict"], selections, ...(nonEmpty(candidate.exceptionId) ? { exceptionId: candidate.exceptionId } : {}), ...(routeBack ? { routeBack } : {}) });
   }
-  return { version: "1", records };
+    return { version: "1", records };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Total parser for one immutable record; it shares the ledger's closed v1 grammar. */

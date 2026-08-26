@@ -515,7 +515,8 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     const matched = new Set((outcome.matched_expectations ?? []).map((match: any) => `${match.expectation_id}\u0000${match.evidence_id}`));
     const evidenceRefs = new Set(outcome.evidence_refs ?? []);
     for (const selection of record.selections) {
-      if (!(selection.expectationId && matched.has(`${selection.expectationId}\u0000${selection.evidenceId}`)) && !evidenceRefs.has(selection.evidenceId)) {
+      if ((selection.expectationId && !matched.has(`${selection.expectationId}\u0000${selection.evidenceId}`))
+        || (!selection.expectationId && !evidenceRefs.has(selection.evidenceId))) {
         throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
       }
     }

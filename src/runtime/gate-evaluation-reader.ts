@@ -17,7 +17,12 @@ function sameRef(left: GateEvaluationRef | undefined, right: GateEvaluationRef) 
   return !!left && left.runId === right.runId && left.gateId === right.gateId && left.evaluationId === right.evaluationId;
 }
 
-function revocationCodes(entry: any, at: string) {
+function revocationCodes(_entry: any, _at: string) {
+  // v1 writer receipts bind evidence/expectation ids, not selected claim ids.
+  // Never let an unrelated bundle trace taint this appraisal; a later contract
+  // revision may expose claim-scoped revocation only after it is recorded.
+  return [];
+  /*
   const pinned = parseRfc3339Timestamp(at);
   if (!pinned) return [];
   const revoked = (entry?.bundle?.authorityTrace ?? []).some((trace: any) => {
@@ -28,12 +33,18 @@ function revocationCodes(entry: any, at: string) {
     return (event?.status === "revoked" || event?.type === "invalidation") && instant && compareRfc3339Timestamps(instant, pinned) <= 0;
   });
   return revoked ? ["revoked"] : [];
+  */
 }
 
-function pinnedFreshness(entry: any, at: string): "recorded" | "stale" | "unavailable" {
+function pinnedFreshness(_entry: any, _at: string): "recorded" | "stale" | "unavailable" {
+  // Same fail-closed boundary as revocationCodes: checkpoint claim maps are
+  // bundle-wide and cannot identify the claim selected by this receipt.
+  return "unavailable";
+  /*
   const checkpoint = (entry?.inquiry_records ?? []).find((record: any) => record?.asOf === at);
   if (!checkpoint?.statusByClaimId || typeof checkpoint.statusByClaimId !== "object") return "unavailable";
   return Object.values(checkpoint.statusByClaimId).includes("stale") ? "stale" : "recorded";
+  */
 }
 
 function projectRecord(record: GateEvaluationRecord, run: any): GateEvaluationReadProjection {
@@ -97,5 +108,13 @@ export async function readGateEvaluation(value: unknown, options: GateEvaluation
   if (!parsed) return { status: "unavailable" };
   const record = parsed.records.find((candidate) => sameRef(candidate.ref, ref));
   if (!record) return { status: "missing" };
-  return { status: "found", evaluation: projectRecord(record, run) };
+  const evaluation = projectRecord(record, run);
+  // Authorization can be revoked while the fenced read is in progress. Check
+  // again immediately before publishing the projection to the caller.
+  try {
+    if (await options.authorize({ ref }) !== true) return { status: "missing" };
+  } catch {
+    return { status: "unavailable" };
+  }
+  return { status: "found", evaluation };
 }
