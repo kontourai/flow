@@ -126,10 +126,8 @@ test("reader retains original selected evidence when a replacement or current po
   const manifestPath = path.join(fixtureData.dir, "evidence", "manifest.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const selected = manifest.evidence.find((entry) => entry.id === old.id);
-  original.selections[0].claimIds = ["claim.old"];
   const statePath = path.join(fixtureData.dir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
-  state.gate_evaluation_ledger.records.at(-1).selections[0].claimIds = ["claim.old"];
   await writeFile(statePath, `${JSON.stringify(state)}\n`);
   selected.inquiry_records = [{ asOf: original.evaluatedAt, statusByClaimId: { "claim.old": "stale" } }];
   selected.bundle = { schemaVersion: 7, source: "test", claims: [], evidence: [], policies: [], events: [{ status: "revoked", createdAt: original.evaluatedAt }], authorityTrace: [{ revokedAt: original.evaluatedAt }] };
@@ -142,8 +140,8 @@ test("reader retains original selected evidence when a replacement or current po
   assert.equal(result.evaluation.selectedEvidence.length, 1);
   assert.equal(result.evaluation.selectedEvidence[0].evidenceId, old.id);
   assert.equal(result.evaluation.selectedEvidence[0].standing, "superseded");
-  assert.equal(result.evaluation.selectedEvidence[0].freshness, "stale");
-  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, ["revoked"]);
+  assert.equal(result.evaluation.selectedEvidence[0].freshness, "unavailable", "a legacy bare evidence receipt has no claim witness to refresh");
+  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, []);
   assert.deepEqual(parseGateEvaluationReadResult(result), result);
   assert.equal(parseGateEvaluationReadResult({ status: "found", evaluation: { ...result.evaluation, selectedEvidence: {} } }), undefined);
 });

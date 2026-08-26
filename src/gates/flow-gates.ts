@@ -633,6 +633,24 @@ function evidenceVisitDiagnostic(entry: any, visit: GateVisit): string | null {
 
 type DerivedBundle = { bundle?: any; report: any | null; diagnostics: Map<string, string>; reconciliations: Map<string, Reconciliation>; context?: BundleContext; error: string | null };
 
+/**
+ * A bundle can have several claims which satisfy the public selector, but a
+ * gate advances on one concrete authorization path. Keep the candidates in
+ * report order so the subsequent producer/authority decision can return the
+ * exact claim it authorized, rather than re-selecting a broader set later.
+ */
+type EvidenceBundleDecision =
+  | { matched: true; acceptedClaims: readonly any[] }
+  | { matched: false; diagnostic: string };
+
+type EvidenceProducerDecision =
+  | { matched: true; witnessClaimIds: readonly [string] }
+  | { matched: false; diagnostic: NonNullable<ProducerAuthorityResult> };
+
+type EvidenceMatchDecision =
+  | { matched: true; evidenceId: string; witnessClaimIds: readonly [string] }
+  | { matched: false; bundleDiagnostic?: string; producerDiagnostic?: NonNullable<ProducerAuthorityResult> };
+
 function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): DerivedBundle {
   if (!evaluationNow) {
     return { report: null, diagnostics: new Map(), reconciliations: new Map(), error: "evaluation_time_missing" };
@@ -666,25 +684,25 @@ function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime |
   }
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): string | null {
-  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return null;
-  if (entry.status === "failed") return "rejected";
+function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): EvidenceBundleDecision {
+  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return { matched: false, diagnostic: "bundle_invalid" };
+  if (entry.status === "failed") return { matched: false, diagnostic: "rejected" };
 
   const derived = derivedBundle ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies);
   const bundle = derived.bundle;
-  if (!bundle) return "bundle_invalid";
-  if (!surfaceDerivationWithinBudget(bundle)) return "bundle_invalid";
+  if (!bundle) return { matched: false, diagnostic: "bundle_invalid" };
+  if (!surfaceDerivationWithinBudget(bundle)) return { matched: false, diagnostic: "bundle_invalid" };
 
   // Schema validation
   const schemaResult = validateTrustBundleSchema(bundle);
-  if (!schemaResult.valid) return "bundle_invalid";
+  if (!schemaResult.valid) return { matched: false, diagnostic: "bundle_invalid" };
 
   try {
     // Producer and authority policy only consumes the same rich bundle shape
     // that Surface validates, never a caller-authored manifest projection.
     dependencies.validate(surfaceTimestampValidationView(bundle));
   } catch {
-    return "bundle_invalid";
+    return { matched: false, diagnostic: "bundle_invalid" };
   }
 
   // Derive report
@@ -693,45 +711,44 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   // instant. Otherwise an expired/revoked authority could inherit a stale
   // report produced while it was active.
   const report = derived.report;
-  if (!report) return "bundle_invalid";
+  if (!report) return { matched: false, diagnostic: "bundle_invalid" };
 
   const selector = expectation.bundle_claim ?? expectation.claim;
-  if (!selector) return "bundle_invalid";
+  if (!selector) return { matched: false, diagnostic: "bundle_invalid" };
 
   const claims = findClaimsInReport(report, selector);
-  if (!claims.length) return "claim_not_found";
+  if (!claims.length) return { matched: false, diagnostic: "claim_not_found" };
 
   const currentClaims = enteredAt === null
     ? claims
     : claims.filter((claim: any) => claimIsCurrentForVisit(bundle, claim, enteredAt));
   if (!currentClaims.length) {
-    return "claim_not_current";
+    return { matched: false, diagnostic: "claim_not_current" };
   }
 
   const accepted = selector.accepted_statuses ?? ["verified"];
-  const acceptedClaims = currentClaims.filter((claim: any) => accepted.includes(claim.status ?? "unknown"));
+  // A stale-accepting selector intentionally admits the claim with its stale
+  // chronology. It never admits ambiguous/future/malformed chronology: those
+  // Surface diagnostics remain a failed candidate and preserve their existing
+  // diagnostic precedence below.
+  const acceptedClaims = currentClaims.filter((claim: any) => (
+    accepted.includes(claim.status ?? "unknown")
+    && (derived.diagnostics.get(claim.id) === undefined || derived.diagnostics.get(claim.id) === "stale")
+  ));
   if (acceptedClaims.length) {
-    // A deliberately stale-accepting expectation may accept an exactly stale
-    // claim. It must never turn an ambiguous, future-dated, or malformed
-    // chronology into an authorization bypass.
-    const unambiguous = acceptedClaims.find((claim: any) => {
-      const diagnostic = derived.diagnostics.get(claim.id);
-      return diagnostic === undefined || diagnostic === "stale";
-    });
-    if (unambiguous) return null;
-    return derived.diagnostics.get(acceptedClaims[0].id) ?? "rejected";
+    return { matched: true, acceptedClaims };
   }
 
   const reconciliationDiagnostic = currentClaims.map((claim: any) => derived.diagnostics.get(claim.id)).find(Boolean);
-  if (reconciliationDiagnostic) return reconciliationDiagnostic;
+  if (reconciliationDiagnostic) return { matched: false, diagnostic: reconciliationDiagnostic };
   const claimStatus = currentClaims[0].status ?? "unknown";
   if (!accepted.includes(claimStatus)) {
-    if (claimStatus === "stale") return "stale";
-    if (claimStatus === "disputed") return "disputed";
-    return "rejected";
+    if (claimStatus === "stale") return { matched: false, diagnostic: "stale" };
+    if (claimStatus === "disputed") return { matched: false, diagnostic: "disputed" };
+    return { matched: false, diagnostic: "rejected" };
   }
 
-  return null;
+  return { matched: false, diagnostic: "rejected" };
 }
 
 /**
@@ -799,39 +816,28 @@ function canonicalAuthorityTimestamp(timestamp: ParsedRfc3339Timestamp): string 
   return `${wholeSecond}${timestamp.fractionalSecond ? `.${timestamp.fractionalSecond}` : ""}Z`;
 }
 
-function acceptedClaimsForAuthority(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, derived: DerivedBundle): any[] {
-  const selector = expectation.bundle_claim ?? expectation.claim;
-  const report = derived.report;
-  if (!selector || !report) return [];
-  const accepted = selector.accepted_statuses ?? ["verified"];
-  const claims = findClaimsInReport(report, selector);
-  const current = enteredAt === null ? claims : claims.filter((claim: any) => claimIsCurrentForVisit(derived.bundle, claim, enteredAt));
-  return current.filter((claim: any) => accepted.includes(claim.status ?? "unknown"));
-}
-
 function governingAuthorizationEvent(claim: any, derived: DerivedBundle): TimedEvent | undefined {
   return derived.reconciliations.get(claim.id)?.governing;
 }
 
-function authorityTraceDiagnostic(entry: any, expectation: any, policies: ReturnType<typeof trustedProducerPolicy>, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derived: DerivedBundle): ProducerAuthorityResult {
+function authorityTraceDiagnostic(policies: ReturnType<typeof trustedProducerPolicy>, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derived: DerivedBundle, candidates: readonly any[]): EvidenceProducerDecision {
   const bundle = derived.bundle;
   // The Surface validator returns a validated clone. Carry its stable trace
   // index/context through the authority path instead of comparing object
   // identity to the caller's raw trace object.
   const traces = derived.context?.traces ?? [];
-  if (!traces.length) return { reason: "untrusted_producer", authority: { code: "no_trace" } };
+  if (!traces.length) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "no_trace" } } };
   const refScoped = traces.filter((timedTrace) => policies.every((policy) => policy.authorityRefs.has(timedTrace.trace?.authorityRef)));
-  if (!refScoped.length) return { reason: "untrusted_producer", authority: { code: "authority_ref_mismatch" } };
-  const claims = acceptedClaimsForAuthority(entry, expectation, enteredAt, derived);
+  if (!refScoped.length) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "authority_ref_mismatch" } } };
   const failures = new Set<string>();
   if (!evaluationNow) {
-    return { reason: "untrusted_producer", authority: { code: "evaluation_time_missing" } };
+    return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "evaluation_time_missing" } } };
   }
   const evaluatedAt = evaluationNow.exact;
 
   for (const timedTrace of refScoped) {
     const trace = timedTrace.trace;
-    for (const claim of claims) {
+    for (const claim of candidates) {
       if (trace?.subject?.subjectType !== claim.subjectType || trace?.subject?.subjectId !== claim.subjectId) continue;
       const governing = governingAuthorizationEvent(claim, derived);
       if (!governing) {
@@ -906,13 +912,13 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
       delete normalizedTrace.validUntil;
       delete normalizedTrace.revokedAt;
       const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow.surfaceNow);
-      if (active === "active") return null;
+      if (active === "active") return { matched: true, witnessClaimIds: [claim.id] };
       failures.add(active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace");
     }
   }
   const failure = ["invalid_trace_timestamp", "revoked", "expired", "not_yet_valid", "actor_mismatch", "scope_mismatch", "subject_mismatch", "no_trace"]
     .find((code) => failures.has(code)) ?? "subject_mismatch";
-  return { reason: "untrusted_producer", authority: { code: failure } };
+  return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: failure } } };
 }
 
 /**
@@ -921,45 +927,31 @@ function authorityTraceDiagnostic(entry: any, expectation: any, policies: Return
  * honest while ensuring an unattributed or untrusted otherwise-valid claim
  * can never advance a gate.
  */
-function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): ProducerAuthorityResult {
-  // An unrelated file, malformed bundle, or non-matching claim has its own
-  // established diagnostic (or no claim diagnostic at all). Producer policy
-  // applies only to a bundle candidate that otherwise satisfies this selector.
-  if (expectation.kind !== "trust.bundle") return null;
-  if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") return null;
-  const derived = derivedBundle ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies);
-  if (evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies, derived) !== null) return null;
+function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derived: DerivedBundle, candidates: readonly any[]): EvidenceProducerDecision {
   const policies = trustedProducerPolicy(expectation, config);
-  if (!policies.length) return null;
-  if (policies.some((policy) => policy.denyAll)) return { reason: "untrusted_producer", authority: { code: "deny_all" } };
+  if (!policies.length) return { matched: true, witnessClaimIds: [candidates[0].id] };
+  if (policies.some((policy) => policy.denyAll)) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "deny_all" } } };
   const producerId = derived.bundle?.producerId;
-  if (entry.producer !== undefined && entry.producer !== producerId) return { reason: "untrusted_producer", authority: { code: "producer_mismatch" } };
-  if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return null;
-  return authorityTraceDiagnostic(entry, expectation, policies, enteredAt, evaluationNow, dependencies, derived);
+  if (entry.producer !== undefined && entry.producer !== producerId) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "producer_mismatch" } } };
+  if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return { matched: true, witnessClaimIds: [candidates[0].id] };
+  return authorityTraceDiagnostic(policies, evaluationNow, dependencies, derived, candidates);
 }
 
-function evidenceMatchesExpectationForEvaluation(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle) {
-  if (evidenceIntegrityDiagnostic(entry) !== null) return false;
-  if (expectation.kind !== "trust.bundle") return false;
-  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return false;
+function evidenceMatchDecision(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): EvidenceMatchDecision {
+  const integrityDiagnostic = evidenceIntegrityDiagnostic(entry);
+  if (integrityDiagnostic !== null) return { matched: false, bundleDiagnostic: integrityDiagnostic };
+  if (expectation.kind !== "trust.bundle") return { matched: false };
+  if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return { matched: false };
   const derived = derivedBundle ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies);
-  return evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies, derived) === null
-    && evidenceProducerDiagnostic(entry, expectation, config, enteredAt, evaluationNow, dependencies, derived) === null;
-}
-
-function selectedClaimIds(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, derived: DerivedBundle) {
-  const selector = expectation.bundle_claim ?? expectation.claim;
-  if (!selector) return [];
-  const accepted = selector.accepted_statuses ?? ["verified"];
-  return acceptedClaimsForAuthority(entry, expectation, enteredAt, derived)
-    .filter((claim: any) => accepted.includes(claim.status ?? "unknown"))
-    .map((claim: any) => claim.id)
-    .filter((id: unknown): id is string => typeof id === "string")
-    .sort();
+  const bundle = evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies, derived);
+  if (bundle.matched === false) return { matched: false, bundleDiagnostic: bundle.diagnostic };
+  const producer = evidenceProducerDiagnostic(entry, expectation, config, evaluationNow, dependencies, derived, bundle.acceptedClaims);
+  if (producer.matched === false) return { matched: false, producerDiagnostic: producer.diagnostic };
+  return { matched: true, evidenceId: entry.id, witnessClaimIds: producer.witnessClaimIds };
 }
 
 export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: GateEvaluationInput) {
-  return evidenceMatchesExpectationForEvaluation(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES);
+  return evidenceMatchDecision(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES).matched;
 }
 
 function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedFor?: (entry: any) => DerivedBundle) {
@@ -974,17 +966,22 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
     }
     const trustEntry = entry?.kind === "trust.bundle" || entry?.requested_kind === "trust.bundle";
     const derived = trustEntry ? (derivedFor?.(entry) ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies)) : undefined;
-    const bundleReason = evidenceBundleDiagnostic(entry, expectation, visit.enteredAt, evaluationNow, dependencies, derived);
-    const producer = evidenceProducerDiagnostic(entry, expectation, config, visit.enteredAt, evaluationNow, dependencies, derived);
+    const decision = evidenceMatchDecision(entry, expectation, config, visit.enteredAt, evaluationNow, dependencies, derived);
+    let bundleDiagnostic: string | undefined;
+    let producerDiagnostic: NonNullable<ProducerAuthorityResult> | undefined;
+    if (decision.matched === false) {
+      bundleDiagnostic = decision.bundleDiagnostic;
+      producerDiagnostic = decision.producerDiagnostic;
+    }
     const reason = evidenceVisitDiagnostic(entry, visit)
-      ?? bundleReason
-      ?? producer?.reason;
+      ?? bundleDiagnostic
+      ?? producerDiagnostic?.reason;
     if (!reason) continue;
     diagnostics.push({
       expectation_id: expectation.id,
       evidence_id: entry.id,
       reason,
-      ...(producer?.authority ? { authority: producer.authority } : {})
+      ...(producerDiagnostic?.authority ? { authority: producerDiagnostic.authority } : {})
     });
   }
   return diagnostics;
@@ -1073,16 +1070,20 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
   const claimDiagnostics: MutableRecord[] = [];
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
-    const match = visit.revisited && (visit.awaitingReentry || visit.enteredAt === null)
-      ? undefined
-      : evidence.find((entry) => {
-        if (expectationWithGate.kind !== "trust.bundle") return false;
-        if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") return false;
-        return evidenceMatchesExpectationForEvaluation(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies, derivedFor(entry));
-      });
-    if (match) {
-      const claimIds = selectedClaimIds(match, expectationWithGate, visit.enteredAt, derivedFor(match));
-      matched.push({ expectation_id: expectation.id, evidence_id: match.id, ...(claimIds.length ? { claim_ids: claimIds } : {}) });
+    let match: EvidenceMatchDecision | undefined;
+    if (!(visit.revisited && (visit.awaitingReentry || visit.enteredAt === null))) {
+      for (const entry of evidence) {
+        if (expectationWithGate.kind !== "trust.bundle") continue;
+        if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") continue;
+        const decision = evidenceMatchDecision(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies, derivedFor(entry));
+        if (decision.matched) {
+          match = decision;
+          break;
+        }
+      }
+    }
+    if (match?.matched) {
+      matched.push({ expectation_id: expectation.id, evidence_id: match.evidenceId, claim_ids: [...match.witnessClaimIds] });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
       claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor));

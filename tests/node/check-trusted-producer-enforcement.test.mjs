@@ -79,7 +79,7 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
 
   const trusted = flow.evaluateGate(definition, structuredClone(state), await passingFixture("ci/trusted"), "verify-gate", config);
   assert.equal(trusted.status, "pass");
-  assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report" }]);
+  assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"] }]);
   assert.equal(trusted.diagnostics, undefined);
 
   const mismatchedAssertion = await passingFixture("ci/trusted");
@@ -87,6 +87,55 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
   const mismatch = flow.evaluateGate(definition, structuredClone(state), mismatchedAssertion, "verify-gate", config);
   assert.equal(mismatch.status, "route-back");
   assert.deepEqual(claimDiagnostic(mismatch)?.authority, { code: "producer_mismatch" });
+});
+
+test("a trust.bundle receipt records only the authority decision witness", async () => {
+  const { definition, state } = await gateState("authority-witness-only");
+  const config = configFor({ trusted_producers: { "quality.tests": { authority_refs: ["authority:quality"] } } });
+  const manifest = await authorityFixture();
+  const bundle = manifest.evidence[0].bundle;
+  // A bundle-level producer id is deliberately not pinned here. The second
+  // otherwise-valid claim is producer-authored/untrusted for this selector;
+  // only the original has an active, scoped quality authority trace.
+  bundle.producerId = "ci/untrusted";
+  bundle.claims.push({ ...bundle.claims[0], id: "claim.quality.tests.untrusted" });
+  bundle.evidence.push({ ...bundle.evidence[0], id: "evidence.quality.tests.untrusted", claimId: "claim.quality.tests.untrusted", collectedBy: "ci/untrusted" });
+  bundle.events.push({ ...bundle.events[0], id: "event.quality.tests.untrusted", claimId: "claim.quality.tests.untrusted", evidenceIds: ["evidence.quality.tests.untrusted"], actor: "ci/untrusted" });
+
+  const outcome = flow.evaluateGate(definition, structuredClone(state), manifest, "verify-gate", config, "2026-06-16T00:00:00.000Z");
+  assert.equal(outcome.status, "pass");
+  assert.deepEqual(outcome.matched_expectations, [{
+    expectation_id: "tests-passed",
+    evidence_id: "ev.pass-trust-report",
+    claim_ids: ["claim.quality.tests.verify"]
+  }]);
+});
+
+test("a future authority candidate before a valid one cannot widen the witness", async () => {
+  const { definition, state } = await gateState("authority-witness-future-first");
+  const config = configFor({ trusted_producers: { "quality.tests": { authority_refs: ["authority:quality"] } } });
+  const manifest = await authorityFixture(authorityTrace({
+    id: "trace.future",
+    claimIds: ["claim.quality.tests.future"],
+    validFrom: "2026-06-17T00:00:00.000Z"
+  }));
+  const bundle = manifest.evidence[0].bundle;
+  bundle.producerId = "ci/untrusted";
+  bundle.claims[0].id = "claim.quality.tests.future";
+  bundle.evidence[0].claimId = "claim.quality.tests.future";
+  bundle.events[0].claimId = "claim.quality.tests.future";
+  bundle.claims.push({ ...bundle.claims[0], id: "claim.quality.tests.valid" });
+  bundle.evidence.push({ ...bundle.evidence[0], id: "evidence.quality.tests.valid", claimId: "claim.quality.tests.valid" });
+  bundle.events.push({ ...bundle.events[0], id: "event.quality.tests.valid", claimId: "claim.quality.tests.valid", evidenceIds: ["evidence.quality.tests.valid"] });
+  bundle.authorityTrace.push(authorityTrace({ id: "trace.valid", claimIds: ["claim.quality.tests.valid"] }));
+
+  const outcome = flow.evaluateGate(definition, structuredClone(state), manifest, "verify-gate", config, "2026-06-16T00:00:00.000Z");
+  assert.equal(outcome.status, "pass");
+  assert.deepEqual(outcome.matched_expectations, [{
+    expectation_id: "tests-passed",
+    evidence_id: "ev.pass-trust-report",
+    claim_ids: ["claim.quality.tests.valid"]
+  }]);
 });
 
 test("Surface-accepted claim freshness and event chronology retain exact RFC3339 precision", async () => {
@@ -368,7 +417,7 @@ test("one evidence entry cannot splice separate snapshots across required expect
   );
   assert.equal(reads, 1, "the entry is snapshotted once for all expectations");
   assert.equal(outcome.status, "route-back");
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report" }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"] }]);
   assert.deepEqual(outcome.missing, ["lint-passed"]);
 });
 
@@ -452,7 +501,7 @@ test("gate input snapshot keeps matched evidence identity and evidence refs cohe
   });
   const outcome = flow.evaluateGate(definition, state, manifest, "verify-gate", configFor(), "2026-06-16T00:00:00.000Z");
   assert.equal(idReads, 1);
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.first" }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.first", claim_ids: ["claim.quality.tests.verify"] }]);
   assert.deepEqual(outcome.evidence_refs, ["ev.first"]);
 });
 

@@ -3,9 +3,10 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
-  __setPublishRunArtifactsFaultHooks,
+  __setPublishRunArtifactsFaultHooks, attachEvidence,
   acceptException, claimReadyStep, continuePausedGate, evaluateClaimedStep,
   evaluateRun, flowRunHead, loadRun, pauseRun, startRun
 } from "../../dist/index.js";
@@ -13,6 +14,7 @@ import { parseGateEvaluationProjection, parseGateEvaluationRecord } from "../../
 
 const authority = (ref) => ({ kind: "operator_request", actor: "operator:test", request_ref: ref, requested_at: "2026-08-25T12:00:00.000Z" });
 const at = "2026-08-25T12:01:00.000Z";
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 function singleDefinition(overrides = {}) {
   return {
@@ -62,6 +64,20 @@ test("ledger validation rejects dangling, mismatched, and broken causal referenc
   state.gate_outcomes[0].evaluation_ref.evaluationId = "00000000-0000-4000-8000-000000000000";
   await writeFile(statePath, `${JSON.stringify(state)}\n`);
   await assert.rejects(loadRun(run.runId, run.cwd), /gate_evaluation_ledger\.outcome_ref\.dangling/);
+});
+
+test("ledger validation rejects a claim witness altered independently of immutable outcome history", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-evaluation-ledger-witness-"));
+  const definitionPath = path.join(repoRoot, "examples", "deploy-live-verify-flow.json");
+  const bundlePath = path.join(repoRoot, "examples", "scenarios", "deploy-live-verify", "static-build.bundle.json");
+  const run = await startRun(definitionPath, { cwd, runId: "altered-witness" });
+  await attachEvidence(run.runId, { cwd, gate: "build-gate", file: bundlePath, kind: "trust.bundle" });
+  await evaluateRun(run.runId, { cwd, now: at });
+  const statePath = path.join(run.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.gate_evaluation_ledger.records[0].selections[0].claimIds = ["claim.invented"];
+  await writeFile(statePath, `${JSON.stringify(state)}\n`);
+  await assert.rejects(loadRun(run.runId, cwd), /gate_evaluation_ledger\.selection\.conflict/);
 });
 
 test("an unknown present ledger version is explicitly unsupported; only genuine legacy omission remains readable", async () => {

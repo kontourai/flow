@@ -451,6 +451,66 @@ function gateEvaluationDigest(gate: unknown, config: MutableRecord) {
   })).digest("hex");
 }
 
+// Receipt selection identity is a JSON tuple, never a delimiter-joined string:
+// authored ids are open strings and must not be able to collide with a
+// separator used by the validator.
+function gateEvaluationSelectionKey(expectationId: unknown, evidenceId: unknown) {
+  return JSON.stringify([expectationId, evidenceId]);
+}
+
+/**
+ * `claim_ids` is a decision witness, not an advisory current-bundle query.
+ * Preserve its order exactly, while rejecting duplicate or malformed witnesses
+ * before comparing an immutable outcome to its corresponding receipt.
+ */
+function canonicalGateEvaluationClaimIds(value: unknown): string[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || id.length === 0)) return null;
+  if (new Set(value).size !== value.length) return null;
+  return [...value];
+}
+
+function sameGateEvaluationClaimIds(left: string[] | undefined, right: string[] | undefined) {
+  return left === undefined && right === undefined
+    || (left !== undefined && right !== undefined && JSON.stringify(left) === JSON.stringify(right));
+}
+
+function validateGateEvaluationSelections(record: GateEvaluationRecord, outcome: any) {
+  const expected = new Map<string, string[] | undefined>();
+  for (const match of outcome.matched_expectations ?? []) {
+    const key = gateEvaluationSelectionKey(match?.expectation_id, match?.evidence_id);
+    const claimIds = canonicalGateEvaluationClaimIds(match?.claim_ids);
+    if (typeof match?.expectation_id !== "string" || typeof match?.evidence_id !== "string" || claimIds === null || expected.has(key)) {
+      throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
+    }
+    expected.set(key, claimIds);
+  }
+  const evidenceRefs: Set<string> = new Set<string>((outcome.evidence_refs ?? []).filter((id: unknown): id is string => typeof id === "string"));
+  const selectedEvidence = new Set<string>();
+  const actual = new Set<string>();
+  for (const selection of record.selections) {
+    selectedEvidence.add(selection.evidenceId);
+    if (selection.expectationId === undefined) {
+      // A bare evidence ref is not a claim witness. It cannot carry one, and
+      // it must name evidence the historical outcome actually referenced.
+      if (selection.claimIds !== undefined || !evidenceRefs.has(selection.evidenceId)) {
+        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
+      }
+      continue;
+    }
+    const key = gateEvaluationSelectionKey(selection.expectationId, selection.evidenceId);
+    const claimIds = canonicalGateEvaluationClaimIds(selection.claimIds);
+    if (claimIds === null || actual.has(key) || !expected.has(key) || !sameGateEvaluationClaimIds(claimIds, expected.get(key))) {
+      throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
+    }
+    actual.add(key);
+  }
+  if (actual.size !== expected.size || [...expected.keys()].some((key) => !actual.has(key))
+    || [...evidenceRefs].some((evidenceId) => !selectedEvidence.has(evidenceId))) {
+    throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
+  }
+}
+
 /**
  * Fail closed on every causal relation that makes a persisted appraisal useful.
  * Legacy state deliberately has no ledger and remains readable; a present
@@ -503,7 +563,22 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     records.set(key, record);
     lastByGate.set(record.ref.gateId, record);
   }
-  const referenced = new Set<string>();
+  const historyReferenced = new Set<string>();
+  const historyOutcomes = new Set<string>();
+  for (const outcome of state.gate_outcome_history ?? []) {
+    if (!outcome?.evaluation_ref) continue;
+    const ref = outcome.evaluation_ref as GateEvaluationRef;
+    const key = gateEvaluationRefKey(ref);
+    const record = records.get(key);
+    if (!record) throw new Error(`flow.gate_evaluation_ledger.outcome_ref.dangling: ${ref.evaluationId}`);
+    if (historyOutcomes.has(key)) throw new Error(`flow.gate_evaluation_ledger.outcome.conflict: ${ref.evaluationId}`);
+    historyOutcomes.add(key);
+    if (ref.runId !== state.run_id || ref.gateId !== outcome.gate_id || record.originalVerdict !== outcome.status) {
+      throw new Error(`flow.gate_evaluation_ledger.outcome.conflict: ${ref.evaluationId}`);
+    }
+    validateGateEvaluationSelections(record, outcome);
+    historyReferenced.add(key);
+  }
   for (const outcome of [...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])]) {
     if (!outcome?.evaluation_ref) continue;
     const ref = outcome.evaluation_ref as GateEvaluationRef;
@@ -511,24 +586,6 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     if (!record) throw new Error(`flow.gate_evaluation_ledger.outcome_ref.dangling: ${ref.evaluationId}`);
     if (ref.runId !== state.run_id || ref.gateId !== outcome.gate_id || record.originalVerdict !== outcome.status) {
       throw new Error(`flow.gate_evaluation_ledger.outcome.conflict: ${ref.evaluationId}`);
-    }
-    const matched = new Set((outcome.matched_expectations ?? []).map((match: any) => `${match.expectation_id}\u0000${match.evidence_id}`));
-    const evidenceRefs = new Set(outcome.evidence_refs ?? []);
-    for (const selection of record.selections) {
-      if ((selection.expectationId && !matched.has(`${selection.expectationId}\u0000${selection.evidenceId}`))
-        || (!selection.expectationId && !evidenceRefs.has(selection.evidenceId))) {
-        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
-      }
-    }
-    for (const match of outcome.matched_expectations ?? []) {
-      if (!record.selections.some((selection) => selection.expectationId === match.expectation_id && selection.evidenceId === match.evidence_id)) {
-        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
-      }
-    }
-    for (const evidenceId of evidenceRefs) {
-      if (!record.selections.some((selection) => selection.evidenceId === evidenceId)) {
-        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
-      }
     }
     if (record.exceptionId !== outcome.accepted_exception_id) {
       throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
@@ -554,10 +611,9 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
         }
       }
     }
-    referenced.add(gateEvaluationRefKey(ref));
   }
   for (const [key, record] of records) {
-    if (!referenced.has(key)) throw new Error(`flow.gate_evaluation_ledger.record.orphaned: ${record.ref.evaluationId}`);
+    if (!historyReferenced.has(key)) throw new Error(`flow.gate_evaluation_ledger.record.orphaned: ${record.ref.evaluationId}`);
   }
   return ledger;
 }
