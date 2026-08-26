@@ -118,6 +118,21 @@ function closedObject(value: unknown, required: string[], optional: string[] = [
   }
 }
 
+function closedArray(value: unknown): unknown[] | undefined {
+  try {
+    if (!Array.isArray(value)) return undefined;
+    const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || Object.keys(value).length !== length) return undefined;
+    const result: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || !Object.hasOwn(descriptor, "value")) return undefined;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch { return undefined; }
+}
+
 /** Total parser: invalid values return undefined and never throw. */
 export function parseGateEvaluationRef(value: unknown): GateEvaluationRef | undefined {
   const source = closedObject(value, ["runId", "gateId", "evaluationId"]);
@@ -129,26 +144,29 @@ export function parseGateEvaluationRef(value: unknown): GateEvaluationRef | unde
 export function parseGateEvaluationLedger(value: unknown): GateEvaluationLedger | undefined {
   try {
     const source = closedObject(value, ["version", "records"]);
-    if (!source || source.version !== GATE_EVALUATION_CONTRACT_VERSION || !Array.isArray(source.records)) return undefined;
+    const rawRecords = closedArray(source?.records);
+    if (!source || source.version !== GATE_EVALUATION_CONTRACT_VERSION || !rawRecords) return undefined;
     const records: GateEvaluationRecord[] = [];
-    for (let index = 0; index < source.records.length; index += 1) {
-    const rawCandidate = source.records[index];
+    for (let index = 0; index < rawRecords.length; index += 1) {
+    const rawCandidate = rawRecords[index];
     const candidate = closedObject(rawCandidate, ["version", "ref", "evaluatedAt", "trigger", "definition", "gate", "originalVerdict", "selections"], ["previousRef", "exceptionId", "routeBack"]);
     if (!candidate || candidate.version !== "1" || !dateTime(candidate.evaluatedAt) || !nonEmpty(candidate.originalVerdict) || !verdicts.has(candidate.originalVerdict) || !nonEmpty(candidate.trigger) || !triggers.has(candidate.trigger)) return undefined;
     const ref = parseGateEvaluationRef(candidate.ref);
     const previousRef = candidate.previousRef === undefined ? undefined : parseGateEvaluationRef(candidate.previousRef);
     const definition = closedObject(candidate.definition, ["id", "version", "digest"]);
     const gate = closedObject(candidate.gate, ["id", "digest"]);
-    if (!ref || (candidate.previousRef !== undefined && !previousRef) || !definition || !nonEmpty(definition.id) || !nonEmpty(definition.version) || !nonEmpty(definition.digest) || !digest.test(definition.digest) || !gate || gate.id !== ref.gateId || !nonEmpty(gate.digest) || !digest.test(gate.digest) || !Array.isArray(candidate.selections)) return undefined;
+    const rawSelections = closedArray(candidate.selections);
+    if (!ref || (candidate.previousRef !== undefined && !previousRef) || !definition || !nonEmpty(definition.id) || !nonEmpty(definition.version) || !nonEmpty(definition.digest) || !digest.test(definition.digest) || !gate || gate.id !== ref.gateId || !nonEmpty(gate.digest) || !digest.test(gate.digest) || !rawSelections) return undefined;
     const selections: GateEvaluationEvidenceSelection[] = [];
-    for (const rawSelection of candidate.selections) {
+    for (const rawSelection of rawSelections) {
       const selection = closedObject(rawSelection, ["evidenceId"], ["expectationId", "sha256", "claimIds"]);
       const invalidSha = selection?.sha256 !== undefined
         && (!nonEmpty(selection.sha256) || !digest.test(selection.sha256));
+      const claimIds = selection?.claimIds === undefined ? undefined : closedArray(selection.claimIds);
       const invalidClaims = selection?.claimIds !== undefined
-        && (!Array.isArray(selection.claimIds) || selection.claimIds.some((id) => !nonEmpty(id)));
+        && (!claimIds || claimIds.some((id) => !nonEmpty(id)));
       if (!selection || !nonEmpty(selection.evidenceId) || (selection.expectationId !== undefined && !nonEmpty(selection.expectationId)) || invalidSha || invalidClaims) return undefined;
-      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}), ...(Array.isArray(selection.claimIds) ? { claimIds: [...selection.claimIds] } : {}) });
+      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}), ...(claimIds ? { claimIds: claimIds as string[] } : {}) });
     }
     let routeBack: GateEvaluationRecord["routeBack"] | undefined;
     if (candidate.routeBack !== undefined) {
@@ -188,16 +206,21 @@ export function parseGateEvaluationReadResult(value: unknown): GateEvaluationRea
   if (source.status === "missing" || source.status === "unavailable" || source.status === "unsupported") return source.evaluation === undefined ? { status: source.status } : undefined;
   if (source.status !== "found") return undefined;
   const evaluation = closedObject(source.evaluation, ["ref", "evaluatedAt", "originalVerdict", "kind", "trigger", "currentStanding", "currentRun", "selectedEvidence"], ["previousRef", "exceptionId", "routeBack", "currentPersistedGateRef"]);
-  if (!evaluation || !dateTime(evaluation.evaluatedAt) || !["initial", "recheck"].includes(evaluation.kind as string) || !triggers.has(evaluation.trigger as string) || !["current", "superseded", "invalidated"].includes(evaluation.currentStanding as string) || !Array.isArray(evaluation.selectedEvidence)) return undefined;
+  const rawEvidence = closedArray(evaluation?.selectedEvidence);
+  if (!evaluation || !dateTime(evaluation.evaluatedAt) || !["initial", "recheck"].includes(evaluation.kind as string) || !triggers.has(evaluation.trigger as string) || !["current", "superseded", "invalidated"].includes(evaluation.currentStanding as string) || !rawEvidence) return undefined;
   const projection = parseGateEvaluationProjection({ ref: evaluation.ref, evaluatedAt: evaluation.evaluatedAt, originalVerdict: evaluation.originalVerdict });
   const currentRun = closedObject(evaluation.currentRun, ["status", "currentStep"]);
   const previousRef = evaluation.previousRef === undefined ? undefined : parseGateEvaluationRef(evaluation.previousRef);
   const currentPersistedGateRef = evaluation.currentPersistedGateRef === undefined ? undefined : parseGateEvaluationRef(evaluation.currentPersistedGateRef);
   if (!projection || !currentRun || !nonEmpty(currentRun.status) || !(typeof currentRun.currentStep === "string" || currentRun.currentStep === null)) return undefined;
-  const selectedEvidence = evaluation.selectedEvidence.map((raw) => closedObject(raw, ["evidenceId", "standing", "freshness", "revocationCodes"], ["sha256"]));
-  if (selectedEvidence.some((entry) => !entry || !nonEmpty(entry.evidenceId) || !["current", "superseded", "missing"].includes(entry.standing as string) || !["recorded", "stale", "unavailable"].includes(entry.freshness as string) || !Array.isArray(entry.revocationCodes) || entry.revocationCodes.some((code) => !nonEmpty(code)))) return undefined;
+  const selectedEvidence = rawEvidence.map((raw) => closedObject(raw, ["evidenceId", "standing", "freshness", "revocationCodes"], ["sha256"]));
+  const revocations = selectedEvidence.map((entry) => entry ? closedArray(entry.revocationCodes) : undefined);
+  if (selectedEvidence.some((entry, index) => !entry || !nonEmpty(entry.evidenceId) || !["current", "superseded", "missing"].includes(entry.standing as string) || !["recorded", "stale", "unavailable"].includes(entry.freshness as string) || !revocations[index] || revocations[index]!.some((code) => !nonEmpty(code)))) return undefined;
   if ((evaluation.previousRef !== undefined && !previousRef) || (evaluation.currentPersistedGateRef !== undefined && !currentPersistedGateRef)) return undefined;
-  return { status: "found", evaluation: { ...projection, kind: evaluation.kind as "initial" | "recheck", trigger: evaluation.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), currentStanding: evaluation.currentStanding as GateEvaluationReadProjection["currentStanding"], currentRun: { status: currentRun.status as string, currentStep: currentRun.currentStep as string | null }, ...(currentPersistedGateRef ? { currentPersistedGateRef } : {}), selectedEvidence: selectedEvidence.map((entry) => ({ evidenceId: entry!.evidenceId as string, ...(typeof entry!.sha256 === "string" ? { sha256: entry!.sha256 } : {}), standing: entry!.standing as "current" | "superseded" | "missing", freshness: entry!.freshness as "recorded" | "stale" | "unavailable", revocationCodes: [...entry!.revocationCodes as string[]] })) } };
+  const exceptionId = evaluation.exceptionId === undefined ? undefined : nonEmpty(evaluation.exceptionId) ? evaluation.exceptionId : undefined;
+  const routeBack = evaluation.routeBack === undefined ? undefined : closedObject(evaluation.routeBack, [], ["attempt", "maxAttempts", "retryEpoch", "reason", "selectedRoute"]);
+  if ((evaluation.exceptionId !== undefined && !exceptionId) || (evaluation.routeBack !== undefined && !routeBack)) return undefined;
+  return { status: "found", evaluation: { ...projection, kind: evaluation.kind as "initial" | "recheck", trigger: evaluation.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), ...(exceptionId ? { exceptionId } : {}), ...(routeBack ? { routeBack: routeBack as GateEvaluationRecord["routeBack"] } : {}), currentStanding: evaluation.currentStanding as GateEvaluationReadProjection["currentStanding"], currentRun: { status: currentRun.status as string, currentStep: currentRun.currentStep as string | null }, ...(currentPersistedGateRef ? { currentPersistedGateRef } : {}), selectedEvidence: selectedEvidence.map((entry, index) => ({ evidenceId: entry!.evidenceId as string, ...(typeof entry!.sha256 === "string" ? { sha256: entry!.sha256 } : {}), standing: entry!.standing as "current" | "superseded" | "missing", freshness: entry!.freshness as "recorded" | "stale" | "unavailable", revocationCodes: revocations[index]! as string[] })) } };
 }
 
 export const gateEvaluationRefSchema = {
