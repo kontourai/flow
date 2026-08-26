@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/gate-evaluation-projection.schema.json",
+  "title": "Flow Gate Evaluation Projection",
+  "type": "object",
+  "required": ["ref", "evaluatedAt", "originalVerdict"],
+  "additionalProperties": false,
+  "properties": {
+    "ref": { "$ref": "gate-evaluation-ref.schema.json" },
+    "evaluatedAt": { "type": "string", "format": "date-time" },
+    "originalVerdict": { "enum": ["pass", "block", "route-back", "wait"] }
+  }
+}

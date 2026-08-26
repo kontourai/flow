@@ -28,6 +28,8 @@ import {
 } from "./flow-files.js";
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import { parseGateEvaluationLedger } from "../contracts/gate-evaluation-contract.js";
+import type { GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -72,6 +74,7 @@ import {
 } from "./flow-run-lifecycle.js";
 import {
   FlowRetryAuthorizationError,
+  canonicalJson,
   flowRunHead,
   flowTransitionRef,
   retryAuthorizationMatches,
@@ -432,6 +435,125 @@ export function validateRunStateIdentity(definition, state, runId) {
   return state;
 }
 
+function gateEvaluationRefKey(ref: GateEvaluationRef) {
+  return `${ref.runId}\u0000${ref.gateId}\u0000${ref.evaluationId}`;
+}
+
+function gateEvaluationDigest(gate: unknown) {
+  return createHash("sha256").update(canonicalJson(gate)).digest("hex");
+}
+
+/**
+ * Fail closed on every causal relation that makes a persisted appraisal useful.
+ * Legacy state deliberately has no ledger and remains readable; a present
+ * ledger is never inferred, repaired, or silently downgraded.
+ */
+export function validateGateEvaluationLedger(definition: any, state: any) {
+  const raw = state.gate_evaluation_ledger;
+  if (raw === undefined) return undefined;
+  if (!isObject(raw) || raw.version !== "1") {
+    throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
+  }
+  const ledger = parseGateEvaluationLedger(raw);
+  if (!ledger) throw new Error("flow.gate_evaluation_ledger.invalid: ledger does not satisfy the v1 contract");
+  const records = new Map<string, GateEvaluationRecord>();
+  const lastByGate = new Map<string, GateEvaluationRecord>();
+  for (const record of ledger.records) {
+    const key = gateEvaluationRefKey(record.ref);
+    if (records.has(key)) throw new Error(`flow.gate_evaluation_ledger.duplicate_id: ${record.ref.evaluationId}`);
+    if (record.ref.runId !== state.run_id) throw new Error(`flow.gate_evaluation_ledger.run_mismatch: ${record.ref.evaluationId}`);
+    const gate = findGate(definition, record.ref.gateId);
+    if (!gate || record.gate.id !== record.ref.gateId) throw new Error(`flow.gate_evaluation_ledger.gate_mismatch: ${record.ref.evaluationId}`);
+    // Definitions can be amended, so the record carries the immutable gate
+    // digest. The current definition must still recognize the gate id, but a
+    // historical record is not rewritten to fit a later effective definition.
+    if (record.definition.id !== state.definition_id || !record.definition.digest || !record.gate.digest) {
+      throw new Error(`flow.gate_evaluation_ledger.definition_mismatch: ${record.ref.evaluationId}`);
+    }
+    const prior = lastByGate.get(record.ref.gateId);
+    if (record.previousRef) {
+      if (!prior || gateEvaluationRefKey(record.previousRef) !== gateEvaluationRefKey(prior.ref)) {
+        throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
+      }
+    } else if (prior) {
+      throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
+    }
+    records.set(key, record);
+    lastByGate.set(record.ref.gateId, record);
+  }
+  const referenced = new Set<string>();
+  for (const outcome of [...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])]) {
+    if (!outcome?.evaluation_ref) continue;
+    const ref = outcome.evaluation_ref as GateEvaluationRef;
+    const record = records.get(gateEvaluationRefKey(ref));
+    if (!record) throw new Error(`flow.gate_evaluation_ledger.outcome_ref.dangling: ${ref.evaluationId}`);
+    if (ref.runId !== state.run_id || ref.gateId !== outcome.gate_id || record.originalVerdict !== outcome.status) {
+      throw new Error(`flow.gate_evaluation_ledger.outcome.conflict: ${ref.evaluationId}`);
+    }
+    referenced.add(gateEvaluationRefKey(ref));
+  }
+  for (const [key, record] of records) {
+    if (!referenced.has(key)) throw new Error(`flow.gate_evaluation_ledger.record.orphaned: ${record.ref.evaluationId}`);
+  }
+  return ledger;
+}
+
+function assertGateEvaluationLedgerVersionSupported(state: any) {
+  const raw = state?.gate_evaluation_ledger;
+  if (raw !== undefined && (!isObject(raw) || raw.version !== "1")) {
+    throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
+  }
+}
+
+/** Mint exactly one receipt from the evaluator's already-selected evidence. */
+function mintGateEvaluation(run: any, outcome: GateOutcome, evaluatedAt: string, trigger: GateEvaluationRecord["trigger"]) {
+  if (!new Set(["pass", "block", "route-back", "wait"]).has(outcome.status)) {
+    throw new Error(`flow.gate_evaluation_ledger.verdict.invalid: ${outcome.status}`);
+  }
+  const ledger = run.state.gate_evaluation_ledger ?? { version: "1", records: [] };
+  if (ledger.version !== "1" || !Array.isArray(ledger.records)) throw new Error("flow.gate_evaluation_ledger.invalid: cannot append to an invalid ledger");
+  const gate = findGate(run.definition, outcome.gate_id);
+  if (!gate) throw new Error(`flow.gate_evaluation_ledger.gate_mismatch: ${outcome.gate_id}`);
+  const ref: GateEvaluationRef = { runId: run.state.run_id, gateId: outcome.gate_id, evaluationId: randomUUID() };
+  const previous = [...ledger.records].reverse().find((record: GateEvaluationRecord) => record.ref?.gateId === outcome.gate_id);
+  const evidence = new Map<string, any>((run.manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+  const selections: GateEvaluationRecord["selections"] = [];
+  const selected = new Set<string>();
+  for (const match of outcome.matched_expectations ?? []) {
+    const entry = evidence.get(match.evidence_id);
+    selections.push({ expectationId: match.expectation_id, evidenceId: match.evidence_id, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}) });
+    selected.add(match.evidence_id);
+  }
+  for (const evidenceId of outcome.evidence_refs ?? []) {
+    if (selected.has(evidenceId)) continue;
+    const entry = evidence.get(evidenceId);
+    selections.push({ evidenceId, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}) });
+  }
+  const identity = definitionIdentity(run.definition);
+  const record: GateEvaluationRecord = {
+    version: "1",
+    ref,
+    evaluatedAt,
+    trigger,
+    ...(previous ? { previousRef: previous.ref } : {}),
+    definition: identity,
+    gate: { id: gate.id, digest: gateEvaluationDigest(gate) },
+    originalVerdict: outcome.status as GateEvaluationRecord["originalVerdict"],
+    selections,
+    ...(typeof outcome.accepted_exception_id === "string" ? { exceptionId: outcome.accepted_exception_id } : {}),
+    ...((outcome.status === "route-back" || outcome.limit_exceeded) ? { routeBack: {
+      ...(typeof outcome.attempt === "number" ? { attempt: outcome.attempt } : {}),
+      ...(typeof outcome.max_attempts === "number" ? { maxAttempts: outcome.max_attempts } : {}),
+      ...(typeof outcome.retry_epoch === "number" ? { retryEpoch: outcome.retry_epoch } : {}),
+      ...(typeof outcome.route_reason === "string" ? { reason: outcome.route_reason } : {}),
+      ...(typeof outcome.selected_route === "string" ? { selectedRoute: outcome.selected_route } : {})
+    } } : {})
+  };
+  outcome.evaluation_ref = ref;
+  run.state.gate_evaluation_ledger = { version: "1", records: [...ledger.records, record] };
+  return record;
+}
+
 /**
  * Pure, complete validation of canonical Flow run state against its immutable
  * start definition. This performs the same schema, lifecycle, amendment-ledger,
@@ -444,12 +566,14 @@ export function validateRunStateConsistency(
   options: { runId?: string } = {}
 ) {
   const startDefinition = validateDefinition(startDefinitionValue);
+  assertGateEvaluationLedgerVersionSupported(stateValue);
   validateRunStateSchema(stateValue);
   const state = normalizeRunStateLifecycle(stateValue);
   const definition = resolveEffectiveDefinition(startDefinition, state);
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
   validateMultiCursorState(definition, state);
+  validateGateEvaluationLedger(definition, state);
   return { startDefinition, definition, state };
 }
 
@@ -639,10 +763,12 @@ export async function loadRun(runId, cwd = process.cwd()) {
 async function saveRun(run) {
   const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
   await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
+  assertGateEvaluationLedgerVersionSupported(run.state);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
   validateMultiCursorState(run.definition, run.state);
+  validateGateEvaluationLedger(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const [statePath, manifestPath, reportJsonPath, reportMarkdownPath] = await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
@@ -668,9 +794,11 @@ function serializeJson(value: unknown) {
 }
 
 async function saveLifecycleState(run) {
+  assertGateEvaluationLedgerVersionSupported(run.state);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateMultiCursorState(run.definition, run.state);
+  validateGateEvaluationLedger(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
@@ -1017,7 +1145,13 @@ export async function evaluateClaimedStep(runId: string, options: { claim_id: st
     }
     const terminal = outcomes.at(-1)!;
     if (terminal.status === "wait") return { ...run, claim, outcomes, settled: false };
-    for (const outcome of outcomes) mergeGateOutcome(run.state, outcome);
+    // A waiting claim returns above without a state publication, so it must
+    // never mint a reference. Every settled appraisal is minted immediately
+    // before the same state publication that commits its outcome.
+    for (const outcome of outcomes) {
+      mintGateEvaluation(run, outcome, evaluationTime.exact, "claimed");
+      mergeGateOutcome(run.state, outcome);
+    }
     cursor.active_claims.splice(index, 1);
     if (terminal.status === "pass" && outcomes.length === gates.length) {
       const next = getStep(run.definition, claim.step_id)?.next ?? null;
@@ -2490,7 +2624,6 @@ function evaluatePausedContinuation(run: Awaited<ReturnType<typeof loadRun>>, st
   const validation = validateEvaluationTransition(run.definition, state, manifest, outcome, run.config, request.now);
   if (validation.status === "invalid" || (outcome.status === "pass" && validation.valid !== true)) throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${validation.diagnostics[0]?.message ?? "transition validation failed"}`);
   outcome.transition_validation = validation;
-  applyEvaluation(run.definition, state, outcome, request.now);
   return outcome;
 }
 
@@ -2516,6 +2649,8 @@ export async function continuePausedGate(runId: string, options: FlowPausedGateC
     const outcome = evaluatePausedContinuation(run, nextState, evaluationManifest, request);
     if (outcome.status !== "pass" || !request.resumeOnPass) return { committed: false, outcomes: [outcome], run };
     const committedRun = { ...run, state: nextState, manifest };
+    mintGateEvaluation(committedRun, outcome, request.now, "paused");
+    applyEvaluation(committedRun.definition, nextState, outcome, request.now);
     validateRunStateConsistency(run.startDefinition, nextState, { runId });
     validateEvidenceManifestIdentity(manifest, run.startDefinition, nextState);
     await writeFile(prepared.storedPath, prepared.sourceBytes, { flag: "wx" });
@@ -2833,6 +2968,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
       run.state.current_step = gate.step;
       outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
     }
+    mintGateEvaluation(run, outcome, evaluationInstant, "freshness");
     applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
     const stillPassed = new Set(
       (run.state.gate_outcomes ?? [])
@@ -2859,6 +2995,7 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
         throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
       }
       outcome.transition_validation = transitionValidation;
+      mintGateEvaluation(run, outcome, evaluationInstant, "ordinary");
       applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
       outcomes.push(outcome);
       if (outcome.status !== "pass") break;

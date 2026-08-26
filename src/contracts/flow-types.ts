@@ -331,6 +331,8 @@ export interface FlowRunState extends MutableRecord {
   gate_outcomes: GateOutcome[];
   /** Append-only audit ledger; absent legacy runs are seeded from gate_outcomes on first mutation. */
   gate_outcome_history?: GateOutcome[];
+  /** Immutable appraisals minted only by committed evaluation writers. */
+  gate_evaluation_ledger?: import("./gate-evaluation-contract.js").GateEvaluationLedger;
   transitions: MutableRecord[];
   pending_gate_rechecks?: FlowFreshnessGateRecheck[];
   /** Absent only on legacy persisted runs before canonical load normalization. */
@@ -456,6 +458,8 @@ export interface GateOutcome extends MutableRecord {
   missing?: string[];
   optional_missing?: string[];
   matched_expectations?: Array<{ expectation_id: string; evidence_id: string }>;
+  /** Opaque reference to the immutable committed appraisal that produced this outcome. */
+  evaluation_ref?: import("./gate-evaluation-contract.js").GateEvaluationRef;
   /** Missing on legacy outcomes and transitions means retry epoch 1. */
   retry_epoch?: number;
 }

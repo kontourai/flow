@@ -97,6 +97,7 @@ test("AC1 AC3: resumed continuation preserves applyEvaluation's active status fo
     assert.equal(persisted.state.current_step, "publish");
     assert.equal(persisted.state.transitions.at(-1).status, "allowed");
     assert.equal(persisted.state.lifecycle.at(-1).to_status, priorStatus);
+    assert.equal(persisted.state.gate_evaluation_ledger.records.at(-1).trigger, "paused");
   }
 });
 

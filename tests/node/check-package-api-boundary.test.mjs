@@ -5,6 +5,7 @@ import { test } from "node:test";
 const publicEntrypoints = [
   ".",
   "./console-contract",
+  "./gate-evaluation-contract",
   // Dependency-free <flow-run-panel> custom element + its standalone theming
   // CSS, exported as stable subpaths so the console plane can import/register
   // the element next to <surface-trust-panel>. The element module is a browser
@@ -24,6 +25,10 @@ const publicImports = [
     // OWNED projection types + the ConsoleSink seam from here.
     specifier: "@kontourai/flow/console-contract",
     exportName: "createConsoleSink"
+  },
+  {
+    specifier: "@kontourai/flow/gate-evaluation-contract",
+    exportName: "parseGateEvaluationRef"
   }
 ];
 

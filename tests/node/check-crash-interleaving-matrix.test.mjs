@@ -212,13 +212,13 @@ async function assertDeterministicEvaluation(runId, cwd, label) {
     let outcomeA, outcomeB, errorA, errorB;
     try {
       const result = await evaluateRun(runId, { cwd, now: EVAL_NOW });
-      outcomeA = result.outcomes;
+      outcomeA = result.outcomes.map(({ evaluation_ref, ...outcome }) => outcome);
     } catch (error) {
       errorA = error;
     }
     try {
       const result = await evaluateRun(runId, { cwd: tempDir, now: EVAL_NOW });
-      outcomeB = result.outcomes;
+      outcomeB = result.outcomes.map(({ evaluation_ref, ...outcome }) => outcome);
     } catch (error) {
       errorB = error;
     }
