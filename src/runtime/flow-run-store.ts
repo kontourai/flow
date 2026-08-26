@@ -439,8 +439,16 @@ function gateEvaluationRefKey(ref: GateEvaluationRef) {
   return `${ref.runId}\u0000${ref.gateId}\u0000${ref.evaluationId}`;
 }
 
-function gateEvaluationDigest(gate: unknown) {
-  return createHash("sha256").update(canonicalJson(gate)).digest("hex");
+function gateEvaluationDigest(gate: unknown, config: MutableRecord) {
+  // The authored gate alone is insufficient: evaluateGate applies Flow-owned
+  // project overrides before selecting evidence. Persist the normalized
+  // effective expectation set, not the mutable config object or its metadata.
+  return createHash("sha256").update(canonicalJson({
+    gate,
+    expectations: expectationsForGate(gate, config),
+    trusted_producers: config.trusted_producers ?? {},
+    gate_override: config.gate_overrides?.[(gate as any).id] ?? null
+  })).digest("hex");
 }
 
 /**
@@ -448,9 +456,14 @@ function gateEvaluationDigest(gate: unknown) {
  * Legacy state deliberately has no ledger and remains readable; a present
  * ledger is never inferred, repaired, or silently downgraded.
  */
-export function validateGateEvaluationLedger(definition: any, state: any) {
+export function validateGateEvaluationLedger(definition: any, state: any, manifest?: any, historicalDefinitions: any[] = []) {
   const raw = state.gate_evaluation_ledger;
-  if (raw === undefined) return undefined;
+  if (raw === undefined) {
+    if ([...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])].some((outcome: any) => outcome?.evaluation_ref !== undefined)) {
+      throw new Error("flow.gate_evaluation_ledger.missing: outcomes reference a missing ledger");
+    }
+    return undefined;
+  }
   if (!isObject(raw) || raw.version !== "1") {
     throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
   }
@@ -469,6 +482,15 @@ export function validateGateEvaluationLedger(definition: any, state: any) {
     // historical record is not rewritten to fit a later effective definition.
     if (record.definition.id !== state.definition_id || !record.definition.digest || !record.gate.digest) {
       throw new Error(`flow.gate_evaluation_ledger.definition_mismatch: ${record.ref.evaluationId}`);
+    }
+    if (historicalDefinitions.length) {
+      const snapshot = historicalDefinitions.find((candidate) => {
+        const identity = definitionIdentity(candidate);
+        return identity.id === record.definition.id && identity.version === record.definition.version && identity.digest === record.definition.digest;
+      });
+      if (!snapshot || !findGate(snapshot, record.ref.gateId)) {
+        throw new Error(`flow.gate_evaluation_ledger.definition_mismatch: ${record.ref.evaluationId}`);
+      }
     }
     const prior = lastByGate.get(record.ref.gateId);
     if (record.previousRef) {
@@ -489,6 +511,47 @@ export function validateGateEvaluationLedger(definition: any, state: any) {
     if (!record) throw new Error(`flow.gate_evaluation_ledger.outcome_ref.dangling: ${ref.evaluationId}`);
     if (ref.runId !== state.run_id || ref.gateId !== outcome.gate_id || record.originalVerdict !== outcome.status) {
       throw new Error(`flow.gate_evaluation_ledger.outcome.conflict: ${ref.evaluationId}`);
+    }
+    const matched = new Set((outcome.matched_expectations ?? []).map((match: any) => `${match.expectation_id}\u0000${match.evidence_id}`));
+    const evidenceRefs = new Set(outcome.evidence_refs ?? []);
+    for (const selection of record.selections) {
+      if (!(selection.expectationId && matched.has(`${selection.expectationId}\u0000${selection.evidenceId}`)) && !evidenceRefs.has(selection.evidenceId)) {
+        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
+      }
+    }
+    for (const match of outcome.matched_expectations ?? []) {
+      if (!record.selections.some((selection) => selection.expectationId === match.expectation_id && selection.evidenceId === match.evidence_id)) {
+        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
+      }
+    }
+    for (const evidenceId of evidenceRefs) {
+      if (!record.selections.some((selection) => selection.evidenceId === evidenceId)) {
+        throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${ref.evaluationId}`);
+      }
+    }
+    if (record.exceptionId !== outcome.accepted_exception_id) {
+      throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
+    }
+    if (record.exceptionId && !(state.exceptions ?? []).some((exception: any) => exception.id === record.exceptionId && exception.gate_id === outcome.gate_id)) {
+      throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
+    }
+    const routed = outcome.status === "route-back" || outcome.limit_exceeded === true;
+    if (routed !== !!record.routeBack
+      || (routed && (record.routeBack?.attempt !== outcome.attempt
+        || record.routeBack?.maxAttempts !== outcome.max_attempts
+        || record.routeBack?.retryEpoch !== outcome.retry_epoch
+        || record.routeBack?.reason !== outcome.route_reason
+        || record.routeBack?.selectedRoute !== outcome.selected_route))) {
+      throw new Error(`flow.gate_evaluation_ledger.route_back.conflict: ${ref.evaluationId}`);
+    }
+    if (manifest) {
+      const entries = new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+      for (const selection of record.selections) {
+        const entry = entries.get(selection.evidenceId);
+        if (entry && selection.sha256 !== undefined && entry.sha256?.toLowerCase() !== selection.sha256) {
+          throw new Error(`flow.gate_evaluation_ledger.selection.digest_conflict: ${ref.evaluationId}`);
+        }
+      }
     }
     referenced.add(gateEvaluationRefKey(ref));
   }
@@ -537,7 +600,7 @@ function mintGateEvaluation(run: any, outcome: GateOutcome, evaluatedAt: string,
     trigger,
     ...(previous ? { previousRef: previous.ref } : {}),
     definition: identity,
-    gate: { id: gate.id, digest: gateEvaluationDigest(gate) },
+    gate: { id: gate.id, digest: gateEvaluationDigest(gate, run.config) },
     originalVerdict: outcome.status as GateEvaluationRecord["originalVerdict"],
     selections,
     ...(typeof outcome.accepted_exception_id === "string" ? { exceptionId: outcome.accepted_exception_id } : {}),
@@ -573,7 +636,7 @@ export function validateRunStateConsistency(
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
   validateMultiCursorState(definition, state);
-  validateGateEvaluationLedger(definition, state);
+  validateGateEvaluationLedger(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)]);
   return { startDefinition, definition, state };
 }
 
@@ -655,6 +718,7 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
     ? validateEvidenceManifestIdentity(await readJson(manifestPath), startDefinition, state)
     : initialEvidenceManifest(startDefinition, state);
   const run = { dir, definition, startDefinition, state, manifest, config, diagnostics: location.diagnostics };
+  validateGateEvaluationLedger(definition, state, manifest, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)]);
   resolvedRunContexts.set(run, { cwd: path.resolve(cwd) });
   return run;
 }
@@ -768,8 +832,8 @@ async function saveRun(run) {
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
   validateMultiCursorState(run.definition, run.state);
-  validateGateEvaluationLedger(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
+  validateGateEvaluationLedger(run.definition, run.state, run.manifest, [run.startDefinition ?? run.definition, ...(run.state.definition_amendments ?? []).map((event: any) => event.successor)]);
   const [statePath, manifestPath, reportJsonPath, reportMarkdownPath] = await Promise.all([
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE),
     assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH),
@@ -798,8 +862,8 @@ async function saveLifecycleState(run) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateMultiCursorState(run.definition, run.state);
-  validateGateEvaluationLedger(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
+  validateGateEvaluationLedger(run.definition, run.state, run.manifest, [run.startDefinition ?? run.definition, ...(run.state.definition_amendments ?? []).map((event: any) => event.successor)]);
   const statePath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_STATE_FILE);
   const reportJsonPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportJson);
   const reportMarkdownPath = await assertSafeRunArtifactWritePath(run.dir, FLOW_RUN_LAYOUT.reportMarkdown);

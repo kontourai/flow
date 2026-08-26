@@ -45,6 +45,11 @@ test("ordinary committed evaluations append opaque receipts without backfilling 
   assert.equal(persisted.state.gate_outcome_history[1].evaluation_ref.evaluationId, records[1].ref.evaluationId);
   assert.equal(parseGateEvaluationRecord(records[0])?.ref.evaluationId, records[0].ref.evaluationId);
   assert.equal(parseGateEvaluationRecord({ version: "1" }), undefined);
+  assert.equal(parseGateEvaluationRecord({ ...records[0], evaluatedAt: "not-a-date" }), undefined);
+  assert.equal(parseGateEvaluationRecord({ ...records[0], definition: { ...records[0].definition, rawBundle: {} } }), undefined);
+  const throwingRef = {};
+  Object.defineProperty(throwingRef, "runId", { enumerable: true, get() { throw new Error("must not execute"); } });
+  assert.equal(parseGateEvaluationRecord({ ...records[0], ref: throwingRef }), undefined);
   assert.deepEqual(parseGateEvaluationProjection({ ref: records[0].ref, evaluatedAt: records[0].evaluatedAt, originalVerdict: records[0].originalVerdict }), { ref: records[0].ref, evaluatedAt: records[0].evaluatedAt, originalVerdict: records[0].originalVerdict });
   assert.equal(parseGateEvaluationProjection({ ref: records[0].ref, evaluatedAt: records[0].evaluatedAt, originalVerdict: records[0].originalVerdict, rawBundle: {} }), undefined);
 });
@@ -59,16 +64,27 @@ test("ledger validation rejects dangling, mismatched, and broken causal referenc
   await assert.rejects(loadRun(run.runId, run.cwd), /gate_evaluation_ledger\.outcome_ref\.dangling/);
 });
 
-test("an unknown present ledger version is explicitly unsupported; legacy omission remains readable", async () => {
+test("an unknown present ledger version is explicitly unsupported; only genuine legacy omission remains readable", async () => {
   const run = await fixture("unsupported");
   const statePath = path.join(run.dir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
   delete state.gate_evaluation_ledger;
+  for (const outcome of [...state.gate_outcomes, ...state.gate_outcome_history]) delete outcome.evaluation_ref;
   await writeFile(statePath, `${JSON.stringify(state)}\n`);
   await assert.doesNotReject(loadRun(run.runId, run.cwd));
   state.gate_evaluation_ledger = { version: "99", records: [] };
   await writeFile(statePath, `${JSON.stringify(state)}\n`);
   await assert.rejects(loadRun(run.runId, run.cwd), /gate_evaluation_ledger\.unsupported/);
+});
+
+test("a removed ledger cannot orphan committed outcome references", async () => {
+  const run = await fixture("missing-ledger");
+  await evaluateRun(run.runId, { cwd: run.cwd, now: at });
+  const statePath = path.join(run.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  delete state.gate_evaluation_ledger;
+  await writeFile(statePath, `${JSON.stringify(state)}\n`);
+  await assert.rejects(loadRun(run.runId, run.cwd), /gate_evaluation_ledger\.missing/);
 });
 
 test("a failed publication before state.json leaves no phantom appraisal, while concurrent commits serialize a chain", async () => {

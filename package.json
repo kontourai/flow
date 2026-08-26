@@ -27,6 +27,11 @@
       "import": "./dist/contracts/gate-evaluation-contract.js",
       "default": "./dist/contracts/gate-evaluation-contract.js"
     },
+    "./gate-evaluation-reader": {
+      "types": "./dist/runtime/gate-evaluation-reader.d.ts",
+      "import": "./dist/runtime/gate-evaluation-reader.js",
+      "default": "./dist/runtime/gate-evaluation-reader.js"
+    },
     "./flow-run-panel/element": {
       "import": "./dist/console-ui/flow-run-panel.js",
       "default": "./dist/console-ui/flow-run-panel.js"

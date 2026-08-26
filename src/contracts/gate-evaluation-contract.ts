@@ -48,6 +48,33 @@ export interface GateEvaluationProjection {
   originalVerdict: "pass" | "block" | "route-back" | "wait";
 }
 
+export type GateEvaluationReadStatus = "found" | "missing" | "unavailable" | "unsupported";
+
+/** Strict allowlist returned by the native reader; no path, raw bundle, or authority payload crosses this seam. */
+export interface GateEvaluationReadProjection extends GateEvaluationProjection {
+  kind: "initial" | "recheck";
+  trigger: GateEvaluationRecord["trigger"];
+  previousRef?: GateEvaluationRef;
+  exceptionId?: string;
+  routeBack?: GateEvaluationRecord["routeBack"];
+  currentStanding: "current" | "superseded" | "invalidated";
+  currentRun: { status: string; currentStep: string };
+  currentPersistedGateRef?: GateEvaluationRef;
+  selectedEvidence: Array<{
+    evidenceId: string;
+    sha256?: string;
+    standing: "current" | "superseded" | "missing";
+    freshness: "recorded" | "stale" | "unavailable";
+    revocationCodes: string[];
+  }>;
+}
+
+export type GateEvaluationReadResult =
+  | { status: "found"; evaluation: GateEvaluationReadProjection }
+  | { status: "missing" }
+  | { status: "unavailable" }
+  | { status: "unsupported" };
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const digest = /^[a-f0-9]{64}$/;
 const verdicts = new Set(["pass", "block", "route-back", "wait"]);
@@ -61,37 +88,66 @@ function nonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function dateTime(value: unknown): value is string {
+  return nonEmpty(value) && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+}
+
+/** Snapshot only own data properties. Getters/Proxies are invalid, never invoked. */
+function closedObject(value: unknown, required: string[], optional: string[] = []): Record<string, unknown> | undefined {
+  try {
+    if (!object(value)) return undefined;
+    const keys = Object.keys(value);
+    const allowed = new Set([...required, ...optional]);
+    if (keys.length < required.length || keys.some((key) => !allowed.has(key)) || required.some((key) => !Object.hasOwn(value, key))) return undefined;
+    const snapshot: Record<string, unknown> = {};
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !Object.hasOwn(descriptor, "value")) return undefined;
+      snapshot[key] = descriptor.value;
+    }
+    return snapshot;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Total parser: invalid values return undefined and never throw. */
 export function parseGateEvaluationRef(value: unknown): GateEvaluationRef | undefined {
-  if (!object(value) || !nonEmpty(value.runId) || !nonEmpty(value.gateId) || !nonEmpty(value.evaluationId) || !uuid.test(value.evaluationId)) return undefined;
-  return { runId: value.runId, gateId: value.gateId, evaluationId: value.evaluationId };
+  const source = closedObject(value, ["runId", "gateId", "evaluationId"]);
+  if (!source || !nonEmpty(source.runId) || !nonEmpty(source.gateId) || !nonEmpty(source.evaluationId) || !uuid.test(source.evaluationId)) return undefined;
+  return { runId: source.runId, gateId: source.gateId, evaluationId: source.evaluationId };
 }
 
 /** Total parser: accepts only the closed v1 ledger shape needed by Phase 1. */
 export function parseGateEvaluationLedger(value: unknown): GateEvaluationLedger | undefined {
-  if (!object(value) || value.version !== GATE_EVALUATION_CONTRACT_VERSION || !Array.isArray(value.records)) return undefined;
+  const source = closedObject(value, ["version", "records"]);
+  if (!source || source.version !== GATE_EVALUATION_CONTRACT_VERSION || !Array.isArray(source.records)) return undefined;
   const records: GateEvaluationRecord[] = [];
-  for (const candidate of value.records) {
-    if (!object(candidate) || candidate.version !== "1" || !nonEmpty(candidate.evaluatedAt) || !nonEmpty(candidate.originalVerdict) || !verdicts.has(candidate.originalVerdict) || !nonEmpty(candidate.trigger) || !triggers.has(candidate.trigger)) return undefined;
+  for (const rawCandidate of source.records) {
+    const candidate = closedObject(rawCandidate, ["version", "ref", "evaluatedAt", "trigger", "definition", "gate", "originalVerdict", "selections"], ["previousRef", "exceptionId", "routeBack"]);
+    if (!candidate || candidate.version !== "1" || !dateTime(candidate.evaluatedAt) || !nonEmpty(candidate.originalVerdict) || !verdicts.has(candidate.originalVerdict) || !nonEmpty(candidate.trigger) || !triggers.has(candidate.trigger)) return undefined;
     const ref = parseGateEvaluationRef(candidate.ref);
     const previousRef = candidate.previousRef === undefined ? undefined : parseGateEvaluationRef(candidate.previousRef);
-    if (!ref || (candidate.previousRef !== undefined && !previousRef) || !object(candidate.definition) || !nonEmpty(candidate.definition.id) || !nonEmpty(candidate.definition.version) || !nonEmpty(candidate.definition.digest) || !digest.test(candidate.definition.digest) || !object(candidate.gate) || candidate.gate.id !== ref.gateId || !nonEmpty(candidate.gate.digest) || !digest.test(candidate.gate.digest) || !Array.isArray(candidate.selections)) return undefined;
+    const definition = closedObject(candidate.definition, ["id", "version", "digest"]);
+    const gate = closedObject(candidate.gate, ["id", "digest"]);
+    if (!ref || (candidate.previousRef !== undefined && !previousRef) || !definition || !nonEmpty(definition.id) || !nonEmpty(definition.version) || !nonEmpty(definition.digest) || !digest.test(definition.digest) || !gate || gate.id !== ref.gateId || !nonEmpty(gate.digest) || !digest.test(gate.digest) || !Array.isArray(candidate.selections)) return undefined;
     const selections: GateEvaluationEvidenceSelection[] = [];
-    for (const selection of candidate.selections) {
-      if (!object(selection) || !nonEmpty(selection.evidenceId) || (selection.expectationId !== undefined && !nonEmpty(selection.expectationId)) || (selection.sha256 !== undefined && (!nonEmpty(selection.sha256) || !digest.test(selection.sha256)))) return undefined;
-      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId as string, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}) });
+    for (const rawSelection of candidate.selections) {
+      const selection = closedObject(rawSelection, ["evidenceId"], ["expectationId", "sha256"]);
+      if (!selection || !nonEmpty(selection.evidenceId) || (selection.expectationId !== undefined && !nonEmpty(selection.expectationId)) || (selection.sha256 !== undefined && (!nonEmpty(selection.sha256) || !digest.test(selection.sha256)))) return undefined;
+      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}) });
     }
     let routeBack: GateEvaluationRecord["routeBack"] | undefined;
     if (candidate.routeBack !== undefined) {
-      if (!object(candidate.routeBack)) return undefined;
-      const route = candidate.routeBack;
+      const route = closedObject(candidate.routeBack, [], ["attempt", "maxAttempts", "retryEpoch", "reason", "selectedRoute"]);
+      if (!route) return undefined;
       for (const field of ["attempt", "maxAttempts", "retryEpoch"]) {
         if (route[field] !== undefined && (!Number.isInteger(route[field]) || (route[field] as number) < 1)) return undefined;
       }
       if ((route.reason !== undefined && !nonEmpty(route.reason)) || (route.selectedRoute !== undefined && !nonEmpty(route.selectedRoute))) return undefined;
       routeBack = { ...(typeof route.attempt === "number" ? { attempt: route.attempt } : {}), ...(typeof route.maxAttempts === "number" ? { maxAttempts: route.maxAttempts } : {}), ...(typeof route.retryEpoch === "number" ? { retryEpoch: route.retryEpoch } : {}), ...(typeof route.reason === "string" ? { reason: route.reason } : {}), ...(typeof route.selectedRoute === "string" ? { selectedRoute: route.selectedRoute } : {}) };
     }
-    records.push({ version: "1", ref, evaluatedAt: candidate.evaluatedAt as string, trigger: candidate.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), definition: candidate.definition as GateEvaluationRecord["definition"], gate: candidate.gate as GateEvaluationRecord["gate"], originalVerdict: candidate.originalVerdict as GateEvaluationRecord["originalVerdict"], selections, ...(nonEmpty(candidate.exceptionId) ? { exceptionId: candidate.exceptionId } : {}), ...(routeBack ? { routeBack } : {}) });
+    records.push({ version: "1", ref, evaluatedAt: candidate.evaluatedAt as string, trigger: candidate.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), definition: { id: definition.id as string, version: definition.version as string, digest: definition.digest as string }, gate: { id: gate.id as string, digest: gate.digest as string }, originalVerdict: candidate.originalVerdict as GateEvaluationRecord["originalVerdict"], selections, ...(nonEmpty(candidate.exceptionId) ? { exceptionId: candidate.exceptionId } : {}), ...(routeBack ? { routeBack } : {}) });
   }
   return { version: "1", records };
 }
@@ -103,9 +159,10 @@ export function parseGateEvaluationRecord(value: unknown): GateEvaluationRecord 
 
 /** Total parser for the minimal, strict public projection safe for browsers. */
 export function parseGateEvaluationProjection(value: unknown): GateEvaluationProjection | undefined {
-  if (!object(value) || Object.keys(value).length !== 3 || !nonEmpty(value.evaluatedAt) || !nonEmpty(value.originalVerdict) || !verdicts.has(value.originalVerdict)) return undefined;
-  const ref = parseGateEvaluationRef(value.ref);
-  return ref ? { ref, evaluatedAt: value.evaluatedAt, originalVerdict: value.originalVerdict as GateEvaluationProjection["originalVerdict"] } : undefined;
+  const source = closedObject(value, ["ref", "evaluatedAt", "originalVerdict"]);
+  if (!source || !dateTime(source.evaluatedAt) || !nonEmpty(source.originalVerdict) || !verdicts.has(source.originalVerdict)) return undefined;
+  const ref = parseGateEvaluationRef(source.ref);
+  return ref ? { ref, evaluatedAt: source.evaluatedAt, originalVerdict: source.originalVerdict as GateEvaluationProjection["originalVerdict"] } : undefined;
 }
 
 export const gateEvaluationRefSchema = {
