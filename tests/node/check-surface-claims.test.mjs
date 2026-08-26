@@ -230,7 +230,7 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
 
   const outcome = evaluateGate(bundleDef, state, passManifest, "verify-gate", defaultFlowConfig());
   assert.equal(outcome.status, "pass");
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.verified", claim_ids: ["claim.quality.tests.verify"] }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.verified", claim_ids: ["claim.quality.tests.verify"], authority_witness: null }]);
   assert.equal(outcome.diagnostics, undefined);
 });
 

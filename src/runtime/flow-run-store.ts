@@ -475,15 +475,32 @@ function sameGateEvaluationClaimIds(left: string[] | undefined, right: string[] 
     || (left !== undefined && right !== undefined && JSON.stringify(left) === JSON.stringify(right));
 }
 
+type CanonicalAuthorityWitness = { claimId: string; traceId: string; governingEventId: string };
+
+function canonicalGateEvaluationAuthorityWitness(value: unknown): CanonicalAuthorityWitness | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!isObject(value)) return false;
+  const candidate = value as MutableRecord;
+  if (typeof candidate.claimId !== "string" || !candidate.claimId || typeof candidate.traceId !== "string" || !candidate.traceId || typeof candidate.governingEventId !== "string" || !candidate.governingEventId || Object.keys(candidate).length !== 3) return false;
+  return { claimId: candidate.claimId as string, traceId: candidate.traceId as string, governingEventId: candidate.governingEventId as string };
+}
+
+function sameGateEvaluationAuthorityWitness(left: CanonicalAuthorityWitness | null | undefined, right: CanonicalAuthorityWitness | null | undefined) {
+  return left === right || (left !== undefined && right !== undefined && left !== null && right !== null
+    && left.claimId === right.claimId && left.traceId === right.traceId && left.governingEventId === right.governingEventId);
+}
+
 function validateGateEvaluationSelections(record: GateEvaluationRecord, outcome: any) {
-  const expected = new Map<string, string[] | undefined>();
+  const expected = new Map<string, { claimIds: string[] | undefined; authorityWitness: CanonicalAuthorityWitness | null | undefined }>();
   for (const match of outcome.matched_expectations ?? []) {
     const key = gateEvaluationSelectionKey(match?.expectation_id, match?.evidence_id);
     const claimIds = canonicalGateEvaluationClaimIds(match?.claim_ids);
-    if (typeof match?.expectation_id !== "string" || typeof match?.evidence_id !== "string" || claimIds === null || expected.has(key)) {
+    const authorityWitness = canonicalGateEvaluationAuthorityWitness(match?.authority_witness);
+    if (typeof match?.expectation_id !== "string" || typeof match?.evidence_id !== "string" || claimIds === null || authorityWitness === false || expected.has(key)) {
       throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
     }
-    expected.set(key, claimIds);
+    expected.set(key, { claimIds, authorityWitness });
   }
   const evidenceRefs: Set<string> = new Set<string>((outcome.evidence_refs ?? []).filter((id: unknown): id is string => typeof id === "string"));
   const selectedEvidence = new Set<string>();
@@ -493,14 +510,16 @@ function validateGateEvaluationSelections(record: GateEvaluationRecord, outcome:
     if (selection.expectationId === undefined) {
       // A bare evidence ref is not a claim witness. It cannot carry one, and
       // it must name evidence the historical outcome actually referenced.
-      if (selection.claimIds !== undefined || !evidenceRefs.has(selection.evidenceId)) {
+      if (selection.claimIds !== undefined || selection.authorityWitness !== undefined || !evidenceRefs.has(selection.evidenceId)) {
         throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
       }
       continue;
     }
     const key = gateEvaluationSelectionKey(selection.expectationId, selection.evidenceId);
     const claimIds = canonicalGateEvaluationClaimIds(selection.claimIds);
-    if (claimIds === null || actual.has(key) || !expected.has(key) || !sameGateEvaluationClaimIds(claimIds, expected.get(key))) {
+    const authorityWitness = canonicalGateEvaluationAuthorityWitness(selection.authorityWitness);
+    const historical = expected.get(key);
+    if (claimIds === null || authorityWitness === false || actual.has(key) || !historical || !sameGateEvaluationClaimIds(claimIds, historical.claimIds) || !sameGateEvaluationAuthorityWitness(authorityWitness, historical.authorityWitness)) {
       throw new Error(`flow.gate_evaluation_ledger.selection.conflict: ${record.ref.evaluationId}`);
     }
     actual.add(key);
@@ -641,7 +660,7 @@ function mintGateEvaluation(run: any, outcome: GateOutcome, evaluatedAt: string,
   const selected = new Set<string>();
   for (const match of outcome.matched_expectations ?? []) {
     const entry = evidence.get(match.evidence_id);
-    selections.push({ expectationId: match.expectation_id, evidenceId: match.evidence_id, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}), ...(Array.isArray(match.claim_ids) ? { claimIds: match.claim_ids.filter((id: unknown): id is string => typeof id === "string") } : {}) });
+    selections.push({ expectationId: match.expectation_id, evidenceId: match.evidence_id, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}), ...(Array.isArray(match.claim_ids) ? { claimIds: match.claim_ids.filter((id: unknown): id is string => typeof id === "string") } : {}), ...(Object.hasOwn(match, "authority_witness") ? { authorityWitness: match.authority_witness } : {}) });
     selected.add(match.evidence_id);
   }
   for (const evidenceId of outcome.evidence_refs ?? []) {
@@ -2367,6 +2386,14 @@ async function checkEvidenceIntegrity(entry: any, runDir: string): Promise<strin
     if (isMissingPathError(error)) return "missing";
     return "unreadable";
   }
+}
+
+/** Reader seam: prove a retained artifact still matches its committed receipt. */
+export async function verifyPinnedEvidenceDigest(runDir: string, entry: any, digest: string | undefined) {
+  return typeof digest === "string"
+    && typeof entry?.sha256 === "string"
+    && entry.sha256.toLowerCase() === digest
+    && await checkEvidenceIntegrity(entry, runDir) === "verified";
 }
 
 /**

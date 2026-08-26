@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import * as flow from "../../dist/index.js";
 import { evaluateGateWithReducerDependencies } from "../../dist/gates/flow-gates.js";
+import { readGateEvaluation } from "../../dist/runtime/gate-evaluation-reader.js";
 import { surfaceDerivationWithinBudget } from "../../dist/gates/surface-derivation-budget.js";
 import { execFile } from "./helpers/cli.mjs";
 import { surfaceClaimEvidenceFixture, surfaceClaimFixture } from "./helpers/fixtures.mjs";
@@ -79,7 +80,7 @@ test("trusted producer pins reject missing and untrusted attribution, but admit 
 
   const trusted = flow.evaluateGate(definition, structuredClone(state), await passingFixture("ci/trusted"), "verify-gate", config);
   assert.equal(trusted.status, "pass");
-  assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"] }]);
+  assert.deepEqual(trusted.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"], authority_witness: null }]);
   assert.equal(trusted.diagnostics, undefined);
 
   const mismatchedAssertion = await passingFixture("ci/trusted");
@@ -107,7 +108,8 @@ test("a trust.bundle receipt records only the authority decision witness", async
   assert.deepEqual(outcome.matched_expectations, [{
     expectation_id: "tests-passed",
     evidence_id: "ev.pass-trust-report",
-    claim_ids: ["claim.quality.tests.verify"]
+    claim_ids: ["claim.quality.tests.verify"],
+    authority_witness: { claimId: "claim.quality.tests.verify", traceId: "trace.quality", governingEventId: "event.quality.tests.verified" }
   }]);
 });
 
@@ -134,7 +136,8 @@ test("a future authority candidate before a valid one cannot widen the witness",
   assert.deepEqual(outcome.matched_expectations, [{
     expectation_id: "tests-passed",
     evidence_id: "ev.pass-trust-report",
-    claim_ids: ["claim.quality.tests.valid"]
+    claim_ids: ["claim.quality.tests.valid"],
+    authority_witness: { claimId: "claim.quality.tests.valid", traceId: "trace.valid", governingEventId: "event.quality.tests.valid" }
   }]);
 });
 
@@ -417,7 +420,7 @@ test("one evidence entry cannot splice separate snapshots across required expect
   );
   assert.equal(reads, 1, "the entry is snapshotted once for all expectations");
   assert.equal(outcome.status, "route-back");
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"] }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.pass-trust-report", claim_ids: ["claim.quality.tests.verify"], authority_witness: null }]);
   assert.deepEqual(outcome.missing, ["lint-passed"]);
 });
 
@@ -501,7 +504,7 @@ test("gate input snapshot keeps matched evidence identity and evidence refs cohe
   });
   const outcome = flow.evaluateGate(definition, state, manifest, "verify-gate", configFor(), "2026-06-16T00:00:00.000Z");
   assert.equal(idReads, 1);
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.first", claim_ids: ["claim.quality.tests.verify"] }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: "ev.first", claim_ids: ["claim.quality.tests.verify"], authority_witness: null }]);
   assert.deepEqual(outcome.evidence_refs, ["ev.first"]);
 });
 
@@ -1001,6 +1004,10 @@ test("canonical filesystem evaluation uses the same rich authority path and pinn
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-trusted-producer-canonical-"));
   const definition = await surfaceClaimFixture("flow-definition.json");
   const manifest = await authorityFixture();
+  manifest.evidence[0].bundle.authorityTrace[0].validUntil = "2026-06-16T00:00:01.000Z";
+  // This later active trace is intentionally not the trace selected at pass.
+  // A current reader must not let it heal the captured trace after expiry.
+  manifest.evidence[0].bundle.authorityTrace.push(authorityTrace({ id: "trace.later-active", validFrom: "2026-06-16T00:00:01.000Z" }));
   const definitionPath = path.join(cwd, "definition.json");
   const evidencePath = path.join(cwd, "quality-bundle.json");
   await mkdir(path.join(cwd, ".flow"), { recursive: true });
@@ -1015,7 +1022,15 @@ test("canonical filesystem evaluation uses the same rich authority path and pinn
   await flow.attachEvidence(started.runId, { cwd, gate: "verify-gate", file: evidencePath, kind: "trust.bundle", bundle: true });
   const evaluated = await flow.evaluateRun(started.runId, { cwd, gate: "verify-gate", now: "2026-06-16T00:00:00.000Z" });
   assert.equal(evaluated.outcomes.at(-1)?.status, "pass");
-  assert.equal((await flow.loadRun(started.runId, cwd)).state.gate_outcomes.at(-1)?.status, "pass");
+  const persisted = await flow.loadRun(started.runId, cwd);
+  assert.equal(persisted.state.gate_outcomes.at(-1)?.status, "pass");
+  const ref = persisted.state.gate_outcomes.at(-1)?.evaluation_ref;
+  const initial = await readGateEvaluation(ref, { cwd, now: "2026-06-16T00:00:00.000Z", authorize: () => true });
+  const expired = await readGateEvaluation(ref, { cwd, now: "2026-06-16T00:00:02.000Z", authorize: () => true });
+  assert.equal(initial.status, "found");
+  assert.equal(initial.evaluation.selectedEvidence[0].authority, "active");
+  assert.equal(expired.status, "found");
+  assert.equal(expired.evaluation.selectedEvidence[0].authority, "unavailable", "a later active unselected trace must not heal the captured trace");
   await assert.rejects(
     () => flow.evaluateRun(started.runId, { cwd, gate: "verify-gate", now: "06/16/2026" }),
     /flow\.evaluate\.now\.invalid: now must be an RFC3339 date-time/

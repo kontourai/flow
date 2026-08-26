@@ -1,7 +1,9 @@
 import { compareRfc3339Timestamps, parseRfc3339Timestamp } from "../shared/rfc3339.js";
+import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { parseGateEvaluationLedger, parseGateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 import type { GateEvaluationReadProjection, GateEvaluationReadResult, GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
-import { loadRun } from "./flow-run-store.js";
+import { loadRun, verifyPinnedEvidenceDigest } from "./flow-run-store.js";
+import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 export type { GateEvaluationReadProjection, GateEvaluationReadResult, GateEvaluationReadStatus } from "../contracts/gate-evaluation-contract.js";
 
@@ -11,39 +13,93 @@ export interface GateEvaluationReadAuthorization {
 
 export interface GateEvaluationReadOptions extends GateEvaluationReadAuthorization {
   cwd?: string;
+  now?: Date | string;
 }
 
 function sameRef(left: GateEvaluationRef | undefined, right: GateEvaluationRef) {
   return !!left && left.runId === right.runId && left.gateId === right.gateId && left.evaluationId === right.evaluationId;
 }
 
-function revocationCodes(entry: any, claimIds: readonly string[], at: string) {
-  const now = parseRfc3339Timestamp(at);
-  if (!now || !claimIds.length) return [];
-  const claims = new Set(claimIds);
-  const revoked = (entry?.bundle?.authorityTrace ?? []).some((trace: any) => {
-    const instant = parseRfc3339Timestamp(trace?.revokedAt);
-    return instant && Array.isArray(trace?.claimIds) && trace.claimIds.some((id: unknown) => claims.has(id as string)) && compareRfc3339Timestamps(instant, now) <= 0;
-  }) || (entry?.bundle?.events ?? []).some((event: any) => {
-    const instant = parseRfc3339Timestamp(event?.verifiedAt ?? event?.createdAt);
-    return instant && claims.has(event?.claimId) && (event?.status === "revoked" || event?.type === "invalidation") && compareRfc3339Timestamps(instant, now) <= 0;
-  });
-  return revoked ? ["revoked"] : [];
+type ReaderTime = { asOf: string; exact: NonNullable<ReturnType<typeof parseRfc3339Timestamp>>; surfaceNow: Date };
+
+function readerTime(value: unknown): ReaderTime | undefined {
+  if (value instanceof Date && !Number.isFinite(value.getTime())) return undefined;
+  const asOf = value === undefined ? new Date().toISOString() : value instanceof Date ? value.toISOString() : value;
+  const exact = parseRfc3339Timestamp(asOf);
+  const surfaceNow = typeof asOf === "string" ? new Date(asOf) : new Date(NaN);
+  return exact && typeof asOf === "string" && Number.isFinite(surfaceNow.getTime()) ? { asOf, exact, surfaceNow } : undefined;
 }
 
-function pinnedFreshness(entry: any, claimIds: readonly string[]): "recorded" | "stale" | "unavailable" {
-  if (!claimIds.length) return "unavailable";
-  const claims = new Map<string, any>((entry?.bundle_report?.claims ?? []).map((claim: any): [string, any] => [claim?.id, claim]));
-  const selected: any[] = claimIds.map((id) => claims.get(id));
-  if (selected.some((claim) => !claim)) return "unavailable";
-  return selected.some((claim) => claim.status === "stale" || claim.freshness?.stale === true) ? "stale" : "recorded";
+function canonicalTimestamp(timestamp: NonNullable<ReturnType<typeof parseRfc3339Timestamp>>) {
+  const whole = new Date(timestamp.epochSecond * 1000).toISOString().replace(/\.000Z$/, "");
+  return `${whole}${timestamp.fractionalSecond ? `.${timestamp.fractionalSecond}` : ""}Z`;
 }
 
-function projectRecord(record: GateEvaluationRecord, run: any): GateEvaluationReadProjection {
+/** Apply Flow's exact RFC3339 fence before calling Surface with only the one pinned trace. */
+function pinnedAuthorityState(bundle: any, witness: Exclude<GateEvaluationRecord["selections"][number]["authorityWitness"], null | undefined>, time: ReaderTime): "active" | "revoked" | "expired" | "not_yet_valid" | "unavailable" {
+  const trace = (bundle?.authorityTrace ?? []).find((candidate: any) => candidate?.id === witness.traceId);
+  if (!trace || typeof trace.actorRef !== "string") return "unavailable";
+  const observedAt = parseRfc3339Timestamp(trace.observedAt);
+  if (!observedAt || compareRfc3339Timestamps(observedAt, time.exact) > 0) return "not_yet_valid";
+  const normalized = structuredClone(trace);
+  for (const field of ["validFrom", "validUntil", "revokedAt"] as const) {
+    if (trace[field] === undefined) continue;
+    const parsed = parseRfc3339Timestamp(trace[field]);
+    if (!parsed) return "unavailable";
+    normalized[field] = canonicalTimestamp(parsed);
+    if (field === "validFrom" && compareRfc3339Timestamps(parsed, time.exact) > 0) return "not_yet_valid";
+    if (field === "validUntil" && compareRfc3339Timestamps(parsed, time.exact) < 0) return "expired";
+    if (field === "revokedAt" && compareRfc3339Timestamps(parsed, time.exact) <= 0) return "revoked";
+  }
+  delete normalized.validFrom;
+  delete normalized.validUntil;
+  delete normalized.revokedAt;
+  const active = checkAuthorityActive(trace.actorRef, [normalized], time.surfaceNow);
+  return active === "active" ? "active" : active === "revoked" ? "revoked" : active === "expired" ? "expired" : "unavailable";
+}
+
+async function retainedReport(runDir: string, entry: any, selection: GateEvaluationRecord["selections"][number], time: ReaderTime) {
+  if (!entry || !entry.bundle || !await verifyPinnedEvidenceDigest(runDir, entry, selection.sha256)) return undefined;
+  try {
+    const bundle = structuredClone(entry.bundle);
+    const validated = validateTrustBundle(surfaceTimestampValidationView(bundle));
+    return { bundle, report: buildTrustReport(validated, { now: time.surfaceNow }) };
+  } catch {
+    return undefined;
+  }
+}
+
+async function projectRecord(record: GateEvaluationRecord, run: any, time: ReaderTime): Promise<GateEvaluationReadProjection> {
   const current = (run.state.gate_outcomes ?? []).find((outcome: any) => outcome.gate_id === record.ref.gateId);
   const currentRef = current?.evaluation_ref;
   const currentStanding = !current ? "invalidated" : sameRef(currentRef, record.ref) ? "current" : "superseded";
   const evidence = new Map<string, any>((run.manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+  const reports = new Map<string, ReturnType<typeof retainedReport>>();
+  const selectedEvidence: GateEvaluationReadProjection["selectedEvidence"] = await Promise.all(record.selections.map(async (selection): Promise<GateEvaluationReadProjection["selectedEvidence"][number]> => {
+      const entry = evidence.get(selection.evidenceId);
+      let retained = reports.get(selection.evidenceId);
+      if (retained === undefined) {
+        retained = retainedReport(run.dir, entry, selection, time);
+        reports.set(selection.evidenceId, retained);
+      }
+      const retainedValue = await retained;
+      const claims = new Map<string, any>((retainedValue?.report?.claims ?? []).map((claim: any): [string, any] => [claim?.id, claim]));
+      const selectedClaims = (selection.claimIds ?? []).map((id) => claims.get(id));
+      const freshness = !retainedValue || !selection.claimIds?.length || selectedClaims.some((claim) => !claim)
+        ? "unavailable"
+        : selectedClaims.some((claim) => claim.status === "stale" || claim.freshness?.stale === true) ? "stale" : "recorded";
+      const authorityState = selection.authorityWitness === undefined ? "not-captured"
+        : selection.authorityWitness === null ? "not-used"
+          : !retainedValue ? "unavailable" : pinnedAuthorityState(retainedValue.bundle, selection.authorityWitness, time);
+      return {
+        evidenceId: selection.evidenceId,
+        ...(selection.sha256 ? { sha256: selection.sha256 } : {}),
+        standing: !entry ? "missing" : entry.superseded_by ? "superseded" : "current",
+        freshness,
+        revocationCodes: authorityState === "revoked" ? ["revoked"] : [],
+        authority: authorityState === "active" ? "active" : authorityState === "not-captured" ? "not-captured" : authorityState === "not-used" ? "not-used" : "unavailable"
+      };
+    }));
   return {
     ref: record.ref,
     evaluatedAt: record.evaluatedAt,
@@ -56,16 +112,10 @@ function projectRecord(record: GateEvaluationRecord, run: any): GateEvaluationRe
     currentStanding,
     currentRun: { status: run.state.status, currentStep: run.state.current_step },
     ...(parseGateEvaluationRef(currentRef) ? { currentPersistedGateRef: currentRef } : {}),
-    selectedEvidence: record.selections.map((selection) => {
-      const entry = evidence.get(selection.evidenceId);
-      return {
-        evidenceId: selection.evidenceId,
-        ...(selection.sha256 ? { sha256: selection.sha256 } : {}),
-        standing: !entry ? "missing" : entry.superseded_by ? "superseded" : "current",
-        freshness: !entry ? "unavailable" : pinnedFreshness(entry, selection.claimIds ?? []),
-        revocationCodes: !entry ? [] : revocationCodes(entry, selection.claimIds ?? [], record.evaluatedAt)
-      };
-    })
+    validityAsOf: time.asOf,
+    validityScope: "retained-immutable-bundle",
+    externalRevocation: "not-observed",
+    selectedEvidence
   };
 }
 
@@ -78,6 +128,8 @@ export async function readGateEvaluation(value: unknown, options: GateEvaluation
   const ref = parseGateEvaluationRef(value);
   if (!ref) throw new Error("flow.gate_evaluation_read.request.invalid");
   if (!options || typeof options.authorize !== "function") throw new Error("flow.gate_evaluation_read.authorization.required");
+  const time = readerTime(options.now);
+  if (!time) throw new Error("flow.gate_evaluation_read.now.invalid");
   let authorized = false;
   try {
     authorized = await options.authorize({ ref });
@@ -100,7 +152,7 @@ export async function readGateEvaluation(value: unknown, options: GateEvaluation
   if (!parsed) return { status: "unavailable" };
   const record = parsed.records.find((candidate) => sameRef(candidate.ref, ref));
   if (!record) return { status: "missing" };
-  const evaluation = projectRecord(record, run);
+  const evaluation = await projectRecord(record, run, time);
   // Authorization can be revoked while the fenced read is in progress. Check
   // again immediately before publishing the projection to the caller.
   try {

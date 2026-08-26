@@ -457,7 +457,7 @@ export interface GateOutcome extends MutableRecord {
   evidence_refs?: string[];
   missing?: string[];
   optional_missing?: string[];
-  matched_expectations?: Array<{ expectation_id: string; evidence_id: string; claim_ids?: string[] }>;
+  matched_expectations?: Array<{ expectation_id: string; evidence_id: string; claim_ids?: string[]; authority_witness?: import("./gate-evaluation-contract.js").GateEvaluationEvidenceSelection["authorityWitness"] }>;
   /** Opaque reference to the immutable committed appraisal that produced this outcome. */
   evaluation_ref?: import("./gate-evaluation-contract.js").GateEvaluationRef;
   /** Missing on legacy outcomes and transitions means retry epoch 1. */

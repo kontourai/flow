@@ -298,7 +298,7 @@
         "definition": { "$ref": "#/$defs/definition_identity" },
         "gate": { "type": "object", "required": ["id", "digest"], "additionalProperties": false, "properties": { "id": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
         "originalVerdict": { "enum": ["pass", "block", "route-back", "wait"] },
-        "selections": { "type": "array", "items": { "type": "object", "required": ["evidenceId"], "additionalProperties": false, "properties": { "expectationId": { "type": "string", "minLength": 1 }, "evidenceId": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "claimIds": { "type": "array", "items": { "type": "string", "minLength": 1 } } } } },
+        "selections": { "type": "array", "items": { "type": "object", "required": ["evidenceId"], "additionalProperties": false, "properties": { "expectationId": { "type": "string", "minLength": 1 }, "evidenceId": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "claimIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }, "authorityWitness": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["claimId", "traceId", "governingEventId"], "additionalProperties": false, "properties": { "claimId": { "type": "string", "minLength": 1 }, "traceId": { "type": "string", "minLength": 1 }, "governingEventId": { "type": "string", "minLength": 1 } } }] } } } },
         "exceptionId": { "type": "string", "minLength": 1 },
         "routeBack": { "type": "object", "additionalProperties": false, "properties": { "attempt": { "type": "integer", "minimum": 1 }, "maxAttempts": { "type": "integer", "minimum": 1 }, "retryEpoch": { "type": "integer", "minimum": 1 }, "reason": { "type": "string" }, "selectedRoute": { "type": "string" } } }
       }
@@ -323,7 +323,8 @@
             "properties": {
               "expectation_id": { "type": "string" },
               "evidence_id": { "type": "string" },
-              "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+              "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "authority_witness": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["claimId", "traceId", "governingEventId"], "additionalProperties": false, "properties": { "claimId": { "type": "string", "minLength": 1 }, "traceId": { "type": "string", "minLength": 1 }, "governingEventId": { "type": "string", "minLength": 1 } } }] }
             }
           }
         },

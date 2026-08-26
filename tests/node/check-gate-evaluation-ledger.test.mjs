@@ -49,6 +49,11 @@ test("ordinary committed evaluations append opaque receipts without backfilling 
   assert.equal(parseGateEvaluationRecord({ version: "1" }), undefined);
   assert.equal(parseGateEvaluationRecord({ ...records[0], evaluatedAt: "not-a-date" }), undefined);
   assert.equal(parseGateEvaluationRecord({ ...records[0], definition: { ...records[0].definition, rawBundle: {} } }), undefined);
+  const directWitness = { ...records[0], selections: [{ evidenceId: "ev.legacy-shape", authorityWitness: null }] };
+  assert.equal(parseGateEvaluationRecord(directWitness)?.selections[0].authorityWitness, null, "explicit no-trace-use stays distinct from legacy absence");
+  const legacyWitness = { ...records[0], selections: [{ evidenceId: "ev.legacy-shape" }] };
+  delete legacyWitness.selections[0].authorityWitness;
+  assert.equal(parseGateEvaluationRecord(legacyWitness)?.selections[0].authorityWitness, undefined, "legacy authority absence stays not-captured");
   const throwingRef = {};
   Object.defineProperty(throwingRef, "runId", { enumerable: true, get() { throw new Error("must not execute"); } });
   assert.equal(parseGateEvaluationRecord({ ...records[0], ref: throwingRef }), undefined);
@@ -76,6 +81,20 @@ test("ledger validation rejects a claim witness altered independently of immutab
   const statePath = path.join(run.dir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
   state.gate_evaluation_ledger.records[0].selections[0].claimIds = ["claim.invented"];
+  await writeFile(statePath, `${JSON.stringify(state)}\n`);
+  await assert.rejects(loadRun(run.runId, cwd), /gate_evaluation_ledger\.selection\.conflict/);
+});
+
+test("ledger validation rejects an authority witness altered independently of immutable outcome history", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-evaluation-ledger-authority-witness-"));
+  const definitionPath = path.join(repoRoot, "examples", "deploy-live-verify-flow.json");
+  const bundlePath = path.join(repoRoot, "examples", "scenarios", "deploy-live-verify", "static-build.bundle.json");
+  const run = await startRun(definitionPath, { cwd, runId: "altered-authority-witness" });
+  await attachEvidence(run.runId, { cwd, gate: "build-gate", file: bundlePath, kind: "trust.bundle" });
+  await evaluateRun(run.runId, { cwd, now: at });
+  const statePath = path.join(run.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.gate_evaluation_ledger.records[0].selections[0].authorityWitness = { claimId: "claim.quality.tests.release-worker", traceId: "trace.invented", governingEventId: "event.invented" };
   await writeFile(statePath, `${JSON.stringify(state)}\n`);
   await assert.rejects(loadRun(run.runId, cwd), /gate_evaluation_ledger\.selection\.conflict/);
 });

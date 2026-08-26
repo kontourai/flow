@@ -103,7 +103,8 @@
               "properties": {
                 "expectation_id": { "type": "string" },
                 "evidence_id": { "type": "string" },
-                "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "authority_witness": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["claimId", "traceId", "governingEventId"], "additionalProperties": false, "properties": { "claimId": { "type": "string", "minLength": 1 }, "traceId": { "type": "string", "minLength": 1 }, "governingEventId": { "type": "string", "minLength": 1 } } }] }
               }
             }
           }

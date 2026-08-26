@@ -1,4 +1,5 @@
 import type { GateOutcome, MutableRecord } from "../contracts/flow-types.js";
+import type { GateEvaluationEvidenceSelection } from "../contracts/gate-evaluation-contract.js";
 import { defaultFlowConfig } from "../config/flow-config.js";
 import { validateFlatFlowConfig } from "../config/flow-config-validator.js";
 import {
@@ -643,12 +644,14 @@ type EvidenceBundleDecision =
   | { matched: true; acceptedClaims: readonly any[] }
   | { matched: false; diagnostic: string };
 
+type AuthorityWitness = Exclude<GateEvaluationEvidenceSelection["authorityWitness"], null | undefined>;
+
 type EvidenceProducerDecision =
-  | { matched: true; witnessClaimIds: readonly [string] }
+  | { matched: true; witnessClaimIds: readonly [string]; authorityWitness: AuthorityWitness | null }
   | { matched: false; diagnostic: NonNullable<ProducerAuthorityResult> };
 
 type EvidenceMatchDecision =
-  | { matched: true; evidenceId: string; witnessClaimIds: readonly [string] }
+  | { matched: true; evidenceId: string; witnessClaimIds: readonly [string]; authorityWitness: AuthorityWitness | null }
   | { matched: false; bundleDiagnostic?: string; producerDiagnostic?: NonNullable<ProducerAuthorityResult> };
 
 function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): DerivedBundle {
@@ -912,7 +915,16 @@ function authorityTraceDiagnostic(policies: ReturnType<typeof trustedProducerPol
       delete normalizedTrace.validUntil;
       delete normalizedTrace.revokedAt;
       const active = dependencies.checkAuthorityActive(trace.actorRef, [normalizedTrace], evaluationNow.surfaceNow);
-      if (active === "active") return { matched: true, witnessClaimIds: [claim.id] };
+      if (active === "active") {
+        // These three ids are read exactly at the successful authorization
+        // branch. They are the immutable proof of the authority path, never a
+        // later re-selection from the bundle.
+        if (typeof claim.id === "string" && typeof trace?.id === "string" && typeof governing.event?.id === "string") {
+          return { matched: true, witnessClaimIds: [claim.id], authorityWitness: { claimId: claim.id, traceId: trace.id, governingEventId: governing.event.id } };
+        }
+        failures.add("scope_mismatch");
+        continue;
+      }
       failures.add(active === "expired" ? "expired" : active === "revoked" ? "revoked" : "no_trace");
     }
   }
@@ -929,11 +941,11 @@ function authorityTraceDiagnostic(policies: ReturnType<typeof trustedProducerPol
  */
 function evidenceProducerDiagnostic(entry: any, expectation: any, config: MutableRecord, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derived: DerivedBundle, candidates: readonly any[]): EvidenceProducerDecision {
   const policies = trustedProducerPolicy(expectation, config);
-  if (!policies.length) return { matched: true, witnessClaimIds: [candidates[0].id] };
+  if (!policies.length) return { matched: true, witnessClaimIds: [candidates[0].id], authorityWitness: null };
   if (policies.some((policy) => policy.denyAll)) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "deny_all" } } };
   const producerId = derived.bundle?.producerId;
   if (entry.producer !== undefined && entry.producer !== producerId) return { matched: false, diagnostic: { reason: "untrusted_producer", authority: { code: "producer_mismatch" } } };
-  if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return { matched: true, witnessClaimIds: [candidates[0].id] };
+  if (typeof producerId === "string" && policies.every((policy) => policy.producers.has(producerId))) return { matched: true, witnessClaimIds: [candidates[0].id], authorityWitness: null };
   return authorityTraceDiagnostic(policies, evaluationNow, dependencies, derived, candidates);
 }
 
@@ -947,7 +959,7 @@ function evidenceMatchDecision(entry: any, expectation: any, config: MutableReco
   if (bundle.matched === false) return { matched: false, bundleDiagnostic: bundle.diagnostic };
   const producer = evidenceProducerDiagnostic(entry, expectation, config, evaluationNow, dependencies, derived, bundle.acceptedClaims);
   if (producer.matched === false) return { matched: false, producerDiagnostic: producer.diagnostic };
-  return { matched: true, evidenceId: entry.id, witnessClaimIds: producer.witnessClaimIds };
+  return { matched: true, evidenceId: entry.id, witnessClaimIds: producer.witnessClaimIds, authorityWitness: producer.authorityWitness };
 }
 
 export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: GateEvaluationInput) {
@@ -1064,7 +1076,7 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
   }
 
   const expectations = expectationsForGate(gate, config);
-  const matched: Array<{ expectation_id: string; evidence_id: string; claim_ids?: string[] }> = [];
+  const matched: Array<{ expectation_id: string; evidence_id: string; claim_ids?: string[]; authority_witness?: AuthorityWitness | null }> = [];
   const missingRequired: string[] = [];
   const missingOptional: string[] = [];
   const claimDiagnostics: MutableRecord[] = [];
@@ -1083,7 +1095,7 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
       }
     }
     if (match?.matched) {
-      matched.push({ expectation_id: expectation.id, evidence_id: match.evidenceId, claim_ids: [...match.witnessClaimIds] });
+      matched.push({ expectation_id: expectation.id, evidence_id: match.evidenceId, claim_ids: [...match.witnessClaimIds], authority_witness: match.authorityWitness });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
       claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor));

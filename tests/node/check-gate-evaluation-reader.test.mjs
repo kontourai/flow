@@ -38,8 +38,9 @@ test("authorized exact reader returns only persisted allowlisted data without mu
   assert.equal(result.status, "found");
   assert.deepEqual(result.evaluation.ref, fixtureData.ref);
   assert.equal(result.evaluation.currentStanding, "current");
-  assert.deepEqual(Object.keys(result.evaluation).sort(), ["currentPersistedGateRef", "currentRun", "currentStanding", "evaluatedAt", "kind", "originalVerdict", "ref", "selectedEvidence", "trigger"]);
-  assert.doesNotMatch(JSON.stringify(result), /stored_path|original_path|bundle|authority/i);
+  assert.deepEqual(Object.keys(result.evaluation).sort(), ["currentPersistedGateRef", "currentRun", "currentStanding", "evaluatedAt", "externalRevocation", "kind", "originalVerdict", "ref", "selectedEvidence", "trigger", "validityAsOf", "validityScope"]);
+  assert.doesNotMatch(JSON.stringify(result), /stored_path|original_path|traceId|governingEventId/i);
+  await assert.rejects(readGateEvaluation(fixtureData.ref, { cwd: fixtureData.cwd, now: "not-a-time", authorize: () => true }), /flow\.gate_evaluation_read\.now\.invalid/);
 });
 
 test("a passing trust.bundle evaluation round-trips its claimed ID through the immutable reader", async () => {
@@ -64,16 +65,17 @@ test("a passing trust.bundle evaluation round-trips its claimed ID through the i
   const record = restarted.state.gate_evaluation_ledger.records.find((candidate) => candidate.ref.evaluationId === outcome.evaluation_ref.evaluationId);
   const expectedClaimIds = ["claim.quality.tests.release-worker"];
 
-  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: attached.id, claim_ids: expectedClaimIds }]);
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: attached.id, claim_ids: expectedClaimIds, authority_witness: null }]);
   assert.deepEqual(history.matched_expectations, outcome.matched_expectations);
   assert.deepEqual(history.evaluation_ref, outcome.evaluation_ref);
   assert.ok(record, "the current outcome must reference its exact committed evaluation record");
   assert.deepEqual(record.ref, outcome.evaluation_ref);
-  assert.deepEqual(record.selections, [{ expectationId: "tests-passed", evidenceId: attached.id, sha256: attached.sha256, claimIds: expectedClaimIds }]);
+  assert.deepEqual(record.selections, [{ expectationId: "tests-passed", evidenceId: attached.id, sha256: attached.sha256, claimIds: expectedClaimIds, authorityWitness: null }]);
 
   const result = await readGateEvaluation(record.ref, { cwd, authorize: () => true });
   assert.equal(result.status, "found");
   assert.deepEqual(result.evaluation.ref, record.ref);
+  assert.equal(result.evaluation.selectedEvidence[0].authority, "not-used");
   assert.deepEqual(parseGateEvaluationReadResult(result), result);
 
   const [readResultSchema, refSchema] = await Promise.all([
@@ -85,6 +87,35 @@ test("a passing trust.bundle evaluation round-trips its claimed ID through the i
   ajv.addSchema(refSchema);
   const validate = ajv.compile(readResultSchema);
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
+});
+
+test("reader re-derives only the retained selected bundle at its explicit as-of time", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-evaluation-reader-as-of-"));
+  const definitionPath = path.join(repoRoot, "examples", "deploy-live-verify-flow.json");
+  const sourceBundle = JSON.parse(await readFile(path.join(repoRoot, "examples", "scenarios", "deploy-live-verify", "static-build.bundle.json"), "utf8"));
+  sourceBundle.claims[0].expiresAt = "2026-08-25T12:05:00.000Z";
+  const bundlePath = path.join(cwd, "expiring.bundle.json");
+  await writeFile(bundlePath, `${JSON.stringify(sourceBundle)}\n`);
+  const started = await startRun(definitionPath, { cwd, runId: "reader-as-of" });
+  await attachEvidence(started.runId, { cwd, gate: "build-gate", file: bundlePath, kind: "trust.bundle" });
+  await evaluateRun(started.runId, { cwd, now: "2026-08-25T12:01:00.000Z" });
+  const before = await loadRun(started.runId, cwd);
+  const outcome = before.state.gate_outcomes.find((candidate) => candidate.gate_id === "build-gate");
+  const statePath = path.join(before.dir, "state.json");
+  const manifestPath = path.join(before.dir, "evidence", "manifest.json");
+  const bytes = await Promise.all([readFile(statePath), readFile(manifestPath)]);
+
+  const fresh = await readGateEvaluation(outcome.evaluation_ref, { cwd, now: "2026-08-25T12:04:00.000Z", authorize: () => true });
+  const stale = await readGateEvaluation(outcome.evaluation_ref, { cwd, now: "2026-08-25T12:06:00.000Z", authorize: () => true });
+  assert.equal(fresh.status, "found");
+  assert.equal(stale.status, "found");
+  assert.equal(fresh.evaluation.selectedEvidence[0].freshness, "recorded");
+  assert.equal(stale.evaluation.selectedEvidence[0].freshness, "stale");
+  assert.equal(stale.evaluation.validityAsOf, "2026-08-25T12:06:00.000Z");
+  assert.equal(stale.evaluation.validityScope, "retained-immutable-bundle");
+  assert.equal(stale.evaluation.externalRevocation, "not-observed");
+  assert.equal(stale.evaluation.originalVerdict, "pass");
+  assert.deepEqual(await Promise.all([readFile(statePath), readFile(manifestPath)]), bytes, "reader must not write or re-evaluate the run");
 });
 
 test("denial and unknown IDs are opaque missing before a run load", async () => {
