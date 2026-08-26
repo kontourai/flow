@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { FLOW_RUN_RECOVERY_FENCE_PROTOCOL, attachEvidence, evaluateRun, loadRun, startRun, writeRunRecoveryFence } from "../../dist/index.js";
 import { readGateEvaluation } from "../../dist/runtime/gate-evaluation-reader.js";
 import { parseGateEvaluationReadResult } from "../../dist/contracts/gate-evaluation-contract.js";
+import { json } from "./helpers/fixtures.mjs";
 
 const at = "2026-08-25T12:01:00.000Z";
+const require = createRequire(import.meta.url);
+const Ajv = require("ajv/dist/2020");
+const addFormats = require("ajv-formats");
+const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 async function fixture(name) {
   const cwd = await mkdtemp(path.join(tmpdir(), `flow-evaluation-reader-${name}-`));
@@ -33,6 +40,51 @@ test("authorized exact reader returns only persisted allowlisted data without mu
   assert.equal(result.evaluation.currentStanding, "current");
   assert.deepEqual(Object.keys(result.evaluation).sort(), ["currentPersistedGateRef", "currentRun", "currentStanding", "evaluatedAt", "kind", "originalVerdict", "ref", "selectedEvidence", "trigger"]);
   assert.doesNotMatch(JSON.stringify(result), /stored_path|original_path|bundle|authority/i);
+});
+
+test("a passing trust.bundle evaluation round-trips its claimed ID through the immutable reader", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-evaluation-reader-pass-roundtrip-"));
+  const definitionPath = path.join(repoRoot, "examples", "deploy-live-verify-flow.json");
+  const bundlePath = path.join(repoRoot, "examples", "scenarios", "deploy-live-verify", "static-build.bundle.json");
+  const started = await startRun(definitionPath, { cwd, runId: "reader-pass-roundtrip" });
+  const attached = await attachEvidence(started.runId, {
+    cwd,
+    gate: "build-gate",
+    file: bundlePath,
+    kind: "trust.bundle"
+  });
+  const evaluated = await evaluateRun(started.runId, { cwd, now: at });
+  assert.equal(evaluated.outcomes[0].status, "pass");
+
+  // A fresh load is the persistence/restart boundary; all following assertions
+  // use only the committed run artifacts and the public reader contract.
+  const restarted = await loadRun(started.runId, cwd);
+  const outcome = restarted.state.gate_outcomes.find((candidate) => candidate.gate_id === "build-gate");
+  const history = restarted.state.gate_outcome_history.find((candidate) => candidate.gate_id === "build-gate");
+  const record = restarted.state.gate_evaluation_ledger.records.find((candidate) => candidate.ref.evaluationId === outcome.evaluation_ref.evaluationId);
+  const expectedClaimIds = ["claim.quality.tests.release-worker"];
+
+  assert.deepEqual(outcome.matched_expectations, [{ expectation_id: "tests-passed", evidence_id: attached.id, claim_ids: expectedClaimIds }]);
+  assert.deepEqual(history.matched_expectations, outcome.matched_expectations);
+  assert.deepEqual(history.evaluation_ref, outcome.evaluation_ref);
+  assert.ok(record, "the current outcome must reference its exact committed evaluation record");
+  assert.deepEqual(record.ref, outcome.evaluation_ref);
+  assert.deepEqual(record.selections, [{ expectationId: "tests-passed", evidenceId: attached.id, sha256: attached.sha256, claimIds: expectedClaimIds }]);
+
+  const result = await readGateEvaluation(record.ref, { cwd, authorize: () => true });
+  assert.equal(result.status, "found");
+  assert.deepEqual(result.evaluation.ref, record.ref);
+  assert.deepEqual(parseGateEvaluationReadResult(result), result);
+
+  const [readResultSchema, refSchema] = await Promise.all([
+    json("schemas/gate-evaluation-read-result.schema.json"),
+    json("schemas/gate-evaluation-ref.schema.json")
+  ]);
+  const ajv = new Ajv({ strict: false, allErrors: true });
+  addFormats(ajv);
+  ajv.addSchema(refSchema);
+  const validate = ajv.compile(readResultSchema);
+  assert.equal(validate(result), true, JSON.stringify(validate.errors));
 });
 
 test("denial and unknown IDs are opaque missing before a run load", async () => {
