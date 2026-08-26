@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/flow-console-gate-projection.schema.json",
+  "title": "Flow Console Gate Projection",
+  "description": "Public, read-only Flow console gate projection. evaluation_ref is present only for a persisted current gate outcome.",
+  "type": "object",
+  "required": ["id", "step_id", "status", "summary", "is_open", "expectations", "evidence_refs", "evidence", "missing", "optional_missing", "matched_expectations", "raw"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "step_id": { "type": "string", "minLength": 1 },
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "is_open": { "type": "boolean" },
+    "expectations": { "type": "array" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array" },
+    "missing": { "type": "array", "items": { "type": "string" } },
+    "optional_missing": { "type": "array", "items": { "type": "string" } },
+    "matched_expectations": { "type": "array" },
+    "evaluation_ref": { "$ref": "#/$defs/gate_evaluation_ref" },
+    "accepted_exception_id": { "type": "string" },
+    "route_back_to": { "type": "string" },
+    "selected_route": { "type": "string" },
+    "recovery_step": { "type": "string" },
+    "route_reason": { "type": "string" },
+    "reason": { "type": "string" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "retry_epoch": { "type": "integer", "minimum": 1 },
+    "max_attempts": { "type": "integer", "minimum": 1 },
+    "limit_exceeded": { "type": "boolean" },
+    "expectation_ids": { "type": "array", "items": { "type": "string" } },
+    "classifier": { "type": "object" },
+    "diagnostics": { "type": "object" },
+    "analytics": { "type": "object" },
+    "analytics_loop_key": { "type": "string" },
+    "transition_validation": { "type": "object" },
+    "raw": { "type": "object" }
+  },
+  "$defs": {
+    "gate_evaluation_ref": {
+      "type": "object",
+      "required": ["runId", "gateId", "evaluationId"],
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "gateId": { "type": "string", "minLength": 1 },
+        "evaluationId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+      }
+    }
+  }
+}

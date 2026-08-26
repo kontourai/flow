@@ -26,6 +26,11 @@ const addFormats = require("ajv-formats");
 test("schemas describe the runtime contract", async () => {
   const definitionSchema = await json("schemas/flow-definition.schema.json");
   const runSchema = await json("schemas/flow-run.schema.json");
+  const evaluationRefSchema = await json("schemas/gate-evaluation-ref.schema.json");
+  const evaluationLedgerSchema = await json("schemas/gate-evaluation-ledger.schema.json");
+  const evaluationRecordSchema = await json("schemas/gate-evaluation-record.schema.json");
+  const evaluationProjectionSchema = await json("schemas/gate-evaluation-projection.schema.json");
+  const evaluationReadResultSchema = await json("schemas/gate-evaluation-read-result.schema.json");
   const activeStepClaimSchema = await json("schemas/flow-active-step-claim.schema.json");
   const amendmentRequestSchema = await json("schemas/flow-definition-amendment-request.schema.json");
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
@@ -61,6 +66,15 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(definitionSchema.$defs.execution.properties.claim_contract_version.const, "1");
   assert.equal(definitionSchema.$defs.gates.additionalProperties.$ref, "#/$defs/gate");
   assert.equal(runSchema.title, "Flow Run State");
+  assert.equal(evaluationRefSchema.title, "Flow Gate Evaluation Reference");
+  assert.deepEqual(evaluationRefSchema.required, ["runId", "gateId", "evaluationId"]);
+  assert.equal(evaluationLedgerSchema.properties.version.const, "1");
+  assert.equal(evaluationRecordSchema.$ref, "gate-evaluation-ledger.schema.json#/$defs/record");
+  assert.equal(evaluationProjectionSchema.properties.ref.$ref, "gate-evaluation-ref.schema.json");
+  assert.equal(evaluationReadResultSchema.title, "Flow Gate Evaluation Read Result");
+  assert.equal(evaluationLedgerSchema.properties.records.items.$ref, "#/$defs/record");
+  assert.equal(runSchema.properties.gate_evaluation_ledger.properties.version.const, "1");
+  assert.equal(runSchema.$defs.gate_outcome.properties.evaluation_ref.$ref, "#/$defs/gate_evaluation_ref");
   assert.match(runSchema.description, /state\.json/);
   assert.match(runSchema.description, /not a Resource Contract envelope/);
   assert.equal(runSchema.properties.schema_version.const, FLOW_SCHEMA_VERSION);
@@ -237,6 +251,7 @@ test("runtime-generated run and report satisfy required schema fields", async ()
   assert.equal(state.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(state.definition_id, definition.id);
   assert.deepEqual(state.lifecycle, []);
+  assert.deepEqual(state.gate_evaluation_ledger, { version: "1", records: [] });
   assert.equal(report.schema_version, FLOW_SCHEMA_VERSION);
   assert.equal(report.definition_id, definition.id);
 });

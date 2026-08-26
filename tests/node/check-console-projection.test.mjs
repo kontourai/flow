@@ -13,9 +13,14 @@ import {
   FLOW_RUN_LAYOUT,
   FLOW_RUN_REPORT_JSON_FILE,
   FLOW_RUN_REPORT_MARKDOWN_FILE,
-  FLOW_RUN_STATE_FILE
+  FLOW_RUN_STATE_FILE,
+  attachEvidence,
+  evaluateRun,
+  loadRun,
+  startRun
 } from "../../dist/index.js";
 import * as implementationProjection from "../../dist/console/console-projection.js";
+import { readGateEvaluation } from "../../dist/runtime/gate-evaluation-reader.js";
 
 const fixtureSourceDir = fileURLToPath(new URL("../../examples/scenarios/console-projection/runtime-fixture/console-projection-fixture", import.meta.url));
 const fixtureCwd = await mkdtemp(path.join(tmpdir(), "flow-console-projection-fixture-"));
@@ -226,6 +231,41 @@ test("AC6 projection is deterministic for repeat local-file reads and direct par
   const report = await readFixtureJson(FLOW_RUN_REPORT_JSON_FILE);
   const fromParts = projectFlowRun({ dir: fixtureRunDir, definition, state, manifest, report });
   assert.deepEqual(fromParts, first);
+});
+
+test("console exposes only the persisted current gate evaluation reference", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-console-evaluation-ref-"));
+  // Use the published single-step build fixture so this is a real committed
+  // receipt, not a manually assembled state projection.
+  const deployDefinition = fileURLToPath(new URL("../../examples/deploy-live-verify-flow.json", import.meta.url));
+  const bundlePath = fileURLToPath(new URL("../../examples/scenarios/deploy-live-verify/static-build.bundle.json", import.meta.url));
+  const started = await startRun(deployDefinition, { cwd, runId: "console-evaluation-ref" });
+  await attachEvidence(started.runId, { cwd, gate: "build-gate", file: bundlePath, kind: "trust.bundle" });
+  await evaluateRun(started.runId, { cwd, now: "2026-08-25T12:01:00.000Z" });
+  const persisted = await loadRun(started.runId, cwd);
+  const canonical = persisted.state.gate_outcomes.find((outcome) => outcome.gate_id === "build-gate").evaluation_ref;
+  const projection = await projectFlowRunFromFiles(started.runId, { cwd });
+  const gate = byId(projection.gates, "build-gate");
+  assert.deepEqual(gate.evaluation_ref, canonical);
+  assert.equal(gate.evaluation_ref.runId, started.runId);
+  assert.equal(gate.evaluation_ref.gateId, "build-gate");
+  assert.equal((await readGateEvaluation(gate.evaluation_ref, { cwd, authorize: () => true })).status, "found");
+
+  const computedOnly = structuredClone(persisted.state);
+  computedOnly.gate_outcomes = [];
+  computedOnly.gate_outcome_history = [];
+  const preview = projectFlowRun({ dir: persisted.dir, definition: persisted.definition, state: computedOnly, manifest: persisted.manifest, config: persisted.config });
+  assert.equal(byId(preview.gates, "build-gate").status, "pass", "display fallback still computes the ordinary gate status");
+  assert.equal(Object.hasOwn(byId(preview.gates, "build-gate"), "evaluation_ref"), false, "computed fallback must never mint a receipt reference");
+
+  const legacy = structuredClone(persisted.state);
+  delete legacy.gate_outcomes[0].evaluation_ref;
+  const legacyProjection = projectFlowRun({ dir: persisted.dir, definition: persisted.definition, state: legacy, manifest: persisted.manifest, config: persisted.config });
+  assert.equal(Object.hasOwn(byId(legacyProjection.gates, "build-gate"), "evaluation_ref"), false, "a legacy persisted outcome remains receipt-less");
+
+  const schema = await readRepoJson("schemas/flow-console-gate-projection.schema.json");
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.evaluation_ref.$ref, "#/$defs/gate_evaluation_ref");
 });
 
 test("lifecycle projection is first-class, deterministic, and never a Step transition or route-back", async () => {

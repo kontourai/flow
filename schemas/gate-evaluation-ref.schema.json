@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontourai.io/schemas/gate-evaluation-ref.schema.json",
+  "title": "Flow Gate Evaluation Reference",
+  "type": "object",
+  "required": ["runId", "gateId", "evaluationId"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "gateId": { "type": "string", "minLength": 1 },
+    "evaluationId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+  }
+}

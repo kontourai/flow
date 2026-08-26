@@ -84,6 +84,13 @@
       "description": "Append-only gate-decision audit ledger. Legacy runs may omit it until their first mutation.",
       "items": { "$ref": "#/$defs/gate_outcome" }
     },
+    "gate_evaluation_ledger": {
+      "type": "object",
+      "description": "Append-only immutable committed gate appraisals. Legacy state may omit it.",
+      "required": ["version", "records"],
+      "additionalProperties": false,
+      "properties": { "version": { "const": "1" }, "records": { "type": "array", "items": { "$ref": "#/$defs/gate_evaluation_record" } } }
+    },
     "transitions": {
       "type": "array",
       "description": "Persisted transition history used for continuation, reporting, and route-back attempt counting.",
@@ -268,6 +275,34 @@
       "type": "string",
       "enum": ["active", "blocked", "needs_decision", "paused", "canceled", "completed", "failed", "accepted_by_exception"]
     },
+    "gate_evaluation_ref": {
+      "type": "object",
+      "required": ["runId", "gateId", "evaluationId"],
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "gateId": { "type": "string", "minLength": 1 },
+        "evaluationId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+      }
+    },
+    "gate_evaluation_record": {
+      "type": "object",
+      "required": ["version", "ref", "evaluatedAt", "trigger", "definition", "gate", "originalVerdict", "selections"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "const": "1" },
+        "ref": { "$ref": "#/$defs/gate_evaluation_ref" },
+        "evaluatedAt": { "type": "string", "format": "date-time" },
+        "trigger": { "enum": ["ordinary", "freshness", "claimed", "paused"] },
+        "previousRef": { "$ref": "#/$defs/gate_evaluation_ref" },
+        "definition": { "$ref": "#/$defs/definition_identity" },
+        "gate": { "type": "object", "required": ["id", "digest"], "additionalProperties": false, "properties": { "id": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
+        "originalVerdict": { "enum": ["pass", "block", "route-back", "wait"] },
+        "selections": { "type": "array", "items": { "type": "object", "required": ["evidenceId"], "additionalProperties": false, "properties": { "expectationId": { "type": "string", "minLength": 1 }, "evidenceId": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "claimIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }, "authorityWitness": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["claimId", "traceId", "governingEventId"], "additionalProperties": false, "properties": { "claimId": { "type": "string", "minLength": 1 }, "traceId": { "type": "string", "minLength": 1 }, "governingEventId": { "type": "string", "minLength": 1 } } }] } } } },
+        "exceptionId": { "type": "string", "minLength": 1 },
+        "routeBack": { "type": "object", "additionalProperties": false, "properties": { "attempt": { "type": "integer", "minimum": 1 }, "maxAttempts": { "type": "integer", "minimum": 1 }, "retryEpoch": { "type": "integer", "minimum": 1 }, "reason": { "type": "string" }, "selectedRoute": { "type": "string" } } }
+      }
+    },
     "gate_outcome": {
       "type": "object",
       "required": ["gate_id", "status", "summary", "evidence_refs"],
@@ -276,6 +311,7 @@
         "gate_id": { "type": "string" },
         "status": { "type": "string", "enum": ["pass", "block", "route-back", "wait"] },
         "summary": { "type": "string" },
+        "evaluation_ref": { "$ref": "#/$defs/gate_evaluation_ref" },
         "missing": { "type": "array", "items": { "type": "string" } },
         "optional_missing": { "type": "array", "items": { "type": "string" } },
         "matched_expectations": {
@@ -286,7 +322,9 @@
             "additionalProperties": false,
             "properties": {
               "expectation_id": { "type": "string" },
-              "evidence_id": { "type": "string" }
+              "evidence_id": { "type": "string" },
+              "claim_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "authority_witness": { "oneOf": [{ "type": "null" }, { "type": "object", "required": ["claimId", "traceId", "governingEventId"], "additionalProperties": false, "properties": { "claimId": { "type": "string", "minLength": 1 }, "traceId": { "type": "string", "minLength": 1 }, "governingEventId": { "type": "string", "minLength": 1 } } }] }
             }
           }
         },

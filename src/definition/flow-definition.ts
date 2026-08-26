@@ -402,6 +402,7 @@ export function initialState(definition: any, runId: string, params: MutableReco
     params,
     gate_outcomes: [],
     gate_outcome_history: [],
+    gate_evaluation_ledger: { version: "1", records: [] },
     transitions: [],
     lifecycle: [],
     exceptions: [],

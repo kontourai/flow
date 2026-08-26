@@ -209,7 +209,38 @@ const projection = await projectFlowRunFromFiles("dev-1847", { cwd: process.cwd(
 console.log(projection.current_step, projection.gates);
 ```
 
-Public usage is limited to the package root and the `flow` CLI; `dist/` subpaths are not part of the npm API. The [Library guide](docs/library.md) covers run lifecycle, projections, release readiness evaluation, and config merge helpers.
+Public usage is limited to the package root, the `flow` CLI, and documented contract subpaths; `dist/` subpaths are not part of the npm API. The [Library guide](docs/library.md) covers run lifecycle, projections, release readiness evaluation, and config merge helpers.
+
+### Immutable gate-evaluation receipts
+
+Committed gate appraisals have a browser-safe contract at
+`@kontourai/flow/gate-evaluation-contract` and an authorized native reader at
+`@kontourai/flow/gate-evaluation-reader`:
+
+```ts
+import { readGateEvaluation } from "@kontourai/flow/gate-evaluation-reader";
+
+const receipt = await readGateEvaluation(ref, {
+  cwd: process.cwd(),
+  authorize: async ({ ref }) => permissions.mayReadGateEvaluation(ref)
+});
+```
+
+`authorize` is required and runs before Flow reads any run artifact. A denied
+request and an unknown receipt both return `{ status: "missing" }`, so callers
+cannot use the API to enumerate run or gate ids. `found` exposes only the
+recorded reference, timestamp, original verdict, route-back/exception ids,
+current run and gate standing, and selected evidence ids/digests. It never
+returns local paths, raw bundles, arbitrary metadata, or exception authority
+payloads. `unavailable` means a fenced, malformed, or unreadable canonical
+run; `unsupported` means a legacy run without this ledger or an unknown ledger
+version.
+
+The reader is zero-write and recovery-fenced. Its original verdict and
+selection set are immutable: replacement evidence and later project policy do
+not heal or rewrite an old receipt. The projection separately marks selected
+evidence as current, superseded, or missing, and reports only the recorded
+point-in-time freshness/revocation markers when available.
 
 ## Runtime Roots
 
@@ -235,7 +266,7 @@ The docs map lives at [docs/README.md](docs/README.md). Contributor setup lives 
 
 ## Schemas
 
-Flow's contracts are public JSON Schemas under [`schemas/`](schemas/): Flow Definitions, Flow Runs, gate evidence, reports, transition validation, release readiness, and version release reports. `npm test` fails if the runtime drifts from the published schemas.
+Flow's contracts are public JSON Schemas under [`schemas/`](schemas/): Flow Definitions, Flow Runs, gate evidence, immutable gate-evaluation refs/records/projections, reports, transition validation, release readiness, and version release reports. `npm test` fails if the runtime drifts from the published schemas.
 
 ## Boundaries
 

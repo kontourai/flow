@@ -544,6 +544,12 @@ await server.close();
 
 The packaged local console uses this same projection. Hosted behavior and companion console startup are outside the v0.1 package boundary.
 
+When a gate's current outcome was committed, its console gate projection may include
+`evaluation_ref` (`runId`, `gateId`, `evaluationId`). This is the exact persisted
+receipt reference for consumers such as Station; Flow never invents one from the
+projection's computed display fallback. Use it with the authorized gate-evaluation
+reader rather than reading raw run state.
+
 ## Release readiness and reports
 
 ```ts
