@@ -17,34 +17,26 @@ function sameRef(left: GateEvaluationRef | undefined, right: GateEvaluationRef) 
   return !!left && left.runId === right.runId && left.gateId === right.gateId && left.evaluationId === right.evaluationId;
 }
 
-function revocationCodes(_entry: any, _at: string) {
-  // v1 writer receipts bind evidence/expectation ids, not selected claim ids.
-  // Never let an unrelated bundle trace taint this appraisal; a later contract
-  // revision may expose claim-scoped revocation only after it is recorded.
-  return [];
-  /*
-  const pinned = parseRfc3339Timestamp(at);
-  if (!pinned) return [];
+function revocationCodes(entry: any, claimIds: readonly string[], at: string) {
+  const now = parseRfc3339Timestamp(at);
+  if (!now || !claimIds.length) return [];
+  const claims = new Set(claimIds);
   const revoked = (entry?.bundle?.authorityTrace ?? []).some((trace: any) => {
     const instant = parseRfc3339Timestamp(trace?.revokedAt);
-    return instant && compareRfc3339Timestamps(instant, pinned) <= 0;
+    return instant && Array.isArray(trace?.claimIds) && trace.claimIds.some((id: unknown) => claims.has(id as string)) && compareRfc3339Timestamps(instant, now) <= 0;
   }) || (entry?.bundle?.events ?? []).some((event: any) => {
     const instant = parseRfc3339Timestamp(event?.verifiedAt ?? event?.createdAt);
-    return (event?.status === "revoked" || event?.type === "invalidation") && instant && compareRfc3339Timestamps(instant, pinned) <= 0;
+    return instant && claims.has(event?.claimId) && (event?.status === "revoked" || event?.type === "invalidation") && compareRfc3339Timestamps(instant, now) <= 0;
   });
   return revoked ? ["revoked"] : [];
-  */
 }
 
-function pinnedFreshness(_entry: any, _at: string): "recorded" | "stale" | "unavailable" {
-  // Same fail-closed boundary as revocationCodes: checkpoint claim maps are
-  // bundle-wide and cannot identify the claim selected by this receipt.
-  return "unavailable";
-  /*
-  const checkpoint = (entry?.inquiry_records ?? []).find((record: any) => record?.asOf === at);
-  if (!checkpoint?.statusByClaimId || typeof checkpoint.statusByClaimId !== "object") return "unavailable";
-  return Object.values(checkpoint.statusByClaimId).includes("stale") ? "stale" : "recorded";
-  */
+function pinnedFreshness(entry: any, claimIds: readonly string[]): "recorded" | "stale" | "unavailable" {
+  if (!claimIds.length) return "unavailable";
+  const claims = new Map<string, any>((entry?.bundle_report?.claims ?? []).map((claim: any): [string, any] => [claim?.id, claim]));
+  const selected: any[] = claimIds.map((id) => claims.get(id));
+  if (selected.some((claim) => !claim)) return "unavailable";
+  return selected.some((claim) => claim.status === "stale" || claim.freshness?.stale === true) ? "stale" : "recorded";
 }
 
 function projectRecord(record: GateEvaluationRecord, run: any): GateEvaluationReadProjection {
@@ -70,8 +62,8 @@ function projectRecord(record: GateEvaluationRecord, run: any): GateEvaluationRe
         evidenceId: selection.evidenceId,
         ...(selection.sha256 ? { sha256: selection.sha256 } : {}),
         standing: !entry ? "missing" : entry.superseded_by ? "superseded" : "current",
-        freshness: !entry ? "unavailable" : pinnedFreshness(entry, record.evaluatedAt),
-        revocationCodes: !entry ? [] : revocationCodes(entry, record.evaluatedAt)
+        freshness: !entry ? "unavailable" : pinnedFreshness(entry, selection.claimIds ?? []),
+        revocationCodes: !entry ? [] : revocationCodes(entry, selection.claimIds ?? [], record.evaluatedAt)
       };
     })
   };

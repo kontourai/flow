@@ -947,6 +947,17 @@ function evidenceMatchesExpectationForEvaluation(entry: any, expectation: any, c
     && evidenceProducerDiagnostic(entry, expectation, config, enteredAt, evaluationNow, dependencies, derived) === null;
 }
 
+function selectedClaimIds(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null, derived: DerivedBundle) {
+  const selector = expectation.bundle_claim ?? expectation.claim;
+  if (!selector) return [];
+  const accepted = selector.accepted_statuses ?? ["verified"];
+  return acceptedClaimsForAuthority(entry, expectation, enteredAt, derived)
+    .filter((claim: any) => accepted.includes(claim.status ?? "unknown"))
+    .map((claim: any) => claim.id)
+    .filter((id: unknown): id is string => typeof id === "string")
+    .sort();
+}
+
 export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: GateEvaluationInput) {
   return evidenceMatchesExpectationForEvaluation(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES);
 }
@@ -1056,7 +1067,7 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
   }
 
   const expectations = expectationsForGate(gate, config);
-  const matched: Array<{ expectation_id: string; evidence_id: string }> = [];
+  const matched: Array<{ expectation_id: string; evidence_id: string; claim_ids?: string[] }> = [];
   const missingRequired: string[] = [];
   const missingOptional: string[] = [];
   const claimDiagnostics: MutableRecord[] = [];
@@ -1070,7 +1081,8 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
         return evidenceMatchesExpectationForEvaluation(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies, derivedFor(entry));
       });
     if (match) {
-      matched.push({ expectation_id: expectation.id, evidence_id: match.id });
+      const claimIds = selectedClaimIds(match, expectationWithGate, visit.enteredAt, derivedFor(match));
+      matched.push({ expectation_id: expectation.id, evidence_id: match.id, ...(claimIds.length ? { claim_ids: claimIds } : {}) });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
       claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor));

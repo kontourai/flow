@@ -15,6 +15,7 @@ export interface GateEvaluationEvidenceSelection {
   expectationId?: string;
   evidenceId: string;
   sha256?: string;
+  claimIds?: string[];
 }
 
 export interface GateEvaluationRecord {
@@ -141,9 +142,13 @@ export function parseGateEvaluationLedger(value: unknown): GateEvaluationLedger 
     if (!ref || (candidate.previousRef !== undefined && !previousRef) || !definition || !nonEmpty(definition.id) || !nonEmpty(definition.version) || !nonEmpty(definition.digest) || !digest.test(definition.digest) || !gate || gate.id !== ref.gateId || !nonEmpty(gate.digest) || !digest.test(gate.digest) || !Array.isArray(candidate.selections)) return undefined;
     const selections: GateEvaluationEvidenceSelection[] = [];
     for (const rawSelection of candidate.selections) {
-      const selection = closedObject(rawSelection, ["evidenceId"], ["expectationId", "sha256"]);
-      if (!selection || !nonEmpty(selection.evidenceId) || (selection.expectationId !== undefined && !nonEmpty(selection.expectationId)) || (selection.sha256 !== undefined && (!nonEmpty(selection.sha256) || !digest.test(selection.sha256)))) return undefined;
-      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}) });
+      const selection = closedObject(rawSelection, ["evidenceId"], ["expectationId", "sha256", "claimIds"]);
+      const invalidSha = selection?.sha256 !== undefined
+        && (!nonEmpty(selection.sha256) || !digest.test(selection.sha256));
+      const invalidClaims = selection?.claimIds !== undefined
+        && (!Array.isArray(selection.claimIds) || selection.claimIds.some((id) => !nonEmpty(id)));
+      if (!selection || !nonEmpty(selection.evidenceId) || (selection.expectationId !== undefined && !nonEmpty(selection.expectationId)) || invalidSha || invalidClaims) return undefined;
+      selections.push({ ...(typeof selection.expectationId === "string" ? { expectationId: selection.expectationId } : {}), evidenceId: selection.evidenceId, ...(typeof selection.sha256 === "string" ? { sha256: selection.sha256 } : {}), ...(Array.isArray(selection.claimIds) ? { claimIds: [...selection.claimIds] } : {}) });
     }
     let routeBack: GateEvaluationRecord["routeBack"] | undefined;
     if (candidate.routeBack !== undefined) {
@@ -174,6 +179,25 @@ export function parseGateEvaluationProjection(value: unknown): GateEvaluationPro
   if (!source || !dateTime(source.evaluatedAt) || !nonEmpty(source.originalVerdict) || !verdicts.has(source.originalVerdict)) return undefined;
   const ref = parseGateEvaluationRef(source.ref);
   return ref ? { ref, evaluatedAt: source.evaluatedAt, originalVerdict: source.originalVerdict as GateEvaluationProjection["originalVerdict"] } : undefined;
+}
+
+/** Total parser for the complete browser-safe native-reader result. */
+export function parseGateEvaluationReadResult(value: unknown): GateEvaluationReadResult | undefined {
+  const source = closedObject(value, ["status"], ["evaluation"]);
+  if (!source || !nonEmpty(source.status)) return undefined;
+  if (source.status === "missing" || source.status === "unavailable" || source.status === "unsupported") return source.evaluation === undefined ? { status: source.status } : undefined;
+  if (source.status !== "found") return undefined;
+  const evaluation = closedObject(source.evaluation, ["ref", "evaluatedAt", "originalVerdict", "kind", "trigger", "currentStanding", "currentRun", "selectedEvidence"], ["previousRef", "exceptionId", "routeBack", "currentPersistedGateRef"]);
+  if (!evaluation || !dateTime(evaluation.evaluatedAt) || !["initial", "recheck"].includes(evaluation.kind as string) || !triggers.has(evaluation.trigger as string) || !["current", "superseded", "invalidated"].includes(evaluation.currentStanding as string) || !Array.isArray(evaluation.selectedEvidence)) return undefined;
+  const projection = parseGateEvaluationProjection({ ref: evaluation.ref, evaluatedAt: evaluation.evaluatedAt, originalVerdict: evaluation.originalVerdict });
+  const currentRun = closedObject(evaluation.currentRun, ["status", "currentStep"]);
+  const previousRef = evaluation.previousRef === undefined ? undefined : parseGateEvaluationRef(evaluation.previousRef);
+  const currentPersistedGateRef = evaluation.currentPersistedGateRef === undefined ? undefined : parseGateEvaluationRef(evaluation.currentPersistedGateRef);
+  if (!projection || !currentRun || !nonEmpty(currentRun.status) || !(typeof currentRun.currentStep === "string" || currentRun.currentStep === null)) return undefined;
+  const selectedEvidence = evaluation.selectedEvidence.map((raw) => closedObject(raw, ["evidenceId", "standing", "freshness", "revocationCodes"], ["sha256"]));
+  if (selectedEvidence.some((entry) => !entry || !nonEmpty(entry.evidenceId) || !["current", "superseded", "missing"].includes(entry.standing as string) || !["recorded", "stale", "unavailable"].includes(entry.freshness as string) || !Array.isArray(entry.revocationCodes) || entry.revocationCodes.some((code) => !nonEmpty(code)))) return undefined;
+  if ((evaluation.previousRef !== undefined && !previousRef) || (evaluation.currentPersistedGateRef !== undefined && !currentPersistedGateRef)) return undefined;
+  return { status: "found", evaluation: { ...projection, kind: evaluation.kind as "initial" | "recheck", trigger: evaluation.trigger as GateEvaluationRecord["trigger"], ...(previousRef ? { previousRef } : {}), currentStanding: evaluation.currentStanding as GateEvaluationReadProjection["currentStanding"], currentRun: { status: currentRun.status as string, currentStep: currentRun.currentStep as string | null }, ...(currentPersistedGateRef ? { currentPersistedGateRef } : {}), selectedEvidence: selectedEvidence.map((entry) => ({ evidenceId: entry!.evidenceId as string, ...(typeof entry!.sha256 === "string" ? { sha256: entry!.sha256 } : {}), standing: entry!.standing as "current" | "superseded" | "missing", freshness: entry!.freshness as "recorded" | "stale" | "unavailable", revocationCodes: [...entry!.revocationCodes as string[]] })) } };
 }
 
 export const gateEvaluationRefSchema = {

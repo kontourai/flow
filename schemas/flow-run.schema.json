@@ -298,7 +298,7 @@
         "definition": { "$ref": "#/$defs/definition_identity" },
         "gate": { "type": "object", "required": ["id", "digest"], "additionalProperties": false, "properties": { "id": { "type": "string", "minLength": 1 }, "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } },
         "originalVerdict": { "enum": ["pass", "block", "route-back", "wait"] },
-        "selections": { "type": "array", "items": { "type": "object", "required": ["evidenceId"], "additionalProperties": false, "properties": { "expectationId": { "type": "string", "minLength": 1 }, "evidenceId": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } } },
+        "selections": { "type": "array", "items": { "type": "object", "required": ["evidenceId"], "additionalProperties": false, "properties": { "expectationId": { "type": "string", "minLength": 1 }, "evidenceId": { "type": "string", "minLength": 1 }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "claimIds": { "type": "array", "items": { "type": "string", "minLength": 1 } } } } },
         "exceptionId": { "type": "string", "minLength": 1 },
         "routeBack": { "type": "object", "additionalProperties": false, "properties": { "attempt": { "type": "integer", "minimum": 1 }, "maxAttempts": { "type": "integer", "minimum": 1 }, "retryEpoch": { "type": "integer", "minimum": 1 }, "reason": { "type": "string" }, "selectedRoute": { "type": "string" } } }
       }

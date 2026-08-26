@@ -585,7 +585,7 @@ function mintGateEvaluation(run: any, outcome: GateOutcome, evaluatedAt: string,
   const selected = new Set<string>();
   for (const match of outcome.matched_expectations ?? []) {
     const entry = evidence.get(match.evidence_id);
-    selections.push({ expectationId: match.expectation_id, evidenceId: match.evidence_id, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}) });
+    selections.push({ expectationId: match.expectation_id, evidenceId: match.evidence_id, ...(typeof entry?.sha256 === "string" ? { sha256: entry.sha256.toLowerCase() } : {}), ...(Array.isArray(match.claim_ids) ? { claimIds: match.claim_ids.filter((id: unknown): id is string => typeof id === "string") } : {}) });
     selected.add(match.evidence_id);
   }
   for (const evidenceId of outcome.evidence_refs ?? []) {

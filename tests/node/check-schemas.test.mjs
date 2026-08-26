@@ -30,6 +30,7 @@ test("schemas describe the runtime contract", async () => {
   const evaluationLedgerSchema = await json("schemas/gate-evaluation-ledger.schema.json");
   const evaluationRecordSchema = await json("schemas/gate-evaluation-record.schema.json");
   const evaluationProjectionSchema = await json("schemas/gate-evaluation-projection.schema.json");
+  const evaluationReadResultSchema = await json("schemas/gate-evaluation-read-result.schema.json");
   const activeStepClaimSchema = await json("schemas/flow-active-step-claim.schema.json");
   const amendmentRequestSchema = await json("schemas/flow-definition-amendment-request.schema.json");
   const evidenceSchema = await json("schemas/gate-evidence.schema.json");
@@ -70,6 +71,7 @@ test("schemas describe the runtime contract", async () => {
   assert.equal(evaluationLedgerSchema.properties.version.const, "1");
   assert.equal(evaluationRecordSchema.$ref, "gate-evaluation-ledger.schema.json#/$defs/record");
   assert.equal(evaluationProjectionSchema.properties.ref.$ref, "gate-evaluation-ref.schema.json");
+  assert.equal(evaluationReadResultSchema.title, "Flow Gate Evaluation Read Result");
   assert.equal(evaluationLedgerSchema.properties.records.items.$ref, "#/$defs/record");
   assert.equal(runSchema.properties.gate_evaluation_ledger.properties.version.const, "1");
   assert.equal(runSchema.$defs.gate_outcome.properties.evaluation_ref.$ref, "#/$defs/gate_evaluation_ref");

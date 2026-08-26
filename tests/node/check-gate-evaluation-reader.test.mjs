@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import { FLOW_RUN_RECOVERY_FENCE_PROTOCOL, attachEvidence, evaluateRun, loadRun, startRun, writeRunRecoveryFence } from "../../dist/index.js";
 import { readGateEvaluation } from "../../dist/runtime/gate-evaluation-reader.js";
+import { parseGateEvaluationReadResult } from "../../dist/contracts/gate-evaluation-contract.js";
 
 const at = "2026-08-25T12:01:00.000Z";
 
@@ -73,8 +74,15 @@ test("reader retains original selected evidence when a replacement or current po
   const manifestPath = path.join(fixtureData.dir, "evidence", "manifest.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const selected = manifest.evidence.find((entry) => entry.id === old.id);
+  original.selections[0].claimIds = ["claim.old"];
+  const statePath = path.join(fixtureData.dir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.gate_evaluation_ledger.records.at(-1).selections[0].claimIds = ["claim.old"];
+  await writeFile(statePath, `${JSON.stringify(state)}\n`);
   selected.inquiry_records = [{ asOf: original.evaluatedAt, statusByClaimId: { "claim.old": "stale" } }];
   selected.bundle = { schemaVersion: 7, source: "test", claims: [], evidence: [], policies: [], events: [{ status: "revoked", createdAt: original.evaluatedAt }], authorityTrace: [{ revokedAt: original.evaluatedAt }] };
+  selected.bundle_report = { claims: [{ id: "claim.old", status: "stale", freshness: { stale: true } }, { id: "claim.unrelated", status: "stale", freshness: { stale: true } }] };
+  selected.bundle.events[0].claimId = "claim.old";
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
   const result = await readGateEvaluation(original.ref, { cwd: fixtureData.cwd, authorize: () => true });
   assert.equal(result.status, "found");
@@ -82,8 +90,10 @@ test("reader retains original selected evidence when a replacement or current po
   assert.equal(result.evaluation.selectedEvidence.length, 1);
   assert.equal(result.evaluation.selectedEvidence[0].evidenceId, old.id);
   assert.equal(result.evaluation.selectedEvidence[0].standing, "superseded");
-  assert.equal(result.evaluation.selectedEvidence[0].freshness, "unavailable", "v1 refuses bundle-wide claim freshness that could be unrelated to the selected expectation");
-  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, []);
+  assert.equal(result.evaluation.selectedEvidence[0].freshness, "stale");
+  assert.deepEqual(result.evaluation.selectedEvidence[0].revocationCodes, ["revoked"]);
+  assert.deepEqual(parseGateEvaluationReadResult(result), result);
+  assert.equal(parseGateEvaluationReadResult({ status: "found", evaluation: { ...result.evaluation, selectedEvidence: {} } }), undefined);
 });
 
 test("reader honors the native recovery fence without repairing or mutating the run", async () => {
