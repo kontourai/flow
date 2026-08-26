@@ -17,6 +17,8 @@ import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js"
 import { withRunRecoveryFenceRead } from "../runtime/flow-run-recovery-fence.js";
 import { repairRunReports } from "../runtime/flow-run-store.js";
 import { claimableMultiCursorSteps } from "../runtime/flow-multi-cursor.js";
+import { parseGateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
+import type { GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 
 export type FlowConsoleExternalLinkKind =
   | "surface"
@@ -135,6 +137,8 @@ export interface FlowConsoleGateProjection {
   missing: string[];
   optional_missing: string[];
   matched_expectations: Array<Record<string, unknown>>;
+  /** Exact receipt for the persisted current outcome only; never synthesized from a computed preview. */
+  evaluation_ref?: GateEvaluationRef;
   accepted_exception_id?: string;
   route_back_to?: string;
   selected_route?: string;
@@ -462,7 +466,7 @@ function projectGate(definition, state, manifest, config, gateId, evaluationNow)
   const expectations = expectationsForGate(gate, config).map(projectExpectation);
   const status = outcome?.status ?? computed.status ?? "wait";
   const summary = outcome?.summary ?? computed.summary ?? `${slugLabel(gateId)} waiting`;
-  const projected = {
+  const projected: Record<string, any> = {
     id: gateId,
     step_id: gate.step,
     status,
@@ -476,6 +480,12 @@ function projectGate(definition, state, manifest, config, gateId, evaluationNow)
     matched_expectations: stableArray(outcome?.matched_expectations ?? computed.matched_expectations),
     raw: stableClone(gate)
   };
+  // `computed` is display-only. A consumer can discover a receipt only when
+  // Flow committed one on the authoritative current outcome.
+  const persistedRef = parseGateEvaluationRef(outcome?.evaluation_ref);
+  if (persistedRef && persistedRef.runId === state.run_id && persistedRef.gateId === gateId) {
+    projected.evaluation_ref = stableClone(persistedRef);
+  }
   for (const field of [
     "accepted_exception_id",
     "route_back_to",
