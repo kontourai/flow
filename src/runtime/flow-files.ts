@@ -231,14 +231,35 @@ export async function stageRunArtifact(
   };
 }
 
-/** fsync a directory so a completed rename survives a crash. */
+/**
+ * fsync a directory so a completed rename survives a crash.
+ *
+ * POSIX-only durability refinement: Windows forbids fsync on directory
+ * handles (EPERM), and some filesystems answer EINVAL/ENOTSUP. The rename
+ * itself has already committed; absent directory-sync support the publish
+ * proceeds rather than failing every caller on that platform
+ * (kontourai/flow#248 — every publishRunArtifacts on win32 threw here).
+ */
 export async function syncDirectory(dir: string) {
-  const handle = await open(dir, fsConstants.O_RDONLY);
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(dir, fsConstants.O_RDONLY);
+  } catch (error) {
+    if (directorySyncUnsupported(error)) return;
+    throw error;
+  }
   try {
     await handle.sync();
+  } catch (error) {
+    if (!directorySyncUnsupported(error)) throw error;
   } finally {
     await handle.close();
   }
+}
+
+export function directorySyncUnsupported(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === 'EPERM' || code === 'EINVAL' || code === 'ENOTSUP';
 }
 
 /**
