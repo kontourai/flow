@@ -124,6 +124,16 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
         working-directory: flow
+      # `npm publish` runs prepack, and this package's prepack is
+      # `npm run typecheck && npm test` -- which includes the Playwright
+      # browser suite. The real publish job installs Chromium for exactly that
+      # reason; without it the publish path fails here on a missing browser
+      # rather than on anything about the package. Mirroring the publish job is
+      # the point: a gate that skipped this would be proving a shorter path
+      # than the one that actually runs at release.
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: flow
       - name: Publish path dry run
         run: |
           set -uo pipefail
