@@ -16,7 +16,7 @@ This file is the footnote for people developing the product itself.
 ## Setup
 
 ```bash
-npm install
+pnpm install
 ```
 
 Node >= 22 is required.
