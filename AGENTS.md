@@ -15,6 +15,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 - Evidence kinds, trust artifacts, supersession: [docs/evidence.md](docs/evidence.md).
 - Ownership boundaries (Surface/Veritas/Flow Agents): [docs/product-vision.md](docs/product-vision.md).
 - Contributor setup, hooks, demo-GIF regeneration, releases: [docs/contributing.md](docs/contributing.md).
+- UI, brand, and product-copy rules: `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md` from 1.13.0). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.
 
 ## Match Checks To Change Type
 
