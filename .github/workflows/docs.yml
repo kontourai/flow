@@ -7,6 +7,9 @@ on:
     paths:
       - "docs/**"
       - "scripts/docs-site/**"
+      # The site's tokens are read from the installed @kontourai/ui.
+      - "scripts/lib/ui-tokens.mjs"
+      - "pnpm-lock.yaml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

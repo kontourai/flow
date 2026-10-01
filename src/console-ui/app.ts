@@ -106,12 +106,10 @@ function renderBrand(): HTMLElement {
   brand.dataset.testid = "flow-console-brand";
 
   // Flow product mark, vendored from @kontourai/ui (icons/flow.svg).
-  const mark = document.createElement("img");
+  // Drawn as a CSS mask (styles.css) so the monochrome mark takes the text
+  // color of whatever canvas it sits on.
+  const mark = document.createElement("span");
   mark.className = "header-brand-mark product-icon product-icon-flow";
-  mark.src = "./vendor/ui/icons/flow.svg";
-  mark.width = 18;
-  mark.height = 18;
-  mark.alt = "";
   mark.setAttribute("aria-hidden", "true");
 
   const name = document.createElement("span");

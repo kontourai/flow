@@ -41,8 +41,46 @@ const MIME_TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
   ".txt": "text/plain; charset=utf-8"
 };
+
+// Run artifacts are files a run produced: untrusted content served from the
+// console's own origin. Three classes, by extension:
+//  - raster images keep their image type (no script can run in one);
+//  - text-like files are shown as text. Markup and code (.html, .svg, .js…)
+//    are text/plain so a browser never treats them as a document;
+//  - anything else is a download.
+// ARTIFACT_HEADERS holds the line a second way: a sandboxed response cannot
+// run script even if a type is added here later.
+const ARTIFACT_IMAGE_TYPES: Record<string, string> = {
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp"
+};
+const ARTIFACT_TEXT_TYPES: Record<string, string> = {
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8"
+};
+const ARTIFACT_PLAIN_TEXT_EXTENSIONS = new Set([
+  ".txt", ".log", ".out", ".err", ".jsonl", ".ndjson", ".sarif", ".py", ".csv", ".tsv", ".diff", ".patch", ".yaml", ".yml", ".toml", ".ini", ".xml",
+  ".html", ".htm", ".xhtml", ".svg", ".css", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".sh"
+]);
+const ARTIFACT_HEADERS = { "content-security-policy": "default-src 'none'; sandbox" };
+
+function artifactResponseHeaders(relativePath: string): { contentType: string; headers: Record<string, string> } {
+  const extension = path.extname(relativePath).toLowerCase();
+  const inline = ARTIFACT_IMAGE_TYPES[extension]
+    ?? ARTIFACT_TEXT_TYPES[extension]
+    ?? (ARTIFACT_PLAIN_TEXT_EXTENSIONS.has(extension) ? "text/plain; charset=utf-8" : undefined);
+  if (inline) return { contentType: inline, headers: ARTIFACT_HEADERS };
+  return { contentType: "application/octet-stream", headers: { ...ARTIFACT_HEADERS, "content-disposition": "attachment" } };
+}
 
 const SSE_DEBOUNCE_MS = 250;
 const SSE_POLL_INTERVAL_MS = 2000;
@@ -51,16 +89,24 @@ function uiAssetRoot() {
   return path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "console-ui");
 }
 
-function send(response: ServerResponse, status: number, body: string | Buffer, contentType = "text/plain; charset=utf-8") {
+function send(
+  response: ServerResponse,
+  status: number,
+  body: string | Buffer,
+  contentType = "text/plain; charset=utf-8",
+  extraHeaders: Record<string, string> = {}
+) {
   response.writeHead(status, {
     "content-type": contentType,
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    ...extraHeaders
   });
   response.end(body);
 }
 
-function sendJson(response: ServerResponse, status: number, value: unknown) {
-  send(response, status, JSON.stringify(value, null, 2), "application/json; charset=utf-8");
+function sendJson(response: ServerResponse, status: number, value: unknown, extraHeaders: Record<string, string> = {}) {
+  send(response, status, JSON.stringify(value, null, 2), "application/json; charset=utf-8", extraHeaders);
 }
 
 function safeRelativePath(value: string) {
@@ -240,6 +286,7 @@ function handleSseRequest(
 ) {
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
+    "x-content-type-options": "nosniff",
     "cache-control": "no-store",
     "connection": "keep-alive",
     "x-accel-buffering": "no"
@@ -273,10 +320,15 @@ function routeRequest(
   runRoot: string
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
+    // Every response under /artifacts/ is sandboxed, error paths included.
+    // Until the URL has parsed, assume the worst.
+    let errorHeaders: Record<string, string> = ARTIFACT_HEADERS;
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
+      const isArtifactRequest = url.pathname.startsWith("/artifacts/");
+      errorHeaders = isArtifactRequest ? ARTIFACT_HEADERS : {};
       if (request.method !== "GET" && request.method !== "HEAD") {
-        send(response, 405, "method not allowed");
+        send(response, 405, "method not allowed", undefined, errorHeaders);
         return;
       }
       if (url.pathname === "/health") {
@@ -291,8 +343,14 @@ function routeRequest(
         handleSseRequest(request, response, watcher);
         return;
       }
-      if (url.pathname.startsWith("/artifacts/")) {
-        const relative = decodeURIComponent(url.pathname.slice("/artifacts/".length));
+      if (isArtifactRequest) {
+        let relative: string;
+        try {
+          relative = decodeURIComponent(url.pathname.slice("/artifacts/".length));
+        } catch {
+          send(response, 400, "malformed artifact path", undefined, ARTIFACT_HEADERS);
+          return;
+        }
         let artifact: Buffer | null;
         try {
           artifact = await withRunRecoveryFenceRead(options.runId, options.cwd, async () => {
@@ -309,18 +367,18 @@ function routeRequest(
           artifact = null;
         }
         if (!artifact) {
-          send(response, 404, "artifact not found");
+          send(response, 404, "artifact not found", undefined, ARTIFACT_HEADERS);
           return;
         }
-        const contentType = MIME_TYPES[path.extname(relative)] ?? "application/octet-stream";
-        send(response, 200, artifact, contentType);
+        const { contentType, headers } = artifactResponseHeaders(relative);
+        send(response, 200, artifact, contentType, headers);
         return;
       }
       await serveStatic(url.pathname, response);
     } catch (error) {
       sendJson(response, 500, {
         error: error instanceof Error ? error.message : String(error)
-      });
+      }, errorHeaders);
     }
   };
 }

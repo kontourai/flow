@@ -98,6 +98,27 @@ a {
   width: 18px;
   height: 18px;
   flex: none;
+  background-color: var(--k-text);
+  -webkit-mask: url("./vendor/ui/icons/flow.svg") center / contain no-repeat;
+  mask: url("./vendor/ui/icons/flow.svg") center / contain no-repeat;
+}
+
+/* Forced colors repaint backgrounds with the canvas color, which would leave
+   the mask inked in its own background. Opt out and use the system text
+   color. */
+@media (forced-colors: active) {
+  .header-brand-mark {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* Without mask support the span would be a solid square; the label beside it
+   already names the product. */
+@supports not ((mask-image: url("")) or (-webkit-mask-image: url(""))) {
+  .header-brand-mark {
+    display: none;
+  }
 }
 
 .header-brand-name {
@@ -288,8 +309,8 @@ a {
 }
 
 .graph-node[role="button"]:focus-visible {
-  outline: 2px solid var(--current);
-  outline-offset: 2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .graph-node strong {
@@ -409,7 +430,7 @@ a {
 
   .graph-node.is-current .node-index {
     background: var(--current);
-    color: var(--k-brand-contrast, #fff);
+    color: var(--k-status-contrast);
   }
 
   .graph-node.status-pass .node-index     { background: color-mix(in srgb, var(--pass) 25%, var(--flow-chip-bg));  color: var(--pass); }
@@ -721,8 +742,8 @@ a {
 }
 
 .drawer-close:focus-visible {
-  outline: 2px solid var(--current);
-  outline-offset: 2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .drawer-body {

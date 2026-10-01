@@ -52,7 +52,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node scripts/with-build-lease.mjs npm run test:locked",
-    "test:locked": "npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser:locked",
+    "test:locked": "npm run check:ui-assets && npm run build && npm run check:types:contracts && node --test tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser:locked",
     "test:node": "node scripts/with-build-lease.mjs npm run test:node:locked",
     "test:node:locked": "node --test tests/node/*.test.mjs",
     "test:browser": "node scripts/with-build-lease.mjs npm run test:browser:locked",
@@ -107,7 +107,7 @@
     "url": "git+https://github.com/kontourai/flow.git"
   },
   "devDependencies": {
-    "@kontourai/ui": "^1.1.0",
+    "@kontourai/ui": "^1.18.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
     "marked": "^16.4.2",

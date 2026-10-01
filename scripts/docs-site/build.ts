@@ -4,12 +4,18 @@ import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
+import { flowThemeBodies, flowTokensForColorSchemeMedia, readUiTokenSources, tokenValue } from "../lib/ui-tokens.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const docsDir = path.join(repoRoot, "docs");
 const outDir = path.join(repoRoot, "site");
 const repoUrl = "https://github.com/kontourai/flow";
 const siteUrl = "https://kontourai.github.io/flow";
+// Tokens come from the installed @kontourai/ui, so the site cannot drift from it.
+const uiTokenSources = await readUiTokenSources();
+const uiFlowBodies = flowThemeBodies(uiTokenSources);
+const themeColorDark = tokenValue(uiFlowBodies.dark, "--k-bg", "tokens.css :root");
+const themeColorLight = tokenValue(uiFlowBodies.light, "--k-bg", "tokens.css light");
 const pkg = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")) as { version: string };
 
 interface PageDef {
@@ -156,8 +162,8 @@ mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="${escapeHtml(description)}">
-<meta name="theme-color" content="#0a0e13" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f5f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="${themeColorDark}" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="${themeColorLight}" media="(prefers-color-scheme: light)">
 <title>${escapeHtml(title)}</title>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Kontour Flow">
@@ -381,7 +387,8 @@ async function build(): Promise<void> {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await cp(path.join(docsDir, "assets"), path.join(outDir, "assets"), { recursive: true });
-  await cp(path.join(repoRoot, "scripts", "docs-site", "styles.css"), path.join(outDir, "styles.css"));
+  const siteStyles = await readFile(path.join(repoRoot, "scripts", "docs-site", "styles.css"), "utf8");
+  await writeFile(path.join(outDir, "styles.css"), `${flowTokensForColorSchemeMedia(uiTokenSources)}\n${siteStyles}`);
   await cp(path.join(repoRoot, "scripts", "docs-site", "favicon.svg"), path.join(outDir, "favicon.svg"));
   await writeFile(path.join(outDir, ".nojekyll"), "");
 

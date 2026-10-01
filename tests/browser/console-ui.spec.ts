@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -172,6 +173,129 @@ test("rejects artifact path traversal through the console server", async ({ page
 
   expect(traversal.status()).toBe(404);
   expect(consoleErrors).toEqual([]);
+});
+
+// A run artifact is untrusted content on the console's origin. Each payload
+// would, if the browser treated it as a document, mark the page and read the
+// same-origin projection API.
+const ACTIVE_ARTIFACT_SCRIPT = `document.title = "artifact-script-ran"; window.__artifactScriptRan = true; fetch("/api/projection").then(() => { window.__artifactReadApi = true; });`;
+const ACTIVE_ARTIFACTS = [
+  { name: "active.svg", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>${ACTIVE_ARTIFACT_SCRIPT}</script></svg>` },
+  { name: "active.html", body: `<!doctype html><title>artifact</title><script>${ACTIVE_ARTIFACT_SCRIPT}</script>` },
+  { name: "ACTIVE.SVG", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>${ACTIVE_ARTIFACT_SCRIPT}</script></svg>` },
+];
+
+test("artifacts with active content are served inert and never run script on the console origin", async ({ page, request }) => {
+  const dir = path.join(FIXTURE_ROOT, "active-artifacts");
+  await mkdir(dir, { recursive: true });
+  try {
+    for (const artifact of ACTIVE_ARTIFACTS) {
+      await writeFile(path.join(dir, artifact.name), artifact.body);
+      const url = `/artifacts/active-artifacts/${artifact.name}`;
+
+      const response = await request.get(url);
+      expect(response.status()).toBe(200);
+      expect(await response.text()).toBe(artifact.body);
+      const headers = response.headers();
+      expect(headers["content-type"]).toBe("text/plain; charset=utf-8");
+      expect(headers["content-security-policy"]).toBe("default-src 'none'; sandbox");
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+
+      await page.goto(url);
+      await page.waitForTimeout(300);
+      const state = await page.evaluate(() => {
+        const scope = window as unknown as { __artifactScriptRan?: boolean; __artifactReadApi?: boolean };
+        return { title: document.title, ran: scope.__artifactScriptRan === true, readApi: scope.__artifactReadApi === true };
+      });
+      expect(state, artifact.name).toEqual({ title: "", ran: false, readApi: false });
+    }
+
+    // Inert types keep their media type, still sandboxed.
+    const report = await request.get("/artifacts/report.json");
+    expect(report.headers()["content-type"]).toBe("application/json; charset=utf-8");
+    expect(report.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    const missing = await request.get("/artifacts/active-artifacts/absent.svg");
+    expect(missing.status()).toBe(404);
+    expect(missing.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+
+    // Common run outputs open as text.
+    for (const name of ["events.jsonl", "events.ndjson", "scan.sarif", "tool.py", "run.out", "run.err", "build.LOG"]) {
+      await writeFile(path.join(dir, name), `<script>${ACTIVE_ARTIFACT_SCRIPT}</script>\n`);
+      const text = await request.get(`/artifacts/active-artifacts/${name}`);
+      expect(text.headers()["content-type"], name).toBe("text/plain; charset=utf-8");
+      expect(text.headers()["content-disposition"], name).toBeUndefined();
+      expect(text.headers()["content-security-policy"], name).toBe("default-src 'none'; sandbox");
+    }
+
+    // A raster image keeps its type and renders when the console embeds it.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await writeFile(path.join(dir, "pixel.PNG"), png);
+    const image = await request.get("/artifacts/active-artifacts/pixel.PNG");
+    expect(image.headers()["content-type"]).toBe("image/png");
+    expect(image.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    expect(image.headers()["content-disposition"]).toBeUndefined();
+    await page.goto("/");
+    const naturalWidth = await page.evaluate(async () => {
+      const img = new Image();
+      img.src = "/artifacts/active-artifacts/pixel.PNG";
+      await img.decode();
+      return img.naturalWidth;
+    });
+    expect(naturalWidth).toBe(1);
+
+    // Anything that is neither an image nor text-like is a download, not a
+    // page of mojibake.
+    for (const name of ["module.wasm", "blob.bin", "no-extension"]) {
+      await writeFile(path.join(dir, name), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 255, 254]));
+      const binary = await request.get(`/artifacts/active-artifacts/${name}`);
+      expect(binary.status()).toBe(200);
+      expect(binary.headers()["content-type"], name).toBe("application/octet-stream");
+      expect(binary.headers()["content-disposition"], name).toBe("attachment");
+      expect(binary.headers()["content-security-policy"], name).toBe("default-src 'none'; sandbox");
+    }
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.goto("/artifacts/active-artifacts/blob.bin").catch(() => undefined),
+    ]);
+    expect(download.suggestedFilename()).toBe("blob.bin");
+
+    // Error paths under the prefix are sandboxed too.
+    const malformed = await request.get("/artifacts/%");
+    expect(malformed.status()).toBe(400);
+    expect(malformed.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    expect(malformed.headers()["x-content-type-options"]).toBe("nosniff");
+    for (const method of ["POST", "OPTIONS"]) {
+      const refused = await request.fetch("/artifacts/report.json", { method });
+      expect(refused.status(), method).toBe(405);
+      expect(refused.headers()["content-security-policy"], method).toBe("default-src 'none'; sandbox");
+      expect(refused.headers()["x-content-type-options"], method).toBe("nosniff");
+    }
+
+    // A request target that fails to parse is answered before the handler
+    // knows the path, so that 500 is sandboxed whatever it was aimed at.
+    const unparsed = await rawRequest("GET // HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    expect(unparsed).toMatch(/^HTTP\/1\.1 500 /);
+    expect(unparsed).toContain('"error": "Invalid URL"');
+    expect(unparsed.toLowerCase()).toContain("content-security-policy: default-src 'none'; sandbox");
+    expect(unparsed.toLowerCase()).toContain("x-content-type-options: nosniff");
+
+    // The console's own assets are not sandboxed and are not sniffed.
+    const app = await request.get("/");
+    expect(app.headers()["content-security-policy"]).toBeUndefined();
+    expect(app.headers()["x-content-type-options"]).toBe("nosniff");
+    const mark = await request.get("/vendor/ui/icons/flow.svg");
+    expect(mark.headers()["x-content-type-options"]).toBe("nosniff");
+    const streamHeaders = await page.evaluate(async () => {
+      const controller = new AbortController();
+      const response = await fetch("/api/stream", { signal: controller.signal });
+      const headers = { type: response.headers.get("content-type"), sniff: response.headers.get("x-content-type-options") };
+      controller.abort();
+      return headers;
+    });
+    expect(streamHeaders).toEqual({ type: "text/event-stream; charset=utf-8", sniff: "nosniff" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("keeps the console layout inside the mobile viewport", async ({ page }) => {
@@ -449,6 +573,105 @@ async function loadFlowConsole(page: Page): Promise<string[]> {
   await expect(page.locator("body")).toBeVisible();
   await expect(page.getByTestId("flow-console-status")).toBeVisible();
   return consoleErrors;
+}
+
+test("serves the vendored product mark and brand fonts with usable content types", async ({ page, request }) => {
+  await loadFlowConsole(page);
+
+  const mark = await request.get("/vendor/ui/icons/flow.svg");
+  expect(mark.status()).toBe(200);
+  expect(mark.headers()["content-type"]).toBe("image/svg+xml");
+  await assertMarkIsDrawn(page);
+  // The mark is that SVG used as a mask, inked with the canvas text color.
+  const markStyle = await page.locator(".header-brand-mark").evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { mask: computed.maskImage, ink: computed.backgroundColor, text: getComputedStyle(document.body).color };
+  });
+  expect(markStyle.mask).toContain("/vendor/ui/icons/flow.svg");
+  expect(markStyle.ink).toBe(markStyle.text);
+
+  const font = await request.get("/vendor/ui/tokens/fonts/hanken-grotesk-latin.woff2");
+  expect(font.status()).toBe(200);
+  expect(font.headers()["content-type"]).toBe("font/woff2");
+});
+
+test("the header mark stays visible in forced-colors mode", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, forcedColors: "active" });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("flow-console-status")).toBeVisible();
+    await assertMarkIsDrawn(page);
+    const colors = await page.locator(".header-brand-mark").evaluate((el) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "forced-color-adjust: none; color: CanvasText; background-color: Canvas;";
+      document.body.append(probe);
+      const system = { text: getComputedStyle(probe).color, canvas: getComputedStyle(probe).backgroundColor };
+      probe.remove();
+      return {
+        forced: matchMedia("(forced-colors: active)").matches,
+        ink: getComputedStyle(el).backgroundColor,
+        header: getComputedStyle(document.querySelector(".console-header") as Element).backgroundColor,
+        system,
+      };
+    });
+    expect(colors.forced, "the emulation must be active, or this proves nothing").toBe(true);
+    expect(colors.system.text).not.toBe(colors.system.canvas);
+    expect(colors.ink).toBe(colors.system.text);
+    expect(colors.ink).not.toBe(colors.header);
+    expect(colors.ink).not.toBe(colors.system.canvas);
+  } finally {
+    await context.close();
+  }
+});
+
+test("keyboard focus rings read the focus role in both modes", async ({ page }) => {
+  await loadFlowConsole(page);
+  test.skip(test.info().project.name === "chromium-mobile", "keyboard focus tested on desktop");
+
+  // Flow's focus role per mode, pinned from @kontourai/ui themes.css.
+  for (const [mode, expected] of [["dark", "rgb(47, 136, 166)"], ["light", "rgb(31, 111, 136)"]] as const) {
+    await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), mode);
+    const node = page.locator('[data-testid="flow-console-graph"] .is-current[role="button"]');
+    await page.keyboard.press("Tab");
+    await node.focus();
+    const outline = await node.evaluate((el) => {
+      const computed = getComputedStyle(el);
+      return { color: computed.outlineColor, style: computed.outlineStyle, width: computed.outlineWidth };
+    });
+    expect(outline).toEqual({ color: expected, style: "solid", width: "2px" });
+  }
+});
+
+// Computed colors are still reported for a display:none element, so a color
+// assertion alone cannot tell a hidden mark from a drawn one.
+async function assertMarkIsDrawn(page: Page): Promise<void> {
+  const mark = page.locator(".header-brand-mark");
+  await expect(mark).toBeVisible();
+  const box = await mark.boundingBox();
+  expect(box?.width).toBeGreaterThan(0);
+  expect(box?.height).toBeGreaterThan(0);
+  const style = await mark.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { display: computed.display, mask: computed.maskImage };
+  });
+  expect(style.display).not.toBe("none");
+  expect(style.mask).toContain("/vendor/ui/icons/flow.svg");
+}
+
+// One request written straight to the socket: a request target the test
+// clients would normalise before sending.
+function rawRequest(requestText: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(process.env.FLOW_CONSOLE_TEST_PORT), "127.0.0.1");
+    let data = "";
+    socket.setEncoding("utf8");
+    socket.on("connect", () => socket.write(requestText));
+    socket.on("data", (chunk) => { data += chunk; });
+    socket.on("end", () => resolve(data));
+    socket.on("error", reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`raw request timed out; received: ${data}`)); });
+  });
 }
 
 async function assertTokenStylesResolved(page: Page): Promise<void> {
