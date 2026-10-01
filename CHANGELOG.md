@@ -19,6 +19,18 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.1.2](https://github.com/kontourai/flow/compare/v5.1.1...v5.1.2) (2026-10-01)
+
+
+### Fixes
+
+* **console-ui:** resync @kontourai/ui 1.18 tokens and check drift before the build ([#257](https://github.com/kontourai/flow/issues/257)) ([e28740d](https://github.com/kontourai/flow/commit/e28740d95a78badb34fdae02157ba88ab6f3eeb3)), closes [#256](https://github.com/kontourai/flow/issues/256)
+
+
+### Documentation
+
+* **agents:** point UI work at the Kontour DESIGN.md ([#254](https://github.com/kontourai/flow/issues/254)) ([0bffbf1](https://github.com/kontourai/flow/commit/0bffbf14c413ccef0aa61163e31b5b1f30c24124))
+
 ## [5.1.1](https://github.com/kontourai/flow/compare/v5.1.0...v5.1.1) (2026-08-29)
 
 
