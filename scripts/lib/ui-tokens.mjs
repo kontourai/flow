@@ -15,11 +15,33 @@ export async function readUiTokenSources(packageRoot = uiPackageRoot) {
   return { tokens, themes };
 }
 
-// Top-level rules of a stylesheet as { selectors, body }. Comments are
-// dropped first. Braces inside a quoted value are text, not structure; a
-// nested block or an unterminated rule or string is refused, not mis-read.
+// Drop comments, leaving quoted values alone: a "/*" inside a string is text.
+function stripComments(css) {
+  let out = "";
+  let quote = "";
+  for (let index = 0; index < css.length; index += 1) {
+    const char = css[index];
+    if (quote) {
+      out += char;
+      if (char === "\\") out += css[++index] ?? "";
+      else if (char === quote) quote = "";
+    } else if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      if (end === -1) throw new Error("ui tokens: unterminated comment");
+      index = end + 1;
+    } else {
+      if (char === '"' || char === "'") quote = char;
+      out += char;
+    }
+  }
+  return out;
+}
+
+// Top-level rules of a stylesheet as { selectors, body }, comments dropped.
+// Braces inside a quoted value are text, not structure; a nested block or an
+// unterminated rule, string or comment is refused, not mis-read.
 export function parseRules(css) {
-  const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const source = stripComments(css);
   const rules = [];
   let start = 0;
   let open = -1;

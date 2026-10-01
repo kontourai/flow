@@ -103,6 +103,24 @@ a {
   mask: url("./vendor/ui/icons/flow.svg") center / contain no-repeat;
 }
 
+/* Forced colors repaint backgrounds with the canvas color, which would leave
+   the mask inked in its own background. Opt out and use the system text
+   color. */
+@media (forced-colors: active) {
+  .header-brand-mark {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* Without mask support the span would be a solid square; the label beside it
+   already names the product. */
+@supports not ((mask-image: url("")) or (-webkit-mask-image: url(""))) {
+  .header-brand-mark {
+    display: none;
+  }
+}
+
 .header-brand-name {
   color: var(--accent);
   font-size: 12px;

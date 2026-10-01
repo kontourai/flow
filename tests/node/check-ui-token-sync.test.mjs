@@ -127,6 +127,10 @@ test("braces, semicolons and commas inside quoted values are text", () => {
   assert.deepEqual(rules[0].selectors, [".a", '.b[title="x,y"]']);
   assert.deepEqual([...declarations(rules[0].body)], [["--k-x", '"}"'], ["--k-y", "'a;b{'"], ["--k-z", "1px"]]);
   assert.equal(tokenValue(ruleBody(css, ".c"), "--k-w"), "2px");
+  // A comment marker inside a string is text; a real comment is dropped.
+  const quotedComment = parseRules(`.a { --k-x: "/*"; } /* note { */ .b { --k-y: "*/"; }`);
+  assert.deepEqual(quotedComment.map((rule) => [rule.selectors[0], rule.body]), [[".a", '--k-x: "/*";'], [".b", '--k-y: "*/";']]);
+  assert.throws(() => parseRules(".a { --k-x: 1px; } /* open"), /unterminated comment/);
   assert.throws(() => parseRules(`.a { --k-x: "oops; }`), /unterminated string/);
   assert.throws(() => parseRules(".a { --k-x: 1px;"), /unterminated rule/);
   assert.throws(() => parseRules(".a { } }"), /unbalanced/);

@@ -217,12 +217,64 @@ test("artifacts with active content are served inert and never run script on the
     expect(missing.status()).toBe(404);
     expect(missing.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
 
+    // A raster image keeps its type and renders when the console embeds it.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await writeFile(path.join(dir, "pixel.PNG"), png);
+    const image = await request.get("/artifacts/active-artifacts/pixel.PNG");
+    expect(image.headers()["content-type"]).toBe("image/png");
+    expect(image.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    expect(image.headers()["content-disposition"]).toBeUndefined();
+    await page.goto("/");
+    const naturalWidth = await page.evaluate(async () => {
+      const img = new Image();
+      img.src = "/artifacts/active-artifacts/pixel.PNG";
+      await img.decode();
+      return img.naturalWidth;
+    });
+    expect(naturalWidth).toBe(1);
+
+    // Anything that is neither an image nor text-like is a download, not a
+    // page of mojibake.
+    for (const name of ["module.wasm", "blob.bin", "no-extension"]) {
+      await writeFile(path.join(dir, name), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 255, 254]));
+      const binary = await request.get(`/artifacts/active-artifacts/${name}`);
+      expect(binary.status()).toBe(200);
+      expect(binary.headers()["content-type"], name).toBe("application/octet-stream");
+      expect(binary.headers()["content-disposition"], name).toBe("attachment");
+      expect(binary.headers()["content-security-policy"], name).toBe("default-src 'none'; sandbox");
+    }
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.goto("/artifacts/active-artifacts/blob.bin").catch(() => undefined),
+    ]);
+    expect(download.suggestedFilename()).toBe("blob.bin");
+
+    // Error paths under the prefix are sandboxed too.
+    const malformed = await request.get("/artifacts/%");
+    expect(malformed.status()).toBe(400);
+    expect(malformed.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    expect(malformed.headers()["x-content-type-options"]).toBe("nosniff");
+    for (const method of ["POST", "OPTIONS"]) {
+      const refused = await request.fetch("/artifacts/report.json", { method });
+      expect(refused.status(), method).toBe(405);
+      expect(refused.headers()["content-security-policy"], method).toBe("default-src 'none'; sandbox");
+      expect(refused.headers()["x-content-type-options"], method).toBe("nosniff");
+    }
+
     // The console's own assets are not sandboxed and are not sniffed.
     const app = await request.get("/");
     expect(app.headers()["content-security-policy"]).toBeUndefined();
     expect(app.headers()["x-content-type-options"]).toBe("nosniff");
     const mark = await request.get("/vendor/ui/icons/flow.svg");
     expect(mark.headers()["x-content-type-options"]).toBe("nosniff");
+    const streamHeaders = await page.evaluate(async () => {
+      const controller = new AbortController();
+      const response = await fetch("/api/stream", { signal: controller.signal });
+      const headers = { type: response.headers.get("content-type"), sniff: response.headers.get("x-content-type-options") };
+      controller.abort();
+      return headers;
+    });
+    expect(streamHeaders).toEqual({ type: "text/event-stream; charset=utf-8", sniff: "nosniff" });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -522,6 +574,35 @@ test("serves the vendored product mark and brand fonts with usable content types
   const font = await request.get("/vendor/ui/tokens/fonts/hanken-grotesk-latin.woff2");
   expect(font.status()).toBe(200);
   expect(font.headers()["content-type"]).toBe("font/woff2");
+});
+
+test("the header mark stays visible in forced-colors mode", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, forcedColors: "active" });
+  try {
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("flow-console-status")).toBeVisible();
+    const colors = await page.locator(".header-brand-mark").evaluate((el) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "forced-color-adjust: none; color: CanvasText; background-color: Canvas;";
+      document.body.append(probe);
+      const system = { text: getComputedStyle(probe).color, canvas: getComputedStyle(probe).backgroundColor };
+      probe.remove();
+      return {
+        forced: matchMedia("(forced-colors: active)").matches,
+        ink: getComputedStyle(el).backgroundColor,
+        header: getComputedStyle(document.querySelector(".console-header") as Element).backgroundColor,
+        system,
+      };
+    });
+    expect(colors.forced, "the emulation must be active, or this proves nothing").toBe(true);
+    expect(colors.system.text).not.toBe(colors.system.canvas);
+    expect(colors.ink).toBe(colors.system.text);
+    expect(colors.ink).not.toBe(colors.header);
+    expect(colors.ink).not.toBe(colors.system.canvas);
+  } finally {
+    await context.close();
+  }
 });
 
 test("keyboard focus rings read the focus role in both modes", async ({ page }) => {
