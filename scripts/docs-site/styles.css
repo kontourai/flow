@@ -1,49 +1,20 @@
-/* Kontour Flow docs site. Tokens mirror @kontourai/ui with the
-   theme-flow brand accent. Mobile-first throughout. */
+/* Kontour Flow docs site. Mobile-first throughout.
+
+   The --k-* tokens are not declared here: build.ts prepends them from the
+   installed @kontourai/ui (the dark contract and the Flow theme on :root, the
+   light contract under prefers-color-scheme). Only site-local values live
+   below. */
 
 :root {
-  color-scheme: dark;
-  --k-bg: #0a0e13;
-  --k-panel: #111824;
-  --k-panel-raised: #16202d;
-  --k-line: rgba(150, 180, 210, 0.12);
-  --k-line-strong: rgba(150, 180, 210, 0.22);
-  --k-shadow: 0 26px 60px -42px rgba(0, 0, 0, 0.95);
-  --k-text: #eef3f8;
-  --k-text-muted: #aebccb;
-  --k-text-faint: #72869b;
-  --k-brand: #2f88a6;
+  /* Link and wordmark tint. Not a @kontourai/ui token: a lighter tint of the
+     Flow accent for dark mode; light mode uses the brand itself. */
   --k-brand-bright: #5cc4e0;
-  --k-brand-contrast: #06080b;
-  --k-positive: #34d399;
-  --k-caution: #f3b14b;
-  --k-negative: #ff6f6f;
-  --k-radius-sm: 9px;
-  --k-radius-md: 14px;
-  --k-font-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --k-font-ui: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --k-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --header-h: 56px;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    color-scheme: light;
-    --k-bg: #f5f4ef;
-    --k-panel: #ffffff;
-    --k-panel-raised: #fbfaf7;
-    --k-line: rgba(36, 40, 46, 0.12);
-    --k-line-strong: rgba(36, 40, 46, 0.2);
-    --k-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.25);
-    --k-text: #202124;
-    --k-text-muted: #5b626b;
-    --k-text-faint: #707782;
-    --k-brand: #1f6f88;
-    --k-brand-bright: #1f6f88;
-    --k-brand-contrast: #ffffff;
-    --k-positive: #168257;
-    --k-caution: #8a5a00;
-    --k-negative: #c83b3b;
+    --k-brand-bright: var(--k-brand);
   }
 }
 
@@ -72,8 +43,8 @@ a:hover { text-decoration: underline; }
   position: absolute;
   left: -9999px;
   top: 0;
-  background: var(--k-brand);
-  color: var(--k-brand-contrast);
+  background: var(--k-action);
+  color: var(--k-action-contrast);
   padding: 10px 16px;
   z-index: 100;
 }
@@ -350,11 +321,11 @@ tr:last-child td { border-bottom: 0; }
   color: var(--k-text);
   font-weight: 600;
 }
-.button:hover { text-decoration: none; border-color: var(--k-brand); }
+.button:hover { text-decoration: none; border-color: var(--k-action); }
 .button.primary {
-  background: var(--k-brand);
-  border-color: var(--k-brand);
-  color: var(--k-brand-contrast);
+  background: var(--k-action);
+  border-color: var(--k-action);
+  color: var(--k-action-contrast);
 }
 .button.primary:hover { filter: brightness(1.1); }
 

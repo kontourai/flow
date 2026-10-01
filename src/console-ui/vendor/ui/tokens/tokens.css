@@ -8,15 +8,33 @@
   --k-line: rgba(150, 180, 210, 0.12);
   --k-line-strong: rgba(150, 180, 210, 0.22);
   --k-shadow: 0 26px 60px -42px rgba(0, 0, 0, 0.95);
+  /* Layered, downward-weighted overlay elevation (contact -> ambient falloff).
+     The single shadow floating surfaces — dialogs, menus, palettes, toasts —
+     should use, so elevation tunes in one place. */
+  --k-elevation-overlay:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    0 24px 56px rgba(0, 0, 0, 0.4);
 
   /* text */
   --k-text: #eef3f8;
   --k-text-muted: #aebccb;
-  --k-text-faint: #72869b;
+  --k-text-faint: #75889d;
 
-  /* brand */
+  /* brand — the product identity slot (eyebrows, accents, the progress sweep).
+     A product theme or a white-label deployment may override it; nothing
+     interactive reads it, so a brand that fails contrast cannot break a
+     button or a focus ring. */
   --k-brand: #5ce0c6;
   --k-brand-contrast: #06080b;
+
+  /* interaction roles — primary actions and keyboard focus. They hold their
+     own values instead of var(--k-brand): an alias would make every brand
+     override repaint buttons whether or not the new color can carry text.
+     Each theme and mode sets its action and focus beside its brand. */
+  --k-action: #5ce0c6;
+  --k-action-contrast: #06080b;
+  --k-focus: #5ce0c6;
 
   /* semantic status scale */
   --k-positive: #34d399;
@@ -28,6 +46,51 @@
   --k-caution-soft: color-mix(in oklab, var(--k-caution) 14%, transparent);
   --k-negative-soft: color-mix(in oklab, var(--k-negative) 14%, transparent);
   --k-active-soft: color-mix(in oklab, var(--k-active) 14%, transparent);
+  /* Text on a filled status tone (tone badges, status-toned buttons). Its own
+     role so a white-label --k-brand-contrast cannot recolor status text. */
+  --k-status-contrast: #06080b;
+
+  /* trust states — Surface's claim statuses (TRUST_STATUSES, in Surface's
+     order), shown as presentation states: separate from the five status
+     tones and from the product accents. Each state has its own ink (label,
+     glyph, border), fill (the chip's own background, so its text pair does
+     not depend on the container) and line style (the non-color cue borders
+     and chart strokes reuse). Values are literal, never aliases: an alias
+     declared here resolves here, so a light or themed scope would inherit
+     this scope's hue (ui#78). */
+  --k-trust-unknown: #a2acb7;
+  --k-trust-unknown-fill: #252d39;
+  --k-trust-unknown-line: dotted;
+  --k-trust-proposed: #87b1fd;
+  --k-trust-proposed-fill: #222d42;
+  --k-trust-proposed-line: dashed;
+  --k-trust-assumed: #c4a4fe;
+  --k-trust-assumed-fill: #2a2c43;
+  --k-trust-assumed-line: dashed;
+  --k-trust-verified: #50d492;
+  --k-trust-verified-fill: #1a3233;
+  --k-trust-verified-line: solid;
+  --k-trust-stale: #f6b84d;
+  --k-trust-stale-fill: #312e2a;
+  --k-trust-stale-line: dotted;
+  --k-trust-disputed: #ec81c0;
+  --k-trust-disputed-fill: #30273a;
+  --k-trust-disputed-line: double;
+  --k-trust-superseded: #6bc8d3;
+  --k-trust-superseded-fill: #1e313d;
+  --k-trust-superseded-line: dotted;
+  --k-trust-rejected: #f66d67;
+  --k-trust-rejected-fill: #31242d;
+  --k-trust-rejected-line: solid;
+  --k-trust-revoked: #fdc2a2;
+  --k-trust-revoked-fill: #323036;
+  --k-trust-revoked-line: dotted;
+
+  /* trust basis — the line after a trust-state chip. Caveat facets
+     (Model-derived, not evaluated, cited only, contradicts, failed) are
+     underlined with a dashed line in the text's own color: a line-style cue,
+     never a hue. Names no color, so it inherits the rated muted text. */
+  --k-basis-caveat-decoration: underline dashed 1px;
 
   /* spacing */
   --k-space-1: 4px;
@@ -40,6 +103,10 @@
   /* radius */
   --k-radius-sm: 9px;
   --k-radius-md: 14px;
+  /* Tight, desktop-grade radii for dense product chrome (controls + overlays),
+     alongside the softer sm/md. */
+  --k-radius-control: 4px;
+  --k-radius-overlay: 10px;
 
   /* type */
   --k-text-xs: 11px;
@@ -57,6 +124,98 @@
   /* motion */
   --k-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --k-dur: 0.16s;
+
+  /* border width — replaces the ad-hoc calc(var(--k-space-1) / 4) math that
+     hairline borders computed inline across primitives. */
+  --k-border-thin: 1px;
+  --k-border-thick: 2px;
+
+  /* line-height — unitless ratios for display headings vs. body copy. */
+  --k-leading-tight: 1.1;
+  --k-leading-normal: 1.45;
+  --k-leading-loose: 1.7;
+
+  /* letter-spacing — eyebrows/badges track wide; body tracks normal. */
+  --k-tracking-tight: -0.01em;
+  --k-tracking-normal: 0;
+  --k-tracking-wide: 0.08em;
+
+  /* focus — one ring contract so every interactive primitive (controls,
+     buttons, links) shows the same keyboard-focus affordance. The ring color
+     is the --k-focus role; --k-focus-ring is kept as a compatibility alias for
+     consumer styles. Primitives read --k-focus directly, so an override of
+     --k-focus on any element reaches them. */
+  --k-focus-ring: var(--k-focus);
+  --k-focus-ring-width: 2px;
+  --k-focus-ring-offset: 2px;
+
+  /* z-index — semantic stacking scale for layered surfaces. Overlays read
+     these instead of inventing local magic numbers, so cross-product layering
+     stays consistent (a Flow toast never renders under a Console dialog). */
+  --k-z-base: 0;
+  --k-z-sticky: 100;
+  --k-z-dropdown: 1000;
+  --k-z-overlay: 1100;
+  --k-z-modal: 1200;
+  --k-z-popover: 1300;
+  --k-z-toast: 1400;
+}
+
+/* The dark contract again, for a data-theme="dark" element below a light
+   element (ui#80). It sets exactly the tokens the light block sets, with the
+   :root values; check:contrast fails if either drifts. Mode-independent
+   tokens (spacing, type, radii, fonts) are not reset, so a theme's own values
+   for them survive a mode switch. With no light ancestor there is nothing to
+   reset, so it does not match and a dark element simply inherits. */
+[data-theme="dark"]:where([data-theme="light"] *) {
+  color-scheme: dark;
+  --k-bg: #0a0e13;
+  --k-panel: #111824;
+  --k-panel-raised: #16202d;
+  --k-line: rgba(150, 180, 210, 0.12);
+  --k-line-strong: rgba(150, 180, 210, 0.22);
+  --k-shadow: 0 26px 60px -42px rgba(0, 0, 0, 0.95);
+  --k-elevation-overlay:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 12px 32px rgba(0, 0, 0, 0.45),
+    0 24px 56px rgba(0, 0, 0, 0.4);
+  --k-text: #eef3f8;
+  --k-text-muted: #aebccb;
+  --k-text-faint: #75889d;
+  --k-brand: #5ce0c6;
+  --k-brand-contrast: #06080b;
+  --k-action: #5ce0c6;
+  --k-action-contrast: #06080b;
+  --k-focus: #5ce0c6;
+  --k-positive: #34d399;
+  --k-caution: #f3b14b;
+  --k-negative: #ff6f6f;
+  --k-neutral: #6f8095;
+  --k-active: #7aa2ff;
+  --k-status-contrast: #06080b;
+  --k-trust-unknown: #a2acb7;
+  --k-trust-unknown-fill: #252d39;
+  --k-trust-proposed: #87b1fd;
+  --k-trust-proposed-fill: #222d42;
+  --k-trust-assumed: #c4a4fe;
+  --k-trust-assumed-fill: #2a2c43;
+  --k-trust-verified: #50d492;
+  --k-trust-verified-fill: #1a3233;
+  --k-trust-stale: #f6b84d;
+  --k-trust-stale-fill: #312e2a;
+  --k-trust-disputed: #ec81c0;
+  --k-trust-disputed-fill: #30273a;
+  --k-trust-superseded: #6bc8d3;
+  --k-trust-superseded-fill: #1e313d;
+  --k-trust-rejected: #f66d67;
+  --k-trust-rejected-fill: #31242d;
+  --k-trust-revoked: #fdc2a2;
+  --k-trust-revoked-fill: #323036;
+  --k-focus-ring: var(--k-focus);
+  --k-positive-soft: color-mix(in oklab, var(--k-positive) 14%, transparent);
+  --k-caution-soft: color-mix(in oklab, var(--k-caution) 14%, transparent);
+  --k-negative-soft: color-mix(in oklab, var(--k-negative) 14%, transparent);
+  --k-active-soft: color-mix(in oklab, var(--k-active) 14%, transparent);
 }
 
 [data-theme="light"] {
@@ -67,13 +226,57 @@
   --k-line: rgba(36, 40, 46, 0.12);
   --k-line-strong: rgba(36, 40, 46, 0.20);
   --k-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.25);
+  --k-elevation-overlay:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.1),
+    0 18px 48px rgba(0, 0, 0, 0.08);
   --k-text: #202124;
   --k-text-muted: #5b626b;
-  --k-text-faint: #707782;
+  --k-text-faint: #6a707b;
+  /* The dark-mode brand (#5ce0c6) is too light to carry white text or read as
+     text on the light canvas (~1.6:1). Darken it for light mode: #0e7c64 holds
+     the teal hue while clearing WCAG AA both as a button fill (white text,
+     5.1:1) and as text on --k-bg (4.7:1). */
+  --k-brand: #0e7c64;
   --k-brand-contrast: #ffffff;
+  --k-action: #0e7c64;
+  --k-action-contrast: #ffffff;
+  --k-focus: #0e7c64;
   --k-positive: #168257;
   --k-caution: #8a5a00;
   --k-negative: #c83b3b;
   --k-neutral: #5f6975;
   --k-active: #3f6fd6;
+  --k-status-contrast: #ffffff;
+
+  /* Light trust inks are dark enough that each label clears AA on its own
+     tinted fill; check:contrast rates every pair. */
+  --k-trust-unknown: #535c66;
+  --k-trust-unknown-fill: #eeeff0;
+  --k-trust-proposed: #2855ad;
+  --k-trust-proposed-fill: #eaeef7;
+  --k-trust-assumed: #6938a7;
+  --k-trust-assumed-fill: #f0ebf6;
+  --k-trust-verified: #006d42;
+  --k-trust-verified-fill: #e6f0ec;
+  --k-trust-stale: #855a00;
+  --k-trust-stale-fill: #f3efe6;
+  --k-trust-disputed: #94296f;
+  --k-trust-disputed-fill: #f4eaf1;
+  --k-trust-superseded: #016770;
+  --k-trust-superseded-fill: #e6f0f1;
+  --k-trust-rejected: #a12628;
+  --k-trust-rejected-fill: #f6e9ea;
+  --k-trust-revoked: #713408;
+  --k-trust-revoked-fill: #f1ebe6;
+
+  /* Tokens derived with var() resolve on the element that declares them and
+     are inherited as computed values, so each scope that changes an input
+     redeclares them. Without this, data-theme on a descendant of <html> would
+     keep the dark default's ring and soft fills. */
+  --k-focus-ring: var(--k-focus);
+  --k-positive-soft: color-mix(in oklab, var(--k-positive) 14%, transparent);
+  --k-caution-soft: color-mix(in oklab, var(--k-caution) 14%, transparent);
+  --k-negative-soft: color-mix(in oklab, var(--k-negative) 14%, transparent);
+  --k-active-soft: color-mix(in oklab, var(--k-active) 14%, transparent);
 }

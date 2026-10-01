@@ -39,7 +39,14 @@ const assets = [
 ];
 
 if (checkOnly) {
-  await assertSynced();
+  // Runs before the build in `npm test`: the build re-syncs the vendored copy
+  // in place, so a check placed after it could never fail.
+  try {
+    await assertSynced();
+  } catch (error) {
+    console.error(`${error.message}\nThe vendored copy differs from the installed packages. Run \`npm run sync:ui\` and commit the result.`);
+    process.exit(1);
+  }
   console.log("Flow UI vendor assets are synced.");
 } else {
   await syncAssets();
@@ -103,7 +110,7 @@ async function compareDirectories(source, target) {
   const targetByName = new Map(targetEntries.map((entry) => [entry.name, entry]));
 
   if (sourceNames.join("\0") !== targetNames.join("\0")) {
-    throw new Error(`Vendor directory drifted: ${target}`);
+    throw new Error(`Vendor directory drifted: ${path.relative(root, target)}`);
   }
 
   for (const entry of sourceEntries) {
@@ -130,6 +137,6 @@ async function compareDirectories(source, target) {
 async function compareFiles(source, target) {
   const [sourceContent, targetContent] = await Promise.all([readFile(source), readFile(target)]);
   if (!sourceContent.equals(targetContent)) {
-    throw new Error(`Vendor file drifted: ${target}`);
+    throw new Error(`Vendor file drifted: ${path.relative(root, target)}`);
   }
 }

@@ -90,11 +90,13 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 `npm run typecheck` checks Flow TypeScript without writing output. `npm run typecheck:console-ui` checks the console UI project without writing output.
 
-`npm test` runs the full local lane: build, Node tests under `tests/node/`, console smoke, and Playwright browser tests.
+`npm test` runs the full local lane: vendored UI asset drift check, build, Node tests under `tests/node/`, console smoke, and Playwright browser tests.
 
 `npm run check:schemas` builds first, then runs the split Node schema/runtime contract lane under `tests/node/`.
 
-`npm run check:ui-assets` verifies tracked vendored Kontour UI assets match the installed package.
+`npm run check:ui-assets` verifies tracked vendored Kontour UI assets match the installed package. `npm test` runs it first, before the build: the build re-syncs the vendored copy in place, so a later check could not fail. After bumping `@kontourai/ui` or `@kontourai/surface`, run `npm run sync:ui` and commit the result.
+
+The docs site does not keep a copy of the tokens: `scripts/docs-site/build.ts` reads them from the installed `@kontourai/ui` through `scripts/lib/ui-tokens.mjs`.
 
 `npm run check:console-smoke` builds first, then validates the local console server smoke path.
 

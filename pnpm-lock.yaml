@@ -22,8 +22,8 @@ importers:
         version: 0.15.0
     devDependencies:
       '@kontourai/ui':
-        specifier: ^1.1.0
-        version: 1.1.0(react@19.2.7)
+        specifier: ^1.18.0
+        version: 1.18.0(react@19.2.7)
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
@@ -51,8 +51,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/ui@1.1.0':
-    resolution: {integrity: sha512-31x7g1P8RZ16ke/uhYdY2LKnDcihc8v+3kI1m2XyutTSKmowB6io/3n4T+dVqydDrrgDgIC0NqjmWof8mt9Yhw==}
+  '@kontourai/ui@1.18.0':
+    resolution: {integrity: sha512-VR5vHBpQ8q7CVOSlR4YINJ05ghZ4Ao7J5vM8pxk+CBkadnMLHnnnsB6EaXjK83K5blffBwMOkKBwOvr2TC/Tsw==}
     engines: {node: '>=22'}
     peerDependencies:
       react: ^19.0.0
@@ -321,7 +321,7 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/ui@1.1.0(react@19.2.7)':
+  '@kontourai/ui@1.18.0(react@19.2.7)':
     dependencies:
       react: 19.2.7
 

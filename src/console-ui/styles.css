@@ -100,6 +100,12 @@ a {
   flex: none;
 }
 
+/* The mark is a monochrome SVG loaded through <img>, where currentColor is
+   black: invert it to light ink on the dark canvas. */
+:root:not([data-theme="light"]) .header-brand-mark {
+  filter: invert(1);
+}
+
 .header-brand-name {
   color: var(--accent);
   font-size: 12px;
@@ -288,8 +294,8 @@ a {
 }
 
 .graph-node[role="button"]:focus-visible {
-  outline: 2px solid var(--current);
-  outline-offset: 2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .graph-node strong {
@@ -409,7 +415,7 @@ a {
 
   .graph-node.is-current .node-index {
     background: var(--current);
-    color: var(--k-brand-contrast, #fff);
+    color: var(--k-status-contrast);
   }
 
   .graph-node.status-pass .node-index     { background: color-mix(in srgb, var(--pass) 25%, var(--flow-chip-bg));  color: var(--pass); }
@@ -721,8 +727,8 @@ a {
 }
 
 .drawer-close:focus-visible {
-  outline: 2px solid var(--current);
-  outline-offset: 2px;
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }
 
 .drawer-body {

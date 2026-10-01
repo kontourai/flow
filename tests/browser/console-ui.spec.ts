@@ -451,6 +451,38 @@ async function loadFlowConsole(page: Page): Promise<string[]> {
   return consoleErrors;
 }
 
+test("serves the vendored product mark and brand fonts with usable content types", async ({ page, request }) => {
+  await loadFlowConsole(page);
+
+  const mark = await request.get("/vendor/ui/icons/flow.svg");
+  expect(mark.status()).toBe(200);
+  expect(mark.headers()["content-type"]).toBe("image/svg+xml");
+  // An <img> only decodes SVG served as image/svg+xml.
+  await expect.poll(() => page.locator(".header-brand-mark").evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+
+  const font = await request.get("/vendor/ui/tokens/fonts/hanken-grotesk-latin.woff2");
+  expect(font.status()).toBe(200);
+  expect(font.headers()["content-type"]).toBe("font/woff2");
+});
+
+test("keyboard focus rings read the focus role in both modes", async ({ page }) => {
+  await loadFlowConsole(page);
+  test.skip(test.info().project.name === "chromium-mobile", "keyboard focus tested on desktop");
+
+  // Flow's focus role per mode, pinned from @kontourai/ui themes.css.
+  for (const [mode, expected] of [["dark", "rgb(47, 136, 166)"], ["light", "rgb(31, 111, 136)"]] as const) {
+    await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), mode);
+    const node = page.locator('[data-testid="flow-console-graph"] .is-current[role="button"]');
+    await page.keyboard.press("Tab");
+    await node.focus();
+    const outline = await node.evaluate((el) => {
+      const computed = getComputedStyle(el);
+      return { color: computed.outlineColor, style: computed.outlineStyle, width: computed.outlineWidth };
+    });
+    expect(outline).toEqual({ color: expected, style: "solid", width: "2px" });
+  }
+});
+
 async function assertTokenStylesResolved(page: Page): Promise<void> {
   const styles = await page.locator("body").evaluate((body) => {
     const computed = getComputedStyle(body);
