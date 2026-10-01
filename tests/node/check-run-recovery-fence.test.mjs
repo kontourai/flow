@@ -838,6 +838,12 @@ test("Console server projection and artifact reads close and reopen with the fen
     const blockedArtifact = await fetch(`${server.url}artifacts/report.json`);
     assert.equal(blockedArtifact.status, 500);
     assert.match(await blockedArtifact.text(), /flow\.run_recovery\.active/);
+    // A 500 raised inside the artifact branch is sandboxed like every other
+    // response under /artifacts/; the same failure outside it is not.
+    assert.equal(blockedArtifact.headers.get("content-security-policy"), "default-src 'none'; sandbox");
+    assert.equal(blockedArtifact.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(blockedProjection.headers.get("content-security-policy"), null);
+    assert.equal(blockedProjection.headers.get("x-content-type-options"), "nosniff");
 
     const active = await inspectRunRecoveryFence(run.runId, cwd);
     await finalizeRunRecoveryFence(run.runId, {

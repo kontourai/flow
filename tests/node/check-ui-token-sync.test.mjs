@@ -131,6 +131,12 @@ test("braces, semicolons and commas inside quoted values are text", () => {
   const quotedComment = parseRules(`.a { --k-x: "/*"; } /* note { */ .b { --k-y: "*/"; }`);
   assert.deepEqual(quotedComment.map((rule) => [rule.selectors[0], rule.body]), [[".a", '--k-x: "/*";'], [".b", '--k-y: "*/";']]);
   assert.throws(() => parseRules(".a { --k-x: 1px; } /* open"), /unterminated comment/);
+  // A comment separates tokens, so removing it must not join its neighbours.
+  assert.equal(tokenValue(ruleBody(".a { --k-x: 1px/* c */solid; }", ".a"), "--k-x"), "1px solid");
+  // In an unquoted url() the marker is part of the URL; reading it as a
+  // comment would swallow the declarations after it, so it is refused.
+  assert.throws(() => parseRules(".a { --k-x: url(a/*b); --k-y: 1 /* c */; }"), /comment marker inside parentheses/);
+  assert.equal(tokenValue(ruleBody('.a { --k-x: url("a/*b"); --k-y: 1 /* c */; }', ".a"), "--k-y"), "1");
   assert.throws(() => parseRules(`.a { --k-x: "oops; }`), /unterminated string/);
   assert.throws(() => parseRules(".a { --k-x: 1px;"), /unterminated rule/);
   assert.throws(() => parseRules(".a { } }"), /unbalanced/);

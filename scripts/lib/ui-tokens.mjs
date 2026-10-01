@@ -15,10 +15,14 @@ export async function readUiTokenSources(packageRoot = uiPackageRoot) {
   return { tokens, themes };
 }
 
-// Drop comments, leaving quoted values alone: a "/*" inside a string is text.
+// Replace each comment with a space (CSS treats a comment as a token
+// separator), leaving quoted values alone: a "/*" inside a string is text.
+// Inside parentheses the marker is ambiguous (in an unquoted url() it is part
+// of the URL, not a comment), so it is refused there rather than guessed at.
 function stripComments(css) {
   let out = "";
   let quote = "";
+  let depth = 0;
   for (let index = 0; index < css.length; index += 1) {
     const char = css[index];
     if (quote) {
@@ -26,11 +30,15 @@ function stripComments(css) {
       if (char === "\\") out += css[++index] ?? "";
       else if (char === quote) quote = "";
     } else if (char === "/" && css[index + 1] === "*") {
+      if (depth > 0) throw new Error("ui tokens: comment marker inside parentheses");
       const end = css.indexOf("*/", index + 2);
       if (end === -1) throw new Error("ui tokens: unterminated comment");
+      out += " ";
       index = end + 1;
     } else {
       if (char === '"' || char === "'") quote = char;
+      if (char === "(") depth += 1;
+      if (char === ")") depth = Math.max(0, depth - 1);
       out += char;
     }
   }

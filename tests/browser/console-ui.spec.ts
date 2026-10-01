@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -217,6 +218,15 @@ test("artifacts with active content are served inert and never run script on the
     expect(missing.status()).toBe(404);
     expect(missing.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
 
+    // Common run outputs open as text.
+    for (const name of ["events.jsonl", "events.ndjson", "scan.sarif", "tool.py", "run.out", "run.err", "build.LOG"]) {
+      await writeFile(path.join(dir, name), `<script>${ACTIVE_ARTIFACT_SCRIPT}</script>\n`);
+      const text = await request.get(`/artifacts/active-artifacts/${name}`);
+      expect(text.headers()["content-type"], name).toBe("text/plain; charset=utf-8");
+      expect(text.headers()["content-disposition"], name).toBeUndefined();
+      expect(text.headers()["content-security-policy"], name).toBe("default-src 'none'; sandbox");
+    }
+
     // A raster image keeps its type and renders when the console embeds it.
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
     await writeFile(path.join(dir, "pixel.PNG"), png);
@@ -260,6 +270,14 @@ test("artifacts with active content are served inert and never run script on the
       expect(refused.headers()["content-security-policy"], method).toBe("default-src 'none'; sandbox");
       expect(refused.headers()["x-content-type-options"], method).toBe("nosniff");
     }
+
+    // A request target that fails to parse is answered before the handler
+    // knows the path, so that 500 is sandboxed whatever it was aimed at.
+    const unparsed = await rawRequest("GET // HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    expect(unparsed).toMatch(/^HTTP\/1\.1 500 /);
+    expect(unparsed).toContain('"error": "Invalid URL"');
+    expect(unparsed.toLowerCase()).toContain("content-security-policy: default-src 'none'; sandbox");
+    expect(unparsed.toLowerCase()).toContain("x-content-type-options: nosniff");
 
     // The console's own assets are not sandboxed and are not sniffed.
     const app = await request.get("/");
@@ -563,6 +581,7 @@ test("serves the vendored product mark and brand fonts with usable content types
   const mark = await request.get("/vendor/ui/icons/flow.svg");
   expect(mark.status()).toBe(200);
   expect(mark.headers()["content-type"]).toBe("image/svg+xml");
+  await assertMarkIsDrawn(page);
   // The mark is that SVG used as a mask, inked with the canvas text color.
   const markStyle = await page.locator(".header-brand-mark").evaluate((el) => {
     const computed = getComputedStyle(el);
@@ -582,6 +601,7 @@ test("the header mark stays visible in forced-colors mode", async ({ browser, ba
     const page = await context.newPage();
     await page.goto("/");
     await expect(page.getByTestId("flow-console-status")).toBeVisible();
+    await assertMarkIsDrawn(page);
     const colors = await page.locator(".header-brand-mark").evaluate((el) => {
       const probe = document.createElement("span");
       probe.style.cssText = "forced-color-adjust: none; color: CanvasText; background-color: Canvas;";
@@ -622,6 +642,37 @@ test("keyboard focus rings read the focus role in both modes", async ({ page }) 
     expect(outline).toEqual({ color: expected, style: "solid", width: "2px" });
   }
 });
+
+// Computed colors are still reported for a display:none element, so a color
+// assertion alone cannot tell a hidden mark from a drawn one.
+async function assertMarkIsDrawn(page: Page): Promise<void> {
+  const mark = page.locator(".header-brand-mark");
+  await expect(mark).toBeVisible();
+  const box = await mark.boundingBox();
+  expect(box?.width).toBeGreaterThan(0);
+  expect(box?.height).toBeGreaterThan(0);
+  const style = await mark.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { display: computed.display, mask: computed.maskImage };
+  });
+  expect(style.display).not.toBe("none");
+  expect(style.mask).toContain("/vendor/ui/icons/flow.svg");
+}
+
+// One request written straight to the socket: a request target the test
+// clients would normalise before sending.
+function rawRequest(requestText: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(process.env.FLOW_CONSOLE_TEST_PORT), "127.0.0.1");
+    let data = "";
+    socket.setEncoding("utf8");
+    socket.on("connect", () => socket.write(requestText));
+    socket.on("data", (chunk) => { data += chunk; });
+    socket.on("end", () => resolve(data));
+    socket.on("error", reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`raw request timed out; received: ${data}`)); });
+  });
+}
 
 async function assertTokenStylesResolved(page: Page): Promise<void> {
   const styles = await page.locator("body").evaluate((body) => {

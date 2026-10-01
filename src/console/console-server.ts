@@ -68,7 +68,7 @@ const ARTIFACT_TEXT_TYPES: Record<string, string> = {
   ".md": "text/markdown; charset=utf-8"
 };
 const ARTIFACT_PLAIN_TEXT_EXTENSIONS = new Set([
-  ".txt", ".log", ".csv", ".tsv", ".diff", ".patch", ".yaml", ".yml", ".toml", ".ini", ".xml",
+  ".txt", ".log", ".out", ".err", ".jsonl", ".ndjson", ".sarif", ".py", ".csv", ".tsv", ".diff", ".patch", ".yaml", ".yml", ".toml", ".ini", ".xml",
   ".html", ".htm", ".xhtml", ".svg", ".css", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".sh"
 ]);
 const ARTIFACT_HEADERS = { "content-security-policy": "default-src 'none'; sandbox" };
