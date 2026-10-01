@@ -16,43 +16,66 @@ export async function readUiTokenSources(packageRoot = uiPackageRoot) {
 }
 
 // Top-level rules of a stylesheet as { selectors, body }. Comments are
-// dropped first; the token sheets have no nested blocks, and a nested block
-// is refused rather than mis-read.
+// dropped first. Braces inside a quoted value are text, not structure; a
+// nested block or an unterminated rule or string is refused, not mis-read.
 export function parseRules(css) {
   const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const rules = [];
-  let cursor = 0;
-  while (true) {
-    const open = source.indexOf("{", cursor);
-    if (open === -1) break;
-    const close = source.indexOf("}", open);
-    if (close === -1) throw new Error("ui tokens: unterminated rule");
-    const body = source.slice(open + 1, close);
-    if (body.includes("{")) throw new Error("ui tokens: nested blocks are not supported");
-    rules.push({ selectors: splitSelectors(source.slice(cursor, open)), body: body.trim() });
-    cursor = close + 1;
+  let start = 0;
+  let open = -1;
+  let quote = "";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === "\\") index += 1;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "{") {
+      if (open !== -1) throw new Error("ui tokens: nested blocks are not supported");
+      open = index;
+    } else if (char === "}") {
+      if (open === -1) throw new Error("ui tokens: unbalanced `}`");
+      rules.push({ selectors: splitTopLevel(source.slice(start, open), ","), body: source.slice(open + 1, index).trim() });
+      start = index + 1;
+      open = -1;
+    }
   }
+  if (quote) throw new Error("ui tokens: unterminated string");
+  if (open !== -1) throw new Error("ui tokens: unterminated rule");
   return rules;
 }
 
-// Split a selector list on top-level commas only: the theme selectors carry
-// comma lists inside :where(:not(a, b)).
-function splitSelectors(text) {
-  const selectors = [];
+// Split on a separator outside quotes and parentheses: the theme selectors
+// carry comma lists inside :where(:not(a, b)), and a quoted value may hold
+// any character.
+function splitTopLevel(text, separator) {
+  const parts = [];
   let depth = 0;
+  let quote = "";
   let current = "";
-  for (const char of text) {
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      current += char;
+      if (char === "\\") current += text[++index] ?? "";
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
     if (char === "(") depth += 1;
     if (char === ")") depth -= 1;
-    if (char === "," && depth === 0) {
-      selectors.push(current.trim());
+    if (char === separator && depth === 0) {
+      parts.push(current.trim());
       current = "";
     } else {
       current += char;
     }
   }
-  if (current.trim()) selectors.push(current.trim());
-  return selectors;
+  if (current.trim()) parts.push(current.trim());
+  return parts;
 }
 
 // The body of the one rule that lists `selector`. Zero or several matches
@@ -67,7 +90,7 @@ export function ruleBody(css, selector, label = "ui tokens") {
 
 export function declarations(body) {
   const map = new Map();
-  for (const part of body.split(";")) {
+  for (const part of splitTopLevel(body, ";")) {
     const index = part.indexOf(":");
     if (index === -1) continue;
     map.set(part.slice(0, index).trim(), part.slice(index + 1).trim().replace(/\s+/g, " "));
@@ -81,13 +104,26 @@ export function tokenValue(body, name, label = "ui tokens") {
   return value;
 }
 
+// What each rule must declare for a Flow page to be Flow-branded and legible.
+// A rule that parses but has lost one of these (an emptied .theme-flow, say)
+// would otherwise ship the package's default brand without any error.
+const BASE_TOKENS = ["--k-bg", "--k-panel", "--k-text", "--k-brand", "--k-action", "--k-action-contrast", "--k-focus"];
+const FLOW_TOKENS = ["--k-brand", "--k-action", "--k-action-contrast", "--k-focus"];
+
+function requireTokens(body, names, label) {
+  const declared = declarations(body);
+  const missing = names.filter((name) => !declared.get(name));
+  if (missing.length > 0) throw new Error(`${label}: missing ${missing.join(", ")}`);
+  return body;
+}
+
 // The four rules a `.theme-flow` page resolves, in cascade order.
 export function flowThemeBodies({ tokens, themes }) {
   return {
-    dark: ruleBody(tokens, ":root", "tokens.css"),
-    darkFlow: ruleBody(themes, ".theme-flow", "themes.css"),
-    light: ruleBody(tokens, '[data-theme="light"]', "tokens.css"),
-    lightFlow: ruleBody(themes, '[data-theme="light"].theme-flow', "themes.css"),
+    dark: requireTokens(ruleBody(tokens, ":root", "tokens.css"), BASE_TOKENS, "tokens.css `:root`"),
+    darkFlow: requireTokens(ruleBody(themes, ".theme-flow", "themes.css"), FLOW_TOKENS, "themes.css `.theme-flow`"),
+    light: requireTokens(ruleBody(tokens, '[data-theme="light"]', "tokens.css"), BASE_TOKENS, 'tokens.css `[data-theme="light"]`'),
+    lightFlow: requireTokens(ruleBody(themes, '[data-theme="light"].theme-flow', "themes.css"), FLOW_TOKENS, "themes.css light `.theme-flow`"),
   };
 }
 

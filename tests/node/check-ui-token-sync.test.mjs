@@ -110,6 +110,28 @@ test("token extraction refuses a missing rule or declaration instead of emitting
   assert.throws(() => parseRules("@media print { :root { --k-bg: red; } }"), /nested blocks/);
 });
 
+test("token extraction refuses a Flow rule that has lost its tokens", () => {
+  const emptied = sources.themes.replace(/\.theme-flow \{[^}]*\}/, ".theme-flow {}");
+  assert.notEqual(emptied, sources.themes, "the injection must reach the rule");
+  assert.throws(() => flowThemeBodies({ tokens: sources.tokens, themes: emptied }), /themes\.css `\.theme-flow`: missing --k-brand, --k-action, --k-action-contrast, --k-focus/);
+  assert.throws(() => flowTokensForColorSchemeMedia({ tokens: sources.tokens, themes: emptied }), /missing --k-brand/);
+  const noBrand = sources.tokens.replace("--k-brand: #0e7c64;", "");
+  assert.notEqual(noBrand, sources.tokens);
+  assert.throws(() => flowThemeBodies({ tokens: noBrand, themes: sources.themes }), /tokens\.css `\[data-theme="light"\]`: missing --k-brand/);
+});
+
+test("braces, semicolons and commas inside quoted values are text", () => {
+  const css = `.a, .b[title="x,y"] { --k-x: "}"; --k-y: 'a;b{'; --k-z: 1px; }\n.c { --k-w: 2px; }`;
+  const rules = parseRules(css);
+  assert.equal(rules.length, 2);
+  assert.deepEqual(rules[0].selectors, [".a", '.b[title="x,y"]']);
+  assert.deepEqual([...declarations(rules[0].body)], [["--k-x", '"}"'], ["--k-y", "'a;b{'"], ["--k-z", "1px"]]);
+  assert.equal(tokenValue(ruleBody(css, ".c"), "--k-w"), "2px");
+  assert.throws(() => parseRules(`.a { --k-x: "oops; }`), /unterminated string/);
+  assert.throws(() => parseRules(".a { --k-x: 1px;"), /unterminated rule/);
+  assert.throws(() => parseRules(".a { } }"), /unbalanced/);
+});
+
 test("selector lists split on top-level commas only", () => {
   const rule = parseRules(sources.themes).find((entry) => entry.selectors.includes('[data-theme="light"].theme-flow'));
   assert.equal(rule.selectors.length, 3);

@@ -46,6 +46,20 @@ const MIME_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8"
 };
 
+// Run artifacts are files a run produced: untrusted content served from the
+// console's own origin. Only inert types keep their media type; everything
+// else, including .html and .svg, is shown as plain text so a browser never
+// treats it as a document. ARTIFACT_HEADERS holds that line a second way: a
+// sandboxed response cannot run script even if a type is added here later.
+const ARTIFACT_MIME_TYPES: Record<string, string> = {
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8"
+};
+const ARTIFACT_FALLBACK_TYPE = "text/plain; charset=utf-8";
+const ARTIFACT_HEADERS = { "content-security-policy": "default-src 'none'; sandbox" };
+
 const SSE_DEBOUNCE_MS = 250;
 const SSE_POLL_INTERVAL_MS = 2000;
 
@@ -53,10 +67,18 @@ function uiAssetRoot() {
   return path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "console-ui");
 }
 
-function send(response: ServerResponse, status: number, body: string | Buffer, contentType = "text/plain; charset=utf-8") {
+function send(
+  response: ServerResponse,
+  status: number,
+  body: string | Buffer,
+  contentType = "text/plain; charset=utf-8",
+  extraHeaders: Record<string, string> = {}
+) {
   response.writeHead(status, {
     "content-type": contentType,
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    ...extraHeaders
   });
   response.end(body);
 }
@@ -311,11 +333,11 @@ function routeRequest(
           artifact = null;
         }
         if (!artifact) {
-          send(response, 404, "artifact not found");
+          send(response, 404, "artifact not found", undefined, ARTIFACT_HEADERS);
           return;
         }
-        const contentType = MIME_TYPES[path.extname(relative)] ?? "application/octet-stream";
-        send(response, 200, artifact, contentType);
+        const contentType = ARTIFACT_MIME_TYPES[path.extname(relative).toLowerCase()] ?? ARTIFACT_FALLBACK_TYPE;
+        send(response, 200, artifact, contentType, ARTIFACT_HEADERS);
         return;
       }
       await serveStatic(url.pathname, response);

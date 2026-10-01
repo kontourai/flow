@@ -98,12 +98,9 @@ a {
   width: 18px;
   height: 18px;
   flex: none;
-}
-
-/* The mark is a monochrome SVG loaded through <img>, where currentColor is
-   black: invert it to light ink on the dark canvas. */
-:root:not([data-theme="light"]) .header-brand-mark {
-  filter: invert(1);
+  background-color: var(--k-text);
+  -webkit-mask: url("./vendor/ui/icons/flow.svg") center / contain no-repeat;
+  mask: url("./vendor/ui/icons/flow.svg") center / contain no-repeat;
 }
 
 .header-brand-name {

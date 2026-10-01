@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -172,6 +172,60 @@ test("rejects artifact path traversal through the console server", async ({ page
 
   expect(traversal.status()).toBe(404);
   expect(consoleErrors).toEqual([]);
+});
+
+// A run artifact is untrusted content on the console's origin. Each payload
+// would, if the browser treated it as a document, mark the page and read the
+// same-origin projection API.
+const ACTIVE_ARTIFACT_SCRIPT = `document.title = "artifact-script-ran"; window.__artifactScriptRan = true; fetch("/api/projection").then(() => { window.__artifactReadApi = true; });`;
+const ACTIVE_ARTIFACTS = [
+  { name: "active.svg", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>${ACTIVE_ARTIFACT_SCRIPT}</script></svg>` },
+  { name: "active.html", body: `<!doctype html><title>artifact</title><script>${ACTIVE_ARTIFACT_SCRIPT}</script>` },
+  { name: "ACTIVE.SVG", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>${ACTIVE_ARTIFACT_SCRIPT}</script></svg>` },
+];
+
+test("artifacts with active content are served inert and never run script on the console origin", async ({ page, request }) => {
+  const dir = path.join(FIXTURE_ROOT, "active-artifacts");
+  await mkdir(dir, { recursive: true });
+  try {
+    for (const artifact of ACTIVE_ARTIFACTS) {
+      await writeFile(path.join(dir, artifact.name), artifact.body);
+      const url = `/artifacts/active-artifacts/${artifact.name}`;
+
+      const response = await request.get(url);
+      expect(response.status()).toBe(200);
+      expect(await response.text()).toBe(artifact.body);
+      const headers = response.headers();
+      expect(headers["content-type"]).toBe("text/plain; charset=utf-8");
+      expect(headers["content-security-policy"]).toBe("default-src 'none'; sandbox");
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+
+      await page.goto(url);
+      await page.waitForTimeout(300);
+      const state = await page.evaluate(() => {
+        const scope = window as unknown as { __artifactScriptRan?: boolean; __artifactReadApi?: boolean };
+        return { title: document.title, ran: scope.__artifactScriptRan === true, readApi: scope.__artifactReadApi === true };
+      });
+      expect(state, artifact.name).toEqual({ title: "", ran: false, readApi: false });
+    }
+
+    // Inert types keep their media type, still sandboxed.
+    const report = await request.get("/artifacts/report.json");
+    expect(report.headers()["content-type"]).toBe("application/json; charset=utf-8");
+    expect(report.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    const missing = await request.get("/artifacts/active-artifacts/absent.svg");
+    expect(missing.status()).toBe(404);
+    expect(missing.headers()["content-security-policy"]).toBe("default-src 'none'; sandbox");
+
+    // The console's own assets are not sandboxed and are not sniffed.
+    const app = await request.get("/");
+    expect(app.headers()["content-security-policy"]).toBeUndefined();
+    expect(app.headers()["x-content-type-options"]).toBe("nosniff");
+    const mark = await request.get("/vendor/ui/icons/flow.svg");
+    expect(mark.headers()["x-content-type-options"]).toBe("nosniff");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("keeps the console layout inside the mobile viewport", async ({ page }) => {
@@ -457,8 +511,13 @@ test("serves the vendored product mark and brand fonts with usable content types
   const mark = await request.get("/vendor/ui/icons/flow.svg");
   expect(mark.status()).toBe(200);
   expect(mark.headers()["content-type"]).toBe("image/svg+xml");
-  // An <img> only decodes SVG served as image/svg+xml.
-  await expect.poll(() => page.locator(".header-brand-mark").evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  // The mark is that SVG used as a mask, inked with the canvas text color.
+  const markStyle = await page.locator(".header-brand-mark").evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { mask: computed.maskImage, ink: computed.backgroundColor, text: getComputedStyle(document.body).color };
+  });
+  expect(markStyle.mask).toContain("/vendor/ui/icons/flow.svg");
+  expect(markStyle.ink).toBe(markStyle.text);
 
   const font = await request.get("/vendor/ui/tokens/fonts/hanken-grotesk-latin.woff2");
   expect(font.status()).toBe(200);
