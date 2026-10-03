@@ -11,7 +11,7 @@ import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.7";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.8";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 

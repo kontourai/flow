@@ -148,6 +148,34 @@ Flow matches `bundle_claim` selectors against bundle claims and derives the clai
 
 This is a neutral contract: Flow does not import Surface services or Veritas-specific schema fields at runtime. Any tool that can write this JSON shape — CI, Veritas, a review bot, a script — is an evidence producer.
 
+### Bounded Surface derivation
+
+Flow preflights bundles before schema validation and Surface report derivation
+at attachment, gate evaluation, and canonical report refresh. The threat model
+is resource exhaustion from untrusted evidence: very large collections, nested
+metadata, and multiplicative claim or dispute-resolution work must fail closed.
+
+The independent limits are 4,096 records in each folded collection or nested
+array, 16,384 total traversal work units, 1,000,000 for
+`claims × (traversal work + 1)`, and 4,096 for
+`resolution events × authority traces`. Traversal work counts array slots,
+visited values, and own object fields across claims, evidence, events, policies,
+identity links, claim groups, and authority traces. Metadata shares the bounded
+work budget but does not consume a collection's record allowance. The budget
+traversal rejects oversized arrays before reading their elements and bounds
+nested object traversal. Public entry points snapshot input before this guard;
+these limits do not bound the earlier snapshot's allocation or accessor work.
+Input snapshot failures remain fail-closed.
+
+The metadata ceiling accommodates retained acceptance contracts and review
+history without pruning evidence. A measured 21-claim, 12-evidence, 20-event,
+9-policy bundle uses 4,183 work units, exceeding the former shared 4,096 limit.
+The 16,384 ceiling gives this normal input room to grow while retaining the
+independent multiplicative caps. Flow refuses over-budget attachments with
+`trust bundle exceeds Flow Surface derivation budget`; gate evaluation reports
+`bundle_invalid`. The acceptance-policy change is bound to trust attachment
+reducer version `1.3.8` and its identity hash.
+
 ## The run-output TrustBundle
 
 `projectRunOutputBundle` emits a TrustBundle for the run itself, so a parent
