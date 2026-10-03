@@ -158,16 +158,17 @@ function rawRequest(port, method, requestPath, timeoutMs = 2000) {
   return new Promise((resolve, reject) => {
     const socket = net.connect(port, "127.0.0.1");
     const chunks = [];
-    const timer = setTimeout(() => {
+    let settled = false;
+    const settle = (fn) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
+    const timer = setTimeout(() => settle(() => {
       socket.destroy();
       reject(new Error(`${method} ${requestPath} did not complete within ${timeoutMs}ms (received ${Buffer.concat(chunks).length} bytes)`));
-    }, timeoutMs);
+    }), timeoutMs);
     socket.on("data", (chunk) => chunks.push(chunk));
-    socket.once("error", (error) => { clearTimeout(timer); reject(error); });
-    socket.once("close", () => {
-      clearTimeout(timer);
-      resolve(parseRawResponse(Buffer.concat(chunks).toString("latin1")));
-    });
+    socket.once("error", (error) => settle(() => reject(error)));
+    socket.once("close", () => settle(() => {
+      try { resolve(parseRawResponse(Buffer.concat(chunks).toString("latin1"))); } catch (error) { reject(error); }
+    }));
     socket.write(`${method} ${requestPath} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   });
 }
