@@ -2,6 +2,7 @@
 // report re-derivation. It deliberately is not part of Flow's public API.
 const MAX_RESOLUTION_TRACE_COMPARISONS = 4_096;
 const MAX_SURFACE_DERIVATION_RECORDS = 4_096;
+const MAX_SURFACE_METADATA_WORK = 16_384;
 const MAX_SURFACE_DERIVATION_PRODUCT = 1_000_000;
 
 const FOLDED_COLLECTIONS = ["claims", "evidence", "events", "policies", "identityLinks", "claimGroups", "authorityTrace"] as const;
@@ -10,6 +11,7 @@ type BudgetMetrics = { claims: number; traces: number; resolutionEvents: number;
 
 /**
  * Count every collection Surface can traverse, including nested references.
+ * Collection/array length and total metadata work have separate ceilings.
  * Array lengths are rejected before any array-element reads: a sparse or huge
  * raw array therefore cannot force allocation, eager iteration, or accessor
  * evaluation beyond the small Flow ceiling.
@@ -42,19 +44,20 @@ function boundedMetrics(bundle: any): BudgetMetrics | null {
   while (stack.length) {
     const value = stack.pop();
     if (Array.isArray(value)) {
-      if (value.length > MAX_SURFACE_DERIVATION_RECORDS - work) return null;
+      if (value.length > MAX_SURFACE_DERIVATION_RECORDS
+        || value.length > MAX_SURFACE_METADATA_WORK - work) return null;
       work += value.length;
       for (let index = 0; index < value.length; index += 1) stack.push(value[index]);
       continue;
     }
     work += 1;
-    if (work > MAX_SURFACE_DERIVATION_RECORDS) return null;
+    if (work > MAX_SURFACE_METADATA_WORK) return null;
     if (!value || typeof value !== "object") continue;
     if (visited.has(value)) continue;
     visited.add(value);
     for (const key in value as Record<string, unknown>) {
       if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-      if (work >= MAX_SURFACE_DERIVATION_RECORDS) return null;
+      if (work >= MAX_SURFACE_METADATA_WORK) return null;
       work += 1;
       stack.push((value as Record<string, unknown>)[key]);
     }

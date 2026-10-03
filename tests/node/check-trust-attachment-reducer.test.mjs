@@ -8,6 +8,7 @@ import {
   FLOW_SCHEMA_VERSION,
   FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES,
   reduceTrustAttachment,
+  normalizeTrustAttachmentBundle,
   trustAttachmentReducerIdentity,
   startRun,
   attachEvidence
@@ -49,6 +50,32 @@ function bundle({ id = "claim.review", expiresAt, producerId, authorityTrace } =
   };
 }
 
+function reviewedHistoryBundle() {
+  const value = bundle();
+  const first = value.claims[0];
+  value.claims = Array.from({ length: 21 }, (_, claimIndex) => ({
+    ...structuredClone(first),
+    id: claimIndex === 0 ? first.id : `claim.review.${claimIndex}`,
+    metadata: {
+      acceptance_contract_history: Array.from({ length: 4 }, (_, round) => ({
+        revision: round + 1,
+        reviewer: "test/reviewer",
+        reviewed_at: "2026-07-19T15:30:00.000Z",
+        criteria: Array.from({ length: 8 }, (_, criterion) => ({
+          id: `criterion.${criterion}`,
+          description: "Retained review criterion",
+          artifact_refs: [`artifact:review.${claimIndex}.${round}.${criterion}`],
+          outcome: "accepted"
+        }))
+      }))
+    }
+  }));
+  value.events = value.claims.map((claim, index) => ({
+    ...structuredClone(value.events[0]), id: `event.review.${index}`, claimId: claim.id
+  }));
+  return value;
+}
+
 function runInput() {
   const state = {
     schema_version: FLOW_SCHEMA_VERSION, run_id: "reducer-run", definition_id: definition.id,
@@ -86,7 +113,7 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.7");
+  assert.equal(result.identity.version, "1.3.8");
   assert.equal(result.evaluation_mode, "evaluate");
   assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
   for (const integrity of [
@@ -385,7 +412,11 @@ test("trust attachment reducer matches the canonical attachEvidence manifest pro
   const definitionPath = path.join(cwd, "definition.json");
   const bundlePath = path.join(cwd, "review.json");
   await writeFile(definitionPath, `${JSON.stringify(definition)}\n`);
-  await writeFile(bundlePath, `${JSON.stringify(bundle())}\n`);
+  const richBundle = reviewedHistoryBundle();
+  const normalized = normalizeTrustAttachmentBundle(richBundle, NOW, FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES);
+  assert.deepEqual(normalized.bundle, richBundle, "normalization retains nested review history without pruning");
+  assert.equal(normalized.bundle_report.claims.length, 21);
+  await writeFile(bundlePath, `${JSON.stringify(richBundle)}\n`);
   const started = await startRun(definitionPath, { cwd, runId: "parity-run" });
   const before = runInput();
   before.state = started.state;
@@ -394,15 +425,40 @@ test("trust attachment reducer matches the canonical attachEvidence manifest pro
     cwd, gate: "verify-gate", file: bundlePath, kind: "trust.bundle"
   });
   const reduced = reduceTrustAttachment({
-    run: before, bundle: bundle(), now: attached.attached_at,
+    run: before, bundle: richBundle, now: attached.attached_at,
     attachment: attachment(attached.id, {
       status: attached.status, attached_at: attached.attached_at, original_path: attached.original_path,
       stored_path: attached.stored_path, sha256: attached.sha256
     }), dependencies: FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES
   });
+  assert.equal(reduced.evaluation.status, "pass");
+  assert.deepEqual(attached.bundle, richBundle, "canonical attachment retains every review round");
   assert.deepEqual(
     reduced.next_manifest.evidence[0],
     { ...attached, bundle_report: reduced.next_manifest.evidence[0].bundle_report },
     "the reducer preserves canonical attachment fields; report time is explicitly supplied"
   );
+});
+
+test("public trust normalization rejects independent metadata, nested-array, collection, and claim-work exhaustion", () => {
+  const oversizedMetadata = bundle();
+  oversizedMetadata.claims[0].metadata = Object.fromEntries(Array.from({ length: 9_000 }, (_, index) => [`entry.${index}`, index]));
+  const oversizedNestedArray = bundle();
+  oversizedNestedArray.claims[0].metadata = { artifact_refs: Array(4_097).fill(null) };
+  const oversizedCollection = bundle();
+  oversizedCollection.policies = Array(4_097).fill(null);
+  const excessiveClaimWork = bundle();
+  excessiveClaimWork.claims = Array.from({ length: 250 }, (_, index) => ({ ...excessiveClaimWork.claims[0], id: `claim.work.${index}` }));
+  for (const [name, value] of [
+    ["aggregate metadata", oversizedMetadata],
+    ["nested array", oversizedNestedArray],
+    ["top-level collection", oversizedCollection],
+    ["claim × work product", excessiveClaimWork]
+  ]) {
+    assert.throws(
+      () => normalizeTrustAttachmentBundle(value, NOW, FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES),
+      /trust bundle exceeds Flow Surface derivation budget/,
+      name
+    );
+  }
 });
