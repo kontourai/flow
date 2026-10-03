@@ -6,11 +6,12 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { startFlowConsoleServer } from "../../dist/console/console-server.js";
+import { consoleSseSubscriberCount, startFlowConsoleServer } from "../../dist/console/console-server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixtureSourceDir = path.join(root, "examples", "scenarios", "console-projection", "runtime-fixture", "console-projection-fixture");
@@ -145,6 +146,105 @@ test("SSE /api/stream responds with correct content-type and initial comment", a
       });
       setTimeout(() => reject(new Error("timeout waiting for SSE initial comment")), 3000);
     });
+  } finally {
+    await server.close();
+  }
+});
+
+// Raw-socket request against the real server. Sends `Connection: close` and
+// resolves once the server has closed the socket; rejects if it has not within
+// timeoutMs, so a request that never completes fails instead of hanging.
+function rawRequest(port, method, requestPath, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1");
+    const chunks = [];
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`${method} ${requestPath} did not complete within ${timeoutMs}ms (received ${Buffer.concat(chunks).length} bytes)`));
+    }, timeoutMs);
+    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.once("error", (error) => { clearTimeout(timer); reject(error); });
+    socket.once("close", () => {
+      clearTimeout(timer);
+      resolve(parseRawResponse(Buffer.concat(chunks).toString("latin1")));
+    });
+    socket.write(`${method} ${requestPath} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  });
+}
+
+function parseRawResponse(raw) {
+  const end = raw.indexOf("\r\n\r\n");
+  assert.notEqual(end, -1, `no complete header block in ${JSON.stringify(raw)}`);
+  const [statusLine, ...headerLines] = raw.slice(0, end).split("\r\n");
+  const headers = {};
+  for (const line of headerLines) {
+    const colon = line.indexOf(":");
+    headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+  }
+  return { status: Number(statusLine.split(" ")[1]), headers, body: raw.slice(end + 4) };
+}
+
+async function startFixtureServer() {
+  return startFlowConsoleServer({ runId: fixtureRunId, cwd: fixtureCwd, host: "127.0.0.1", port: 0 });
+}
+
+test("HEAD /api/stream answers promptly with the stream headers, no body, and no subscriber", async () => {
+  const server = await startFixtureServer();
+  try {
+    const before = consoleSseSubscriberCount(server);
+    const response = await rawRequest(server.port, "HEAD", "/api/stream");
+    assert.equal(response.status, 200);
+    assert.equal(response.headers["content-type"], "text/event-stream; charset=utf-8");
+    assert.equal(response.headers["x-content-type-options"], "nosniff");
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.equal(response.headers["x-accel-buffering"], "no");
+    assert.equal(response.body, "", "a HEAD response carries no body");
+    assert.equal(consoleSseSubscriberCount(server), before, "HEAD must not leave a stream subscriber behind");
+  } finally {
+    await server.close();
+  }
+});
+
+test("GET /api/stream over a raw socket streams and releases its subscriber on disconnect", async () => {
+  const server = await startFixtureServer();
+  try {
+    const before = consoleSseSubscriberCount(server);
+    const socket = net.connect(server.port, "127.0.0.1");
+    let received = "";
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`no stream preamble within 2000ms: ${JSON.stringify(received)}`)), 2000);
+        socket.on("data", (chunk) => {
+          received += chunk.toString("latin1");
+          if (received.includes(": connected")) { clearTimeout(timer); resolve(undefined); }
+        });
+        socket.once("error", (error) => { clearTimeout(timer); reject(error); });
+        socket.write("GET /api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+      });
+      assert.match(received, /^HTTP\/1\.1 200 /);
+      assert.match(received, /\r\ncontent-type: text\/event-stream; charset=utf-8\r\n/i);
+      assert.match(received, /\r\nx-content-type-options: nosniff\r\n/i);
+      assert.equal(consoleSseSubscriberCount(server), before + 1, "an open GET stream holds one subscriber");
+    } finally {
+      socket.destroy();
+    }
+    await waitFor(() => consoleSseSubscriberCount(server) === before, 2000);
+  } finally {
+    await server.close();
+  }
+});
+
+test("non-GET methods on /api/stream get 405 with Allow and no subscriber", async () => {
+  const server = await startFixtureServer();
+  try {
+    const before = consoleSseSubscriberCount(server);
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      const response = await rawRequest(server.port, method, "/api/stream");
+      assert.equal(response.status, 405, method);
+      assert.equal(response.headers.allow, "GET, HEAD", method);
+      assert.equal(response.headers["x-content-type-options"], "nosniff", method);
+    }
+    assert.equal(consoleSseSubscriberCount(server), before);
   } finally {
     await server.close();
   }
