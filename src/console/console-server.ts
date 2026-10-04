@@ -196,6 +196,7 @@ type SseSubscriber = (data: string) => void;
 
 export interface RunWatcher {
   subscribe: (fn: SseSubscriber) => () => void;
+  subscriberCount: () => number;
   close: () => Promise<void>;
 }
 
@@ -268,6 +269,9 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
       subscribers.add(fn);
       return () => { subscribers.delete(fn); };
     },
+    subscriberCount() {
+      return subscribers.size;
+    },
     async close() {
       closed = true;
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -279,18 +283,31 @@ export function createRunWatcher(runId: string, cwd: string, resolvedRunDir: str
   };
 }
 
+const SSE_HEADERS = {
+  "content-type": "text/event-stream; charset=utf-8",
+  "x-content-type-options": "nosniff",
+  "cache-control": "no-store",
+  "connection": "keep-alive",
+  "x-accel-buffering": "no"
+};
+
 function handleSseRequest(
   request: IncomingMessage,
   response: ServerResponse,
   watcher: RunWatcher
 ) {
-  response.writeHead(200, {
-    "content-type": "text/event-stream; charset=utf-8",
-    "x-content-type-options": "nosniff",
-    "cache-control": "no-store",
-    "connection": "keep-alive",
-    "x-accel-buffering": "no"
-  });
+  // A HEAD response has no body, so Node drops every write() and holds the
+  // headers until end(). Without this the request never answers and keeps a
+  // subscriber until the client gives up. Answer with the headers alone. The
+  // hop-by-hop `connection: keep-alive` is left out: it exists to hold the
+  // stream open, and on HEAD it would override a client's `Connection: close`.
+  if (request.method === "HEAD") {
+    const { connection: _connection, ...headHeaders } = SSE_HEADERS;
+    response.writeHead(200, headHeaders);
+    response.end();
+    return;
+  }
+  response.writeHead(200, SSE_HEADERS);
   // Initial keep-alive comment
   response.write(": connected\n\n");
 
@@ -328,7 +345,7 @@ function routeRequest(
       const isArtifactRequest = url.pathname.startsWith("/artifacts/");
       errorHeaders = isArtifactRequest ? ARTIFACT_HEADERS : {};
       if (request.method !== "GET" && request.method !== "HEAD") {
-        send(response, 405, "method not allowed", undefined, errorHeaders);
+        send(response, 405, "method not allowed", undefined, { ...errorHeaders, allow: "GET, HEAD" });
         return;
       }
       if (url.pathname === "/health") {
@@ -383,6 +400,15 @@ function routeRequest(
   };
 }
 
+const sseSubscriberCounts = new WeakMap<FlowConsoleServerHandle, () => number>();
+
+/** @internal Exported so tests can assert /api/stream releases its subscribers. */
+export function consoleSseSubscriberCount(handle: FlowConsoleServerHandle): number {
+  const count = sseSubscriberCounts.get(handle);
+  if (!count) throw new Error("not a flow console server handle");
+  return count();
+}
+
 export async function startFlowConsoleServer(options: FlowConsoleServerOptions): Promise<FlowConsoleServerHandle> {
   const host = options.host ?? "127.0.0.1";
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("flow console only serves loopback hosts");
@@ -405,7 +431,7 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   if (!address || typeof address === "string") throw new Error("unable to determine console server address");
   const normalizedHost = host === "::1" ? "[::1]" : host;
   const url = `http://${normalizedHost}:${address.port}/`;
-  return {
+  const handle: FlowConsoleServerHandle = {
     close: async () => {
       await watcher.close();
       await new Promise<void>((resolve, reject) => {
@@ -417,4 +443,6 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
     runId: options.runId,
     url
   };
+  sseSubscriberCounts.set(handle, () => watcher.subscriberCount());
+  return handle;
 }
