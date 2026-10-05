@@ -291,13 +291,19 @@ const SSE_HEADERS = {
   "x-accel-buffering": "no"
 };
 
-// Live GET streams. close() ends each one so the client sees a clean
-// end-of-stream and the connection can drain; server.close() alone waits on
-// them forever because a stream response never finishes by itself.
+// Live GET streams, each with its cleanup (unsubscribe, stop pinging).
+// close() releases and ends each one so the client sees a clean end-of-stream;
+// server.close() alone waits on them forever because a stream response never
+// finishes by itself.
 interface SseStreams {
   closing: boolean;
-  open: Set<ServerResponse>;
+  open: Map<ServerResponse, () => void>;
 }
+
+// How long close() lets connections finish on their own (ended streams
+// flushing, in-flight responses) before it destroys whatever is left. A client
+// that stopped reading would otherwise hold the server open indefinitely.
+const CLOSE_GRACE_MS = 1000;
 
 function handleSseRequest(
   request: IncomingMessage,
@@ -323,11 +329,12 @@ function handleSseRequest(
     return;
   }
   response.writeHead(200, SSE_HEADERS);
-  streams.open.add(response);
   // Initial keep-alive comment
   response.write(": connected\n\n");
 
   const unsubscribe = watcher.subscribe((json) => {
+    // Defensive: close() unsubscribes before it ends the response.
+    if (response.writableEnded) return;
     response.write(`event: projection\ndata: ${json}\n\n`);
   });
 
@@ -341,6 +348,7 @@ function handleSseRequest(
     unsubscribe();
     streams.open.delete(response);
   };
+  streams.open.set(response, cleanup);
 
   request.once("close", cleanup);
   request.once("aborted", cleanup);
@@ -358,6 +366,9 @@ function routeRequest(
     // Every response under /artifacts/ is sandboxed, error paths included.
     // Until the URL has parsed, assume the worst.
     let errorHeaders: Record<string, string> = ARTIFACT_HEADERS;
+    // During shutdown, tell keep-alive clients not to reuse the connection, so
+    // a request that lands mid-close does not leave an idle socket behind.
+    if (streams.closing) response.setHeader("connection", "close");
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
       const isArtifactRequest = url.pathname.startsWith("/artifacts/");
@@ -418,13 +429,22 @@ function routeRequest(
   };
 }
 
-const sseSubscriberCounts = new WeakMap<FlowConsoleServerHandle, () => number>();
+const consoleInternals = new WeakMap<FlowConsoleServerHandle, { subscribers: () => number; openStreams: () => number }>();
+
+function internalsOf(handle: FlowConsoleServerHandle) {
+  const internals = consoleInternals.get(handle);
+  if (!internals) throw new Error("not a flow console server handle");
+  return internals;
+}
 
 /** @internal Exported so tests can assert /api/stream releases its subscribers. */
 export function consoleSseSubscriberCount(handle: FlowConsoleServerHandle): number {
-  const count = sseSubscriberCounts.get(handle);
-  if (!count) throw new Error("not a flow console server handle");
-  return count();
+  return internalsOf(handle).subscribers();
+}
+
+/** @internal Exported so tests can assert close() tracks only live streams. */
+export function consoleOpenStreamCount(handle: FlowConsoleServerHandle): number {
+  return internalsOf(handle).openStreams();
 }
 
 export async function startFlowConsoleServer(options: FlowConsoleServerOptions): Promise<FlowConsoleServerHandle> {
@@ -436,7 +456,7 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   await realpath(resolvedRunDir);
 
   const watcher = createRunWatcher(options.runId, cwd, resolvedRunDir);
-  const streams: SseStreams = { closing: false, open: new Set() };
+  const streams: SseStreams = { closing: false, open: new Map() };
   const server = createServer(routeRequest({ runId: options.runId, cwd }, watcher, resolvedRunDir, streams));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -453,30 +473,50 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
   let closing: Promise<void> | undefined;
   const close = async () => {
     streams.closing = true;
-    // End every live stream with a terminating chunk, then wait for each to
-    // flush so its keep-alive connection is idle before server.close() runs.
-    const ended = [...streams.open].map((response) => new Promise<void>((resolve) => {
-      if (response.writableFinished || response.destroyed) return resolve();
-      response.once("finish", () => resolve());
-      response.once("close", () => resolve());
-      response.end();
-    }));
-    await Promise.all(ended);
-    await watcher.close();
-    // server.close() drops connections that are idle when it is called (Node
-    // >= 19; engines require >= 22), which now includes the ended streams'.
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
-    });
+    // Past the grace period, destroy every remaining connection (Node >= 18.2;
+    // engines require >= 22): a stream whose client stopped reading never
+    // finishes, and a response that completed mid-close may sit idle on
+    // keep-alive. Responses still being written are cut off; for a local
+    // console a prompt shutdown is worth more than delivering them.
+    const deadline = setTimeout(() => server.closeAllConnections(), CLOSE_GRACE_MS);
+    try {
+      // Release each live stream before ending it, so no watcher notification
+      // can write to an ended response. Then end it with a terminating chunk
+      // and wait for it to flush (or be destroyed) so its connection is idle.
+      const ended = [...streams.open].map(([response, cleanup]) => {
+        cleanup();
+        return new Promise<void>((resolve) => {
+          if (response.writableFinished || response.destroyed) return resolve();
+          response.once("finish", () => resolve());
+          response.once("close", () => resolve());
+          response.end();
+        });
+      });
+      await Promise.all(ended);
+      await watcher.close();
+      // server.close() also drops connections that are idle when it is called.
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    } finally {
+      clearTimeout(deadline);
+    }
   };
   const handle: FlowConsoleServerHandle = {
-    // Idempotent: a second call shares the first call's shutdown.
-    close: () => (closing ??= close()),
+    // Idempotent: a second call shares the first call's shutdown. A failed
+    // shutdown is not cached, so close() can be retried.
+    close: () => (closing ??= close().catch((error: unknown) => {
+      closing = undefined;
+      throw error;
+    })),
     host,
     port: address.port,
     runId: options.runId,
     url
   };
-  sseSubscriberCounts.set(handle, () => watcher.subscriberCount());
+  consoleInternals.set(handle, {
+    subscribers: () => watcher.subscriberCount(),
+    openStreams: () => streams.open.size
+  });
   return handle;
 }
