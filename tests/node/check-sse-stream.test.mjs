@@ -293,3 +293,87 @@ test("console server close drains an in-flight watcher repair before fixture cle
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+// Opens a GET /api/stream over a raw socket and waits for the preamble.
+// `ended` settles with the bytes received once the server ends the socket.
+async function openRawStream(port, timeoutMs = 2000) {
+  const socket = net.connect(port, "127.0.0.1");
+  let received = "";
+  const ended = new Promise((resolve) => socket.once("end", () => resolve(received)));
+  socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no stream preamble within ${timeoutMs}ms`)), timeoutMs);
+    socket.on("data", () => { if (received.includes(": connected")) { clearTimeout(timer); resolve(undefined); } });
+    socket.once("error", (error) => { clearTimeout(timer); reject(error); });
+    socket.write("GET /api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+  });
+  return { socket, ended };
+}
+
+// Rejects instead of hanging when `promise` has not settled within timeoutMs.
+function within(promise, timeoutMs, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} did not settle within ${timeoutMs}ms`)), timeoutMs); })
+  ]).finally(() => clearTimeout(timer));
+}
+
+for (const clients of [1, 3]) {
+  test(`close() ends ${clients} open GET stream(s), releases subscribers and resolves promptly`, async () => {
+    const server = await startFixtureServer();
+    const streams = [];
+    try {
+      for (let index = 0; index < clients; index += 1) streams.push(await openRawStream(server.port));
+      assert.equal(consoleSseSubscriberCount(server), clients);
+      await within(server.close(), 2000, "server.close() with open streams");
+      assert.equal(consoleSseSubscriberCount(server), 0);
+      for (const stream of streams) {
+        const received = await within(stream.ended, 1000, "client end-of-stream");
+        // The chunked body ends with its terminating zero-length chunk, so the
+        // client sees a complete response rather than a reset.
+        assert.match(received, /\r\n0\r\n\r\n$/, "stream ends with the terminating chunk");
+      }
+      // Safe to call again once closed.
+      await within(server.close(), 1000, "second server.close()");
+    } finally {
+      for (const stream of streams) stream.socket.destroy();
+      await server.close().catch(() => undefined);
+    }
+  });
+}
+
+test("concurrent close() calls share one shutdown", async () => {
+  const server = await startFixtureServer();
+  const stream = await openRawStream(server.port);
+  try {
+    await within(Promise.all([server.close(), server.close()]), 2000, "two concurrent server.close() calls");
+    assert.equal(consoleSseSubscriberCount(server), 0);
+  } finally {
+    stream.socket.destroy();
+    await server.close().catch(() => undefined);
+  }
+});
+
+test("a stream requested after close() began is refused and does not hold the server open", async () => {
+  const server = await startFixtureServer();
+  const socket = net.connect(server.port, "127.0.0.1");
+  let received = "";
+  socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+  const ended = new Promise((resolve) => socket.once("end", resolve));
+  try {
+    await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+    // Headers incomplete, so the request reaches the handler only after close() starts.
+    socket.write("GET /api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const closing = server.close();
+    socket.write("\r\n");
+    await within(closing, 2000, "server.close() with a late stream request");
+    await within(ended, 1000, "late stream connection end");
+    assert.match(received, /^HTTP\/1\.1 503 /);
+    assert.equal(consoleSseSubscriberCount(server), 0);
+  } finally {
+    socket.destroy();
+    await server.close().catch(() => undefined);
+  }
+});
