@@ -11,7 +11,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { consoleSseSubscriberCount, startFlowConsoleServer } from "../../dist/console/console-server.js";
+import { consoleOpenStreamCount, consoleSseSubscriberCount, startFlowConsoleServer } from "../../dist/console/console-server.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixtureSourceDir = path.join(root, "examples", "scenarios", "console-projection", "runtime-fixture", "console-projection-fixture");
@@ -291,5 +291,171 @@ test("console server close drains an in-flight watcher repair before fixture cle
     await rm(blocker, { recursive: true, force: true });
     await server.close().catch(() => undefined);
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// Opens a GET /api/stream over a raw socket and waits for the preamble.
+// `ended` settles with the bytes received once the server ends the socket.
+async function openRawStream(port, timeoutMs = 2000) {
+  const socket = net.connect(port, "127.0.0.1");
+  let received = "";
+  const ended = new Promise((resolve) => socket.once("end", () => resolve(received)));
+  socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no stream preamble within ${timeoutMs}ms`)), timeoutMs);
+    socket.on("data", () => { if (received.includes(": connected")) { clearTimeout(timer); resolve(undefined); } });
+    socket.once("error", (error) => { clearTimeout(timer); reject(error); });
+    socket.write("GET /api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+  });
+  return { socket, ended };
+}
+
+// Rejects instead of hanging when `promise` has not settled within timeoutMs.
+function within(promise, timeoutMs, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} did not settle within ${timeoutMs}ms`)), timeoutMs); })
+  ]).finally(() => clearTimeout(timer));
+}
+
+for (const clients of [1, 3]) {
+  test(`close() ends ${clients} open GET stream(s), releases subscribers and resolves promptly`, async () => {
+    const server = await startFixtureServer();
+    const streams = [];
+    try {
+      for (let index = 0; index < clients; index += 1) streams.push(await openRawStream(server.port));
+      assert.equal(consoleSseSubscriberCount(server), clients);
+      await within(server.close(), 2000, "server.close() with open streams");
+      assert.equal(consoleSseSubscriberCount(server), 0);
+      for (const stream of streams) {
+        const received = await within(stream.ended, 1000, "client end-of-stream");
+        // The chunked body ends with its terminating zero-length chunk, so the
+        // client sees a complete response rather than a reset.
+        assert.match(received, /\r\n0\r\n\r\n$/, "stream ends with the terminating chunk");
+      }
+      // Safe to call again once closed.
+      await within(server.close(), 1000, "second server.close()");
+    } finally {
+      for (const stream of streams) stream.socket.destroy();
+      await server.close().catch(() => undefined);
+    }
+  });
+}
+
+test("concurrent close() calls share one shutdown", async () => {
+  const server = await startFixtureServer();
+  const stream = await openRawStream(server.port);
+  try {
+    await within(Promise.all([server.close(), server.close()]), 2000, "two concurrent server.close() calls");
+    assert.equal(consoleSseSubscriberCount(server), 0);
+  } finally {
+    stream.socket.destroy();
+    await server.close().catch(() => undefined);
+  }
+});
+
+test("a stream requested after close() began is refused and does not hold the server open", async () => {
+  const server = await startFixtureServer();
+  const socket = net.connect(server.port, "127.0.0.1");
+  let received = "";
+  socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+  const ended = new Promise((resolve) => socket.once("end", resolve));
+  try {
+    await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+    // Headers incomplete, so the request reaches the handler only after close() starts.
+    socket.write("GET /api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const closing = server.close();
+    socket.write("\r\n");
+    await within(closing, 2000, "server.close() with a late stream request");
+    await within(ended, 1000, "late stream connection end");
+    assert.match(received, /^HTTP\/1\.1 503 /);
+    assert.equal(consoleSseSubscriberCount(server), 0);
+  } finally {
+    socket.destroy();
+    await server.close().catch(() => undefined);
+  }
+});
+
+// A stream client that has stopped reading: the server's writes back up, so
+// an ended response never reaches `finish`.
+test("close() with a non-reading stream client resolves, releases it at once, and never writes after end", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-sse-stalled-"));
+  const runDir = path.join(cwd, ".kontourai", "flow", "runs", fixtureRunId);
+  const statePath = path.join(runDir, "state.json");
+  await mkdir(path.dirname(runDir), { recursive: true });
+  await cp(fixtureSourceDir, runDir, { recursive: true });
+  const server = await startFlowConsoleServer({ runId: fixtureRunId, cwd, host: "127.0.0.1", port: 0 });
+  const errors = [];
+  const onError = (error) => { errors.push(error); };
+  process.on("uncaughtException", onError);
+  const stream = await openRawStream(server.port);
+  try {
+    stream.socket.pause();
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    // One projection far larger than the socket buffers, so the response
+    // stays backed up while the client is paused.
+    state.next_action = `stalled ${"x".repeat(16 * 1024 * 1024)}`;
+    await writeFile(statePath, JSON.stringify(state));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const closing = server.close();
+    assert.equal(consoleSseSubscriberCount(server), 0, "close() unsubscribes streams before ending them");
+    // A run change while close() is pending must not reach the ended stream.
+    state.next_action = `after close ${Date.now()}`;
+    await writeFile(statePath, JSON.stringify(state));
+    await within(closing, 4000, "server.close() with a non-reading stream client");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.deepEqual(errors.map((error) => error.code ?? error.message), []);
+  } finally {
+    process.off("uncaughtException", onError);
+    stream.socket.destroy();
+    await server.close().catch(() => undefined);
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+for (const [method, requestPath] of [["GET", "/health"], ["HEAD", "/api/stream"]]) {
+  test(`${method} ${requestPath} landing on a keep-alive connection mid-close does not hold close() open`, async () => {
+    const server = await startFixtureServer();
+    const socket = net.connect(server.port, "127.0.0.1");
+    let received = "";
+    socket.on("data", (chunk) => { received += chunk.toString("latin1"); });
+    const ended = new Promise((resolve) => socket.once("end", resolve));
+    try {
+      await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+      // Keep-alive request whose headers complete only after close() starts.
+      socket.write(`${method} ${requestPath} HTTP/1.1\r\nHost: 127.0.0.1\r\n`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const closing = server.close();
+      socket.write("\r\n");
+      await within(ended, 2000, `${method} ${requestPath} connection end`);
+      await within(closing, 2000, `server.close() with a ${method} ${requestPath} mid-close`);
+      assert.match(received, /^HTTP\/1\.1 200 /);
+      assert.match(received, /\r\nconnection: close\r\n/i, "responses during shutdown tell the client to close");
+    } finally {
+      socket.destroy();
+      await server.close().catch(() => undefined);
+    }
+  });
+}
+
+test("the live-stream set tracks only connected streams across disconnect and reconnect", async () => {
+  const server = await startFixtureServer();
+  try {
+    const first = await openRawStream(server.port);
+    assert.equal(consoleOpenStreamCount(server), 1);
+    first.socket.destroy();
+    await waitFor(() => consoleOpenStreamCount(server) === 0, 2000);
+    const second = await openRawStream(server.port);
+    try {
+      assert.equal(consoleOpenStreamCount(server), 1);
+      await within(server.close(), 2000, "server.close() after a reconnect");
+      assert.equal(consoleOpenStreamCount(server), 0);
+    } finally {
+      second.socket.destroy();
+    }
+  } finally {
+    await server.close().catch(() => undefined);
   }
 });
