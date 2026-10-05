@@ -463,11 +463,10 @@ export async function startFlowConsoleServer(options: FlowConsoleServerOptions):
     }));
     await Promise.all(ended);
     await watcher.close();
+    // server.close() drops connections that are idle when it is called (Node
+    // >= 19; engines require >= 22), which now includes the ended streams'.
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
-      // server.close() (Node >= 19) drops connections idle at the time of the
-      // call. Do it explicitly too: the ended streams' sockets are idle now.
-      server.closeIdleConnections();
     });
   };
   const handle: FlowConsoleServerHandle = {
