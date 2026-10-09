@@ -52,9 +52,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node scripts/with-build-lease.mjs npm run test:locked",
-    "test:locked": "npm run check:ui-assets && npm run build && npm run check:types:contracts && node --test --test-concurrency=4 tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser:locked",
+    "test:locked": "npm run check:ui-assets && npm run build && npm run check:types:contracts && node --test --test-concurrency=1 tests/node/*.test.mjs && node scripts/check-console-smoke.mjs && npm run test:browser:locked",
     "test:node": "node scripts/with-build-lease.mjs npm run test:node:locked",
-    "test:node:locked": "node --test --test-concurrency=4 tests/node/*.test.mjs",
+    "test:node:locked": "node --test --test-concurrency=1 tests/node/*.test.mjs",
     "test:browser": "node scripts/with-build-lease.mjs npm run test:browser:locked",
     "test:browser:locked": "playwright test",
     "typecheck": "tsc --noEmit",
