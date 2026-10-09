@@ -19,6 +19,15 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.1.4](https://github.com/kontourai/flow/compare/v5.1.3...v5.1.4) (2026-10-09)
+
+
+### Fixes
+
+* **console:** answer HEAD /api/stream without opening a stream ([#264](https://github.com/kontourai/flow/issues/264)) ([42989be](https://github.com/kontourai/flow/commit/42989be3a092ca7fedbaef21593270a2f704e610)), closes [#258](https://github.com/kontourai/flow/issues/258)
+* **console:** end open event streams on close so shutdown resolves ([#267](https://github.com/kontourai/flow/issues/267)) ([4b32d6b](https://github.com/kontourai/flow/commit/4b32d6be2347f1cfa256dbdc716de99ff8d573c5)), closes [#265](https://github.com/kontourai/flow/issues/265)
+* **runtime:** reappraise prior gates from the actual cursor ([#269](https://github.com/kontourai/flow/issues/269)) ([23792c6](https://github.com/kontourai/flow/commit/23792c619ed8eab53d244a49bb53b2063a67bcb9))
+
 ## [5.1.3](https://github.com/kontourai/flow/compare/v5.1.2...v5.1.3) (2026-10-03)
 
 
