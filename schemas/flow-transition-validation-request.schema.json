@@ -114,6 +114,7 @@
       "properties": {
         "type": { "type": "string" },
         "from_step": { "type": "string", "minLength": 1 },
+        "evaluated_step": { "type": "string", "minLength": 1 },
         "to_step": { "type": ["string", "null"] },
         "status": {
           "type": "string",

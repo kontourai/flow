@@ -49,10 +49,26 @@ Two off-current requests remain legal:
   gate failing closed on a pending re-entry. That can hold the cursor or move it
   backwards, never forward.
 
-A persisted transition may never name a `from_step` the run was not on; this is
-asserted at write time, not only at request time. If a gate genuinely cannot be
-satisfied, the supported way past it is an accepted exception, which records a
-reason and an accepting authority on the run.
+A reappraisal records `from_step` as the actual cursor and `evaluated_step`
+as the historical gate's step. A failed gate uses its ordinary recovery target
+and retry policy; retry accounting remains keyed to the evaluated gate. When
+missing evidence blocks without an authored route, a `gate_reappraisal` marker
+returns the cursor to that evaluated step without consuming a route-back attempt.
+An occupied off-current gate that is a dependency descendant of the actual
+cursor is refused with `flow.evaluate.gate.reentry_pending` until real reentry;
+hosts may retain its invalidation evidence and defer evaluation. This uses the
+`needs` graph, including explicit independent `needs: []`, rather than display
+order, and does not consume a retry attempt.
+Only the recovery target and its graph descendants become non-current. An
+independent branch keeps its previously earned pass, even when it was the terminal
+cursor of a completed run. An exhausted route-back holds the actual cursor and
+still requires the existing operator-authorized retry contract.
+
+A persisted transition may never name a `from_step` other than the cursor before
+that transition. The separately evaluated step must have been occupied; neither
+reappraisal metadata nor a synthetic validation cursor grants a forward jump.
+If a gate genuinely cannot be satisfied, an accepted exception records the
+reason and accepting authority on the run.
 
 When a gate passes, Flow advances to the step's `next` value. When a gate blocks, Flow keeps enough state for another process or agent to resume without chat memory — the blocked expectation, its `explore_hint`, and the next action all land in the run state and reports.
 

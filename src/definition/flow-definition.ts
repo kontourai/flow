@@ -532,7 +532,7 @@ export function routeBackAttempt(state, { gateId, gate, routeReason, fromStep, t
     if (transition?.type === "route_back"
       && transition.gate_id === gateId
       && normalizeRouteReasonForBudget(gate, transition.route_reason ?? transition.reason) === reasonKey
-      && transition.from_step === fromStep
+      && (transition.evaluated_step ?? transition.from_step) === fromStep
       && transition.to_step === toStep
       && (transition.retry_epoch ?? 1) === retryEpoch) {
       matching.push({ transition, index });
@@ -569,7 +569,7 @@ export function routeBackAttempt(state, { gateId, gate, routeReason, fromStep, t
  * new visit. Self-loop route-backs (`from === to === fromStep`) do neither.
  */
 function routeBackVisitBoundary(transitions, prev, curr, fromStep) {
-  if (prev.transition.from_step === fromStep && prev.transition.to_step !== fromStep) return true;
+  if ((prev.transition.evaluated_step ?? prev.transition.from_step) === fromStep && prev.transition.to_step !== fromStep) return true;
   for (let j = prev.index + 1; j < curr.index; j += 1) {
     if (isRouteBackReentry(transitions[j], fromStep)) return true;
   }
@@ -577,7 +577,7 @@ function routeBackVisitBoundary(transitions, prev, curr, fromStep) {
 }
 
 function routeBackVisitBoundarySince(transitions, last, fromStep) {
-  if (last.transition.from_step === fromStep && last.transition.to_step !== fromStep) return true;
+  if ((last.transition.evaluated_step ?? last.transition.from_step) === fromStep && last.transition.to_step !== fromStep) return true;
   for (let j = last.index + 1; j < transitions.length; j += 1) {
     if (isRouteBackReentry(transitions[j], fromStep)) return true;
   }
@@ -587,7 +587,7 @@ function routeBackVisitBoundarySince(transitions, last, fromStep) {
 function isRouteBackReentry(transition, fromStep) {
   if (!transition) return false;
   if (transition.to_step !== fromStep || transition.from_step === fromStep || transition.to_step === null) return false;
-  return transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized";
+  return transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized" || transition.type === "gate_reappraisal";
 }
 
 function routeBackHasNewFailed(prevSet, currSet) {
@@ -608,13 +608,13 @@ export function routeBackEpoch(state, { gateId, gate, routeReason, fromStep, toS
       && authorization.status === "retry-authorized"
       && authorization.gate_id === gateId
       && normalizeRouteReasonForBudget(gate, authorization.route_reason ?? authorization.reason) === reasonKey
-      && authorization.from_step === fromStep
+      && (authorization.evaluated_step ?? authorization.from_step) === fromStep
       && authorization.to_step === toStep
       && blocked?.type === "route_back"
       && blocked.status === "blocked"
       && blocked.limit_exceeded === true
       && blocked.gate_id === gateId
-      && blocked.from_step === fromStep
+      && (blocked.evaluated_step ?? blocked.from_step) === fromStep
       && blocked.selected_route === toStep
       && normalizeRouteReasonForBudget(gate, blocked.route_reason ?? blocked.reason) === reasonKey
       && authorization.prior_retry_epoch === (blocked.retry_epoch ?? 1)
@@ -857,7 +857,7 @@ export function occupiedSteps(definition: any, state: any): Set<string> {
   for (const transition of state?.transitions ?? []) {
     if (transition?.from_step) occupied.add(transition.from_step);
     if (!transition?.to_step) continue;
-    if (transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized") {
+    if (transition.status === "allowed" || transition.type === "route_back" || transition.type === "retry_authorized" || transition.type === "gate_reappraisal") {
       occupied.add(transition.to_step);
     }
   }
@@ -869,7 +869,7 @@ export function stepCompletionIsCurrent(state: any, stepId: string): boolean {
   let invalidatedAt = -1;
   for (const [index, transition] of (state.transitions ?? []).entries()) {
     if (transition?.from_step === stepId && transition?.status === "allowed") completedAt = index;
-    if (["route_back", "retry_authorized"].includes(transition?.type)
+    if (["route_back", "retry_authorized", "gate_reappraisal"].includes(transition?.type)
       && (transition?.to_step === stepId || transition?.invalidated_steps?.includes(stepId))) {
       invalidatedAt = index;
     }

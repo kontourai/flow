@@ -6,6 +6,8 @@ import {
   findGate,
   getStep,
   openGates,
+  occupiedSteps,
+  descendantsOf,
   routeBackDecision,
   validateDefinition,
   validateDefinitionWithDiagnostics
@@ -91,6 +93,7 @@ function normalizeTransitionPreview(transition: MutableRecord, extras: MutableRe
   return {
     type: transition.type ?? extras.type ?? "step",
     from_step: transition.from_step ?? extras.from_step ?? null,
+    ...(transition.evaluated_step !== undefined ? { evaluated_step: transition.evaluated_step } : {}),
     to_step: transition.to_step ?? extras.to_step ?? null,
     status: extras.status ?? transition.status ?? "allowed",
     ...(transition.gate_id ?? extras.gate_id ? { gate_id: transition.gate_id ?? extras.gate_id } : {}),
@@ -194,6 +197,23 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
 
   const gates = transition.gate_id ? [findGate(definition, transition.gate_id)] : openGates(definition, currentState);
 
+  if (transition.evaluated_step !== undefined) {
+    const gate = gates[0];
+    const reappraisal = gate && gate.step !== currentStepId && transition.evaluated_step === gate.step && occupiedSteps(definition, currentState).has(gate.step) && !descendantsOf(definition, currentStepId).includes(gate.step);
+    const actual = reappraisal ? evaluateGate(definition, currentState, manifest, gate.id, config, evaluationNow) : null;
+    if (!reappraisal || actual?.status === "pass" || actual?.status === "wait" || (!isRouteBack && transition.type !== "gate_reappraisal") || (isRouteBack && actual?.status !== "route-back" && !actual?.limit_exceeded)) {
+      diagnostics.push(transitionDiagnostic("reappraisal.invalid", "$.proposed_transition.evaluated_step", "Reappraisal must bind a previously occupied, currently nonpassing gate"));
+      return { valid: false, status: "invalid", diagnostics, transition: normalizeTransitionPreview(transition) };
+    }
+    if (transition.type === "gate_reappraisal") {
+      if (actual?.status !== "block" || actual.limit_exceeded || toStep !== gate.step) {
+        diagnostics.push(transitionDiagnostic("reappraisal.invalid", "$.proposed_transition.to_step", "Blocked reappraisal must return to the evaluated step without consuming a route-back budget"));
+        return { valid: false, status: "invalid", diagnostics, transition: normalizeTransitionPreview(transition) };
+      }
+      return { valid: false, status: "blocked", diagnostics: [transitionGateOutcomeDiagnostic(actual)], transition: normalizeTransitionPreview(transition) };
+    }
+  }
+
   if (isRouteBack) {
     const gate = gates[0];
     if (!gate) {
@@ -229,7 +249,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
     const errorDiagnostics = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
     const preview = normalizeTransitionPreview(transition, {
       type: "route_back",
-      from_step: gate.step,
+      from_step: currentStepId,
       to_step: route.route_back_to,
       gate_id: gate.id,
       ...route,

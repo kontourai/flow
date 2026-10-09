@@ -4,5 +4,15 @@
     "reason": "Creates this repo's first delivery/DECLARED. A repo without one fails bundle-required on every agent-delivered change that has no trust bundle, with a message that reads like the change is at fault; that is what happened on #257. This branch adds only this file: no source, workflow or package change, so there is nothing for a bundle to reconcile. Verification in lieu of a bundle: this PR's own CI, including Trust Verify's fresh run of the repo's verify command. Scope is paired with author: because branch-prefix alone resolves against a pusher-controlled ref (flow-agents#1015). Scoped to this branch only; it is not a standing exemption, and later bundle-less branches each need their own entry.",
     "approved_by": "briananderson1222 (repository owner; scoped to this branch only, not a standing exemption)",
     "declared_at": "2026-10-01T00:00:00Z"
+  },
+  {
+    "scope": "author:briananderson1222 ref:fix/aidlc-invalidation-20261009",
+    "reason": "Owner-authorized Step-2-only exception for AI-DLC prerequisite Flow PR #269, under the current T3 task instruction: \"Approve all exceptions as I really don't understand the value\". This is agent-created retained work without pre-change bound Builder history or a native signed delivery bundle; neither is reconstructed or claimed. Trust Verify on 6eb6c60d4662a4818e2c6fbb79e36266892cff27 passed fresh canonical verification (Playwright installation, npm test, schema checks and npm pack --dry-run), then failed solely because no current bundle or in-scope declaration existed. Waive only Step 2 bundle-required reconciliation for this exact author and branch. Fresh Step 1 and every ordinary CI check remain mandatory on subsequent heads. This does not attest protected Veritas standards, resolve the pre-existing repo-map attestation drift, waive source verification, or claim a published package.",
+    "gaps": [
+      "No pre-change bound Builder planning, execution, review or publication history.",
+      "No native signed delivery bundle attesting this source change."
+    ],
+    "approved_by": "briananderson1222 (explicit owner instruction in this T3 thread: \"Approve all exceptions as I really don't understand the value\"; task-related Step-2 exception only)",
+    "declared_at": "2026-10-09T13:26:35.745815Z"
   }
 ]

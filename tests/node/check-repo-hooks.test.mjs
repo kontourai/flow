@@ -89,7 +89,7 @@ test("repo hook package scripts stay wired", async () => {
   assert.equal(packageJson.scripts["validate:repo-hooks"], "node scripts/validate-repo-hooks.mjs");
   assert.equal(packageJson.scripts["check:repo-hooks"], "node scripts/with-build-lease.mjs npm run check:repo-hooks:locked");
   assert.equal(packageJson.scripts["test:node"], "node scripts/with-build-lease.mjs npm run test:node:locked");
-  assert.equal(packageJson.scripts["test:node:locked"], "node --test tests/node/*.test.mjs");
+  assert.equal(packageJson.scripts["test:node:locked"], "node --test --test-concurrency=1 tests/node/*.test.mjs");
   assert.equal(packageJson.scripts.build, "node scripts/build.mjs");
   assert.equal(packageJson.scripts.test, "node scripts/with-build-lease.mjs npm run test:locked");
   assert.match(packageJson.scripts["test:locked"], /tests\/node\/\*\.test\.mjs/);
