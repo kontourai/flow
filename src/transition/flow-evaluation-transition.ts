@@ -1,5 +1,5 @@
 import { defaultFlowConfig } from "../config/flow-config.js";
-import { findGate, getStep, occupiedSteps } from "../definition/flow-definition.js";
+import { findGate, getStep, occupiedSteps, descendantsOf } from "../definition/flow-definition.js";
 import { validateRunTransition } from "../transition/flow-transition.js";
 import { assertLifecycleEligible } from "../runtime/flow-run-lifecycle.js";
 
@@ -61,6 +61,9 @@ export function validateEvaluationTransition(definition, state, manifest, outcom
   assertLifecycleEligible("evaluate", state.status);
   const gate = findGate(definition, outcome.gate_id);
   if (!gate) throw new Error(`unknown gate: ${outcome.gate_id}`);
+  if (gate.step !== state.current_step && occupiedSteps(definition, state).has(gate.step) && descendantsOf(definition, state.current_step).includes(gate.step)) {
+    return { valid: false, status: "invalid", diagnostics: [{ code: "transition.gate.reentry_pending", severity: "error", path: "$.proposed_transition.gate_id", message: "A downstream reappraisal must wait for actual dependency reentry" }], transition: null };
+  }
   if (gate.step !== state.current_step && (!occupiedSteps(definition, state).has(gate.step) || outcome.status === "pass")) {
     return { valid: false, status: "invalid", diagnostics: [{ code: "transition.gate.not_current", severity: "error", path: "$.proposed_transition.gate_id", message: "Off-current appraisals require a previously occupied gate and cannot advance" }], transition: null };
   }

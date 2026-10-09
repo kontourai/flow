@@ -7,6 +7,7 @@ import {
   getStep,
   openGates,
   occupiedSteps,
+  descendantsOf,
   routeBackDecision,
   validateDefinition,
   validateDefinitionWithDiagnostics
@@ -198,7 +199,7 @@ export function validateRunTransition(request: MutableRecord = {}): TransitionVa
 
   if (transition.evaluated_step !== undefined) {
     const gate = gates[0];
-    const reappraisal = gate && gate.step !== currentStepId && transition.evaluated_step === gate.step && occupiedSteps(definition, currentState).has(gate.step);
+    const reappraisal = gate && gate.step !== currentStepId && transition.evaluated_step === gate.step && occupiedSteps(definition, currentState).has(gate.step) && !descendantsOf(definition, currentStepId).includes(gate.step);
     const actual = reappraisal ? evaluateGate(definition, currentState, manifest, gate.id, config, evaluationNow) : null;
     if (!reappraisal || actual?.status === "pass" || actual?.status === "wait" || (!isRouteBack && transition.type !== "gate_reappraisal") || (isRouteBack && actual?.status !== "route-back" && !actual?.limit_exceeded)) {
       diagnostics.push(transitionDiagnostic("reappraisal.invalid", "$.proposed_transition.evaluated_step", "Reappraisal must bind a previously occupied, currently nonpassing gate"));

@@ -329,7 +329,7 @@ test("canonical evaluateRun routes back at a fractional duration-policy boundary
   assert.equal((await loadRun(runId, cwd)).state.current_step, "prepare");
 });
 
-test("explicit evaluation of a pending downstream revisit holds the real cursor before reentry", async () => {
+test("explicit evaluation of a pending downstream revisit is refused before actual dependency reentry", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-"));
   const runId = await makeRun(cwd);
   const run = await loadRun(runId, cwd);
@@ -365,12 +365,15 @@ test("explicit evaluation of a pending downstream revisit holds the real cursor 
   // state, the proposed transition does not start where the run is, so the
   // request is refused outright instead of being persisted as a transition
   // from a step the run is not on.
-  const result = await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
-  assert.equal(result.state.current_step, "prepare", "a historical nonpassing reappraisal cannot skip the current gate");
-  assert.equal(result.state.transitions.at(-1).from_step, "prepare");
-  assert.equal(result.state.transitions.at(-1).evaluated_step, "verify");
-  assert.equal(result.outcomes[0].status, "route-back");
-  assert.notEqual(await readFile(path.join(result.dir, "state.json"), "utf8"), stateBefore, "the actual reappraisal remains auditable");
+  await assert.rejects(evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 }), error => {
+    assert.equal(error.code, "flow.evaluate.gate.reentry_pending");
+    assert.equal(error.gate_id, "verify-gate");
+    assert.equal(error.current_step, "prepare");
+    return true;
+  });
+  const after = await loadRun(runId, cwd);
+  assert.equal(after.state.current_step, "prepare");
+  assert.equal(await readFile(path.join(after.dir, "state.json"), "utf8"), stateBefore, "a pending reentry cannot consume a retry attempt or record fake progress");
 
 });
 

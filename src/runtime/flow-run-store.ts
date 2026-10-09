@@ -3006,7 +3006,14 @@ function staleGateRechecks(definition: any, state: any, manifest: any, freshness
 function prepareOffCurrentGateEvaluation(definition: any, state: any, gate: any, at: string) {
   advanceThroughGatelessSteps(definition, state, gate, at);
   if (gate.step === state.current_step) return;
-  if (occupiedSteps(definition, state).has(gate.step)) return;
+  if (occupiedSteps(definition, state).has(gate.step)) {
+    if (descendantsOf(definition, state.current_step).includes(gate.step)) {
+      const error = new Error(`flow.evaluate.gate.reentry_pending: gate "${gate.id}" at "${gate.step}" must wait for actual reentry after current dependency "${state.current_step}"`);
+      Object.assign(error, { code: "flow.evaluate.gate.reentry_pending", gate_id: gate.id, step_id: gate.step, current_step: state.current_step });
+      throw error;
+    }
+    return;
+  }
   throw gateNotCurrentError(definition, state, gate);
 }
 

@@ -54,6 +54,11 @@ as the historical gate's step. A failed gate uses its ordinary recovery target
 and retry policy; retry accounting remains keyed to the evaluated gate. When
 missing evidence blocks without an authored route, a `gate_reappraisal` marker
 returns the cursor to that evaluated step without consuming a route-back attempt.
+An occupied off-current gate that is a dependency descendant of the actual
+cursor is refused with `flow.evaluate.gate.reentry_pending` until real reentry;
+hosts may retain its invalidation evidence and defer evaluation. This uses the
+`needs` graph, including explicit independent `needs: []`, rather than display
+order, and does not consume a retry attempt.
 Only the recovery target and its graph descendants become non-current. An
 independent branch keeps its previously earned pass, even when it was the terminal
 cursor of a completed run. An exhausted route-back holds the actual cursor and

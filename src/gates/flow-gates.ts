@@ -1194,6 +1194,11 @@ function assertTransitionProvenance(definition, state, gate) {
 export function applyEvaluation(definition, state, outcome, at = new Date().toISOString()) {
   const gate = findGate(definition, outcome.gate_id);
   assertTransitionProvenance(definition, state, gate);
+  if (gate.step !== state.current_step && descendantsOf(definition, state.current_step).includes(gate.step)) {
+    const error = new Error("flow.evaluate.gate.reentry_pending: downstream gate cannot be reappraised before actual reentry");
+    Object.assign(error, { code: "flow.evaluate.gate.reentry_pending" });
+    throw error;
+  }
   if (outcome.status === "pass" && gate.step !== state.current_step) {
     throw new Error(`flow.transition.gate.not_current: an off-current gate cannot advance the run`);
   }
