@@ -110,7 +110,7 @@ export function claimBaseHead(definitionValue: unknown, state: any, stepId: stri
     .sort();
   const relevantGates = new Set([...relevant].flatMap(gateFor));
   const routeTouchesDomain = (transition: any) => (
-    relevant.has(transition?.from_step)
+    relevant.has(transition?.evaluated_step ?? transition?.from_step)
     || relevant.has(transition?.to_step)
     || (transition?.invalidated_steps ?? []).some((id: string) => relevant.has(id))
   );
@@ -125,7 +125,7 @@ export function claimBaseHead(definitionValue: unknown, state: any, stepId: stri
       .filter((outcome: any) => relevantGates.has(outcome?.gate_id))
       .map((outcome: any) => ({ gate_id: outcome.gate_id, status: outcome.status, evidence_refs: outcome.evidence_refs ?? [], route_back_to: outcome.route_back_to ?? null, retry_epoch: outcome.retry_epoch ?? 1 })),
     transitions: (state.transitions ?? [])
-      .filter((transition: any) => transition?.status === "allowed" && relevant.has(transition?.from_step) || ["route_back", "retry_authorized"].includes(transition?.type) && routeTouchesDomain(transition))
+      .filter((transition: any) => transition?.status === "allowed" && relevant.has(transition?.from_step) || ["route_back", "retry_authorized", "gate_reappraisal"].includes(transition?.type) && routeTouchesDomain(transition))
       .map((transition: any) => ({ type: transition.type ?? null, from_step: transition.from_step ?? null, to_step: transition.to_step ?? null, status: transition.status ?? null, gate_id: transition.gate_id ?? null, invalidated_steps: transition.invalidated_steps ?? [], retry_epoch: transition.retry_epoch ?? 1, at: transition.at ?? null }))
   };
   return createHash("sha256").update(canonicalJson(domain)).digest("hex");

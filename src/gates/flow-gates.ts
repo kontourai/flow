@@ -588,8 +588,8 @@ function claimIsCurrentForVisit(bundle: any, claim: any, enteredAt: ParsedRfc333
 }
 
 function routeBackAffectsStep(definition: any, transition: any, step: string): boolean {
-  return ["route_back", "retry_authorized"].includes(transition?.type) && (
-    transition.from_step === step
+  return ["route_back", "retry_authorized", "gate_reappraisal"].includes(transition?.type) && (
+    (transition.evaluated_step ?? transition.from_step) === step
     || transition.to_step === step
     || (Array.isArray(transition.invalidated_steps) && transition.invalidated_steps.includes(step))
     || descendantsOf(definition, transition.to_step).includes(step)
@@ -1181,18 +1181,7 @@ export function mergeGateOutcome(state, outcome) {
   state.gate_outcomes = [...without, outcome];
 }
 
-/**
- * flow#202 AC3 — no persisted transition may name a `from_step` the run was not
- * on. Every transition `applyEvaluation` appends carries `from_step:
- * gate.step`, so this is checkable exactly at the write point.
- *
- * The rule is exactly AC3's wording: `gate.step` must be a step this run has
- * actually occupied — where it started, anywhere the cursor was moved to, or
- * where it is now. A stale-ancestor re-check and a fail-closed downstream
- * re-appraisal both satisfy it; a forward jump to a step the run never reached
- * does not, and fails closed here even if some caller reintroduces a
- * synthesised cursor upstream.
- */
+/** Gate occupancy is independently proven; persisted from_step is the actual cursor. */
 function assertTransitionProvenance(definition, state, gate) {
   if (occupiedSteps(definition, state).has(gate.step)) return;
   const error = new Error(
@@ -1205,13 +1194,19 @@ function assertTransitionProvenance(definition, state, gate) {
 export function applyEvaluation(definition, state, outcome, at = new Date().toISOString()) {
   const gate = findGate(definition, outcome.gate_id);
   assertTransitionProvenance(definition, state, gate);
+  if (outcome.status === "pass" && gate.step !== state.current_step) {
+    throw new Error(`flow.transition.gate.not_current: an off-current gate cannot advance the run`);
+  }
+  const fromStep = state.current_step;
+  const reappraisal = gate.step !== fromStep;
+  const provenance = reappraisal ? { from_step: fromStep, evaluated_step: gate.step } : { from_step: fromStep };
   mergeGateOutcome(state, outcome);
 
   if (outcome.status === "pass") {
     const step = getStep(definition, gate.step);
     const nextStep = step?.next ?? null;
     state.transitions.push({
-      from_step: gate.step,
+      ...provenance,
       to_step: nextStep,
       status: "allowed",
       reason: outcome.accepted_exception_id ? "accepted exception" : "required evidence present",
@@ -1223,9 +1218,13 @@ export function applyEvaluation(definition, state, outcome, at = new Date().toIS
   } else if (outcome.status === "block") {
     state.status = "blocked";
     if (outcome.limit_exceeded) {
+      if (reappraisal) {
+        const invalidated = invalidateDescendants(definition, state, gate.step);
+        outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
+      }
       state.transitions.push({
         type: "route_back",
-        from_step: gate.step,
+        ...provenance,
         to_step: outcome.route_back_to,
         status: "blocked",
         reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,
@@ -1249,9 +1248,15 @@ export function applyEvaluation(definition, state, outcome, at = new Date().toIS
         gate_id: outcome.gate_id
       });
     } else {
+      if (reappraisal) {
+        const invalidated = invalidateDescendants(definition, state, gate.step);
+        state.current_step = gate.step;
+        outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
+      }
       state.transitions.push({
-        from_step: gate.step,
-        to_step: getStep(definition, gate.step)?.next ?? null,
+        ...(reappraisal ? { type: "gate_reappraisal" } : {}),
+        ...provenance,
+        to_step: reappraisal ? gate.step : getStep(definition, gate.step)?.next ?? null,
         status: "blocked",
         reason: outcome.summary,
         invalidated_steps: outcome.invalidated_steps,
@@ -1270,7 +1275,7 @@ export function applyEvaluation(definition, state, outcome, at = new Date().toIS
     state.current_step = outcome.route_back_to;
     state.transitions.push({
       type: "route_back",
-      from_step: gate.step,
+      ...provenance,
       to_step: outcome.route_back_to,
       status: "blocked",
       reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,

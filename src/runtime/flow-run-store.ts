@@ -2298,6 +2298,7 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
     const transition: FlowRetryAuthorizationTransition = {
     type: "retry_authorized",
     from_step: blocked.from_step,
+    ...(blocked.evaluated_step !== undefined ? { evaluated_step: blocked.evaluated_step } : {}),
     to_step: request.target_step,
     status: "retry-authorized",
     reason: request.reason,
@@ -3070,19 +3071,6 @@ function gatedStepsBetween(definition: any, from: string, to: string): string[] 
   return cursor === to ? between : [];
 }
 
-/**
- * The bounded ancestor-recheck cursor. Asserts the ancestry it depends on so
- * this helper cannot be reused to manufacture a forward jump.
- */
-function ancestorRecheckState(definition: any, state: any, gate: any) {
-  if (!descendantsOf(definition, gate.step).includes(state.current_step)) {
-    throw new Error(
-      `flow.transition.recheck.not_ancestor: gate "${gate.id}" at step "${gate.step}" is not an ancestor of the current step "${state.current_step}"`
-    );
-  }
-  return { ...state, current_step: gate.step };
-}
-
 async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
   const run = await loadRun(runId, options.cwd);
   assertRunMutationLifecycleEligible("evaluate", run);
@@ -3125,24 +3113,14 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
     run.state.pending_gate_rechecks = run.state.pending_gate_rechecks.filter((entry: any) => entry.gate_id !== gate.id);
     if (outcome.status === "pass") continue;
     outcome.freshness_transitions = rechecks;
-    // The ONLY place Flow validates against a cursor other than the real one,
-    // and it is bounded: `gate.step` is a proven ancestor of `current_step`
-    // (asserted above), the run genuinely occupied it, and the transition this
-    // produces moves the cursor BACK to that ancestor. It is a re-appraisal of
-    // a stage the run already passed, never a forward jump. `applyEvaluation`
-    // re-checks the ancestry at write time.
-    const validationState = ancestorRecheckState(run.definition, run.state, gate);
-    const transitionValidation = validateEvaluationTransition(run.definition, validationState, evaluationManifest, outcome, run.config, evaluationInstant);
+    // Validate against the actual cursor; the gate's prior occupancy authorizes
+    // only a nonpassing reappraisal, never a fabricated forward transition.
+    const transitionValidation = validateEvaluationTransition(run.definition, run.state, evaluationManifest, outcome, run.config, evaluationInstant);
     if (transitionValidation.status === "invalid" || (outcome.status === "pass" && transitionValidation.valid !== true)) {
       const first = transitionValidation.diagnostics[0];
       throw new Error(`invalid Flow transition for ${outcome.gate_id}: ${first?.message ?? "transition validation failed"}`);
     }
     outcome.transition_validation = transitionValidation;
-    if (outcome.status === "block") {
-      const invalidated = invalidateDescendants(run.definition, run.state, gate.step);
-      run.state.current_step = gate.step;
-      outcome.invalidated_steps = invalidated.length ? invalidated : undefined;
-    }
     mintGateEvaluation(run, outcome, evaluationInstant, "freshness");
     applyEvaluation(run.definition, run.state, outcome, evaluationInstant);
     const stillPassed = new Set(

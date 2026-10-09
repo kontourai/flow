@@ -84,7 +84,7 @@ function routeBackRecordProof(definition: any, transitions: any[], index: number
   const limitExceededMatch = record.limit_exceeded === decision.limit_exceeded
     || (legacyNoPolicy && record.limit_exceeded === false);
   const valid = record.gate_id === gate.id
-    && record.from_step === gate.step
+    && (record.evaluated_step ?? record.from_step) === gate.step
     && record.reason === decision.reason
     && record.route_reason === decision.route_reason
     // Both an ordinary route-back and an exhausted block persist as a
@@ -203,6 +203,7 @@ export function validateRetryAuthorizationHistory(definition: any, state: any) {
       && proof !== null
       && flowTransitionRef(blocked) === transition.blocked_transition_ref
       && transition.from_step === blocked.from_step
+      && (transition.evaluated_step ?? transition.from_step) === (blocked.evaluated_step ?? blocked.from_step)
       && transition.to_step === blocked.selected_route
       && transition.selected_route === blocked.selected_route
       && transition.gate_id === blocked.gate_id

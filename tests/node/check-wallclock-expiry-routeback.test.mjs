@@ -329,7 +329,7 @@ test("canonical evaluateRun routes back at a fractional duration-policy boundary
   assert.equal((await loadRun(runId, cwd)).state.current_step, "prepare");
 });
 
-test("explicit evaluation of a pending downstream revisit fails closed before the run re-enters it", async () => {
+test("explicit evaluation of a pending downstream revisit holds the real cursor before reentry", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-wallclock-"));
   const runId = await makeRun(cwd);
   const run = await loadRun(runId, cwd);
@@ -365,18 +365,13 @@ test("explicit evaluation of a pending downstream revisit fails closed before th
   // state, the proposed transition does not start where the run is, so the
   // request is refused outright instead of being persisted as a transition
   // from a step the run is not on.
-  await assert.rejects(
-    evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 }),
-    /proposed transition starts from verify, but current state is prepare/
-  );
+  const result = await evaluateRun(runId, { cwd, gate: "verify-gate", now: T0 });
+  assert.equal(result.state.current_step, "prepare", "a historical nonpassing reappraisal cannot skip the current gate");
+  assert.equal(result.state.transitions.at(-1).from_step, "prepare");
+  assert.equal(result.state.transitions.at(-1).evaluated_step, "verify");
+  assert.equal(result.outcomes[0].status, "route-back");
+  assert.notEqual(await readFile(path.join(result.dir, "state.json"), "utf8"), stateBefore, "the actual reappraisal remains auditable");
 
-  const after = await loadRun(runId, cwd);
-  assert.equal(after.state.current_step, "prepare", "the stale explicit evaluation cannot advance the run past the route-back target");
-  assert.equal(
-    await readFile(path.join(after.dir, "state.json"), "utf8"),
-    stateBefore,
-    "a refused evaluation leaves the record byte-identical"
-  );
 });
 
 test("T1 evaluateRun automatically re-evaluates selected stale upstream evidence and invalidates descendants", async () => {
@@ -531,7 +526,7 @@ test("budget-exhausted stale ancestor blocks at its gate and preserves freshness
 
   const after = await loadRun(runId, cwd);
   assert.equal(after.state.status, "blocked");
-  assert.equal(after.state.current_step, "verify", "the blocked stale ancestor owns the cursor");
+  assert.equal(after.state.current_step, "release", "an exhausted stale reappraisal holds the actual cursor");
   assert.ok(!after.state.gate_outcomes.some((outcome) => outcome.gate_id === "release-gate" && outcome.status === "pass"));
   const blockedRoute = after.state.transitions.findLast((transition) => transition.gate_id === "verify-gate");
   assert.equal(blockedRoute.type, "route_back");
@@ -553,7 +548,7 @@ test("budget-exhausted stale ancestor blocks at its gate and preserves freshness
   );
   assert.equal(await hashRunTree(after.dir), blockedTree, "an exhausted blocked ancestor is immutable without retry authority");
   const retried = await loadRun(runId, cwd);
-  assert.equal(retried.state.current_step, "verify");
+  assert.equal(retried.state.current_step, "release");
   assert.equal(retried.state.transitions.filter((transition) => transition.gate_id === "verify-gate").length, blockedTransitionCount);
 });
 

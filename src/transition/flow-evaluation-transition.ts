@@ -1,14 +1,16 @@
 import { defaultFlowConfig } from "../config/flow-config.js";
-import { findGate, getStep } from "../definition/flow-definition.js";
+import { findGate, getStep, occupiedSteps } from "../definition/flow-definition.js";
 import { validateRunTransition } from "../transition/flow-transition.js";
 import { assertLifecycleEligible } from "../runtime/flow-run-lifecycle.js";
 
-function proposedTransitionForOutcome(definition, gate, outcome, now = new Date().toISOString()) {
+function proposedTransitionForOutcome(definition, state, gate, outcome, now = new Date().toISOString()) {
   const step = getStep(definition, gate.step);
   const nextStep = step?.next ?? null;
+  const reappraisal = gate.step !== state.current_step;
+  const provenance = reappraisal ? { from_step: state.current_step, evaluated_step: gate.step } : { from_step: gate.step };
   if (outcome.status === "pass") {
     return {
-      from_step: gate.step,
+      ...provenance,
       to_step: nextStep,
       status: nextStep ? "allowed" : "completed",
       reason: outcome.accepted_exception_id ? "accepted exception" : "required evidence present",
@@ -19,7 +21,7 @@ function proposedTransitionForOutcome(definition, gate, outcome, now = new Date(
   if (outcome.status === "route-back" || outcome.limit_exceeded) {
     return {
       type: "route_back",
-      from_step: gate.step,
+      ...provenance,
       to_step: outcome.route_back_to,
       status: "route-back",
       reason: outcome.reason ?? outcome.route_reason ?? outcome.summary,
@@ -42,8 +44,9 @@ function proposedTransitionForOutcome(definition, gate, outcome, now = new Date(
   }
   if (outcome.status === "block") {
     return {
-      from_step: gate.step,
-      to_step: nextStep,
+      ...provenance,
+      ...(reappraisal ? { type: "gate_reappraisal" } : {}),
+      to_step: reappraisal ? gate.step : nextStep,
       status: "blocked",
       reason: outcome.summary,
       gate_id: outcome.gate_id,
@@ -58,7 +61,10 @@ export function validateEvaluationTransition(definition, state, manifest, outcom
   assertLifecycleEligible("evaluate", state.status);
   const gate = findGate(definition, outcome.gate_id);
   if (!gate) throw new Error(`unknown gate: ${outcome.gate_id}`);
-  const transition = proposedTransitionForOutcome(definition, gate, outcome, now);
+  if (gate.step !== state.current_step && (!occupiedSteps(definition, state).has(gate.step) || outcome.status === "pass")) {
+    return { valid: false, status: "invalid", diagnostics: [{ code: "transition.gate.not_current", severity: "error", path: "$.proposed_transition.gate_id", message: "Off-current appraisals require a previously occupied gate and cannot advance" }], transition: null };
+  }
+  const transition = proposedTransitionForOutcome(definition, state, gate, outcome, now);
   if (!transition) {
     return {
       valid: true,

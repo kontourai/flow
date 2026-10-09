@@ -222,6 +222,8 @@ export interface FlowRetryAuthorizationRequest {
 
 export interface FlowRetryAuthorizationTransition extends MutableRecord {
   type: "retry_authorized";
+  /** Historical gate step when recovery starts from a different actual cursor. */
+  evaluated_step?: string;
   from_step: string;
   to_step: string;
   status: "retry-authorized";
