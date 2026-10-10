@@ -258,6 +258,8 @@ export interface FlowDefinitionAmendmentRequest {
   expected_run_head: string;
   expected_definition: FlowDefinitionIdentity;
   successor_digest: string;
+  /** Permit only an unconsumed current forward edge to change; default remains strict. */
+  compatibility_mode?: "pending_forward";
   authority: FlowLifecycleAuthority;
 }
 
@@ -272,6 +274,9 @@ export interface FlowDefinitionAmendmentEvent extends MutableRecord {
   authority: FlowLifecycleAuthority;
   reason: string;
   at: string;
+  compatibility_mode?: "pending_forward";
+  /** Runtime-derived steps with attached evidence at this amendment boundary. */
+  protected_steps?: string[];
 }
 
 export interface FlowDefinitionAmendmentResult extends MutableRecord {

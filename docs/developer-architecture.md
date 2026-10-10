@@ -333,3 +333,23 @@ npm test
 ```
 
 For local docs verification, check Markdown links in `README.md` and this guide, and render or parse every fenced `mermaid` block. If Mermaid CLI is not installed and network access is unavailable, record Mermaid rendering as `NOT_VERIFIED` instead of treating visual rendering as passed.
+
+An amendment request may explicitly set `compatibility_mode: "pending_forward"`
+to reshape future work at a quiescent boundary. The default still freezes every
+persisted step completely. This mode permits only the current step's unconsumed
+`next` edge to change; its other fields, its complete gate contracts, the
+execution contract, historical steps and their gates remain fixed. A previously
+consumed outgoing transition prevents that edge change, including after a
+route-back revisit. Edges cannot redirect into or bypass steps touched by
+history, prior claims, or attached evidence. Every active claim must first be
+released or settled; even released/expired target claims remain proof that the
+work started and cannot be reshaped as pending work.
+
+The event retains the explicit mode and runtime-derived `protected_steps` from
+the evidence manifest so ledger replay checks the same historical boundary.
+Consumers still authenticate the authority, stop external workers that Flow
+cannot observe, bind the exact run/definition heads and full successor digest,
+and refresh old capabilities after the amendment. Flow neither approves
+application source changes nor resets provider budgets. Domain-specific plan
+constraints belong to the consuming kit. No current or skipped gate is passed
+by an amendment, and `definition.json` remains the immutable start snapshot.
