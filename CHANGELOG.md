@@ -19,6 +19,13 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.2.0](https://github.com/kontourai/flow/compare/v5.1.4...v5.2.0) (2026-10-10)
+
+
+### Features
+
+* **runtime:** amend unconsumed pending forward edges ([#270](https://github.com/kontourai/flow/issues/270)) ([7760336](https://github.com/kontourai/flow/commit/7760336c8e15b11d2fa5ed67caa08d791fda75fb))
+
 ## [5.1.4](https://github.com/kontourai/flow/compare/v5.1.3...v5.1.4) (2026-10-09)
 
 
