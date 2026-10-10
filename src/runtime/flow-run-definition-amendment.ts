@@ -194,7 +194,10 @@ export function assertDefinitionCompatibility(prior: any, successor: any, state:
     for (const id of stepIds) if (beforePath.has(id) && !afterPath.has(id)) fail("flow.definition_amendment.compatibility.invalid", path, `successor bypasses started or historical step ${id}`);
     // Current execution and every touched gate keep their complete contract.
     for (const [gateId, gate] of Object.entries(prior.gates) as [string, any][]) if (stepIds.has(gate.step) && !same(findGate(prior, gateId), findGate(successor, gateId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor changes protected gate ${gateId}`);
-    for (const [gateId, gate] of Object.entries(successor.gates) as [string, any][]) if (stepIds.has(gate.step) && !findGate(prior, gateId)) fail("flow.definition_amendment.compatibility.invalid", path, `successor adds a gate to protected step ${gate.step}`);
+    for (const [gateId, gate] of Object.entries(successor.gates) as [string, any][]) if (stepIds.has(gate.step)) {
+      if (!findGate(prior, gateId)) fail("flow.definition_amendment.compatibility.invalid", path, `successor adds a gate to protected step ${gate.step}`);
+      if (!same(findGate(prior, gateId), findGate(successor, gateId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor changes a gate on protected step ${gate.step}`);
+    }
   }
   for (const stepId of stepIds) {
     if (!stepId || !successorSteps.has(stepId)) fail("flow.definition_amendment.compatibility.invalid", path, `successor removes persisted step ${stepId}`);

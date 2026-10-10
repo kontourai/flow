@@ -83,3 +83,11 @@ test('preserving a started distant node as disconnected data cannot bypass it',a
  const before=await loadRun(f.runId,f.cwd),next=structuredClone(before.definition);next.version='disconnect';next.steps[0].next=null;
  await assert.rejects(amendRunDefinition(f.runId,{cwd:f.cwd,definition:next,request:request(before,next,'disconnect-started')}),/bypasses started or historical step c/);
 });
+
+test('an existing future gate cannot move onto current or historical work',async t=>{
+ const f=await fixture(t);await advance(f);const before=await loadRun(f.runId,f.cwd);
+ for(const target of ['a','b']){const next=structuredClone(before.definition);next.version=`gate-move-${target}`;next.gates['c-gate'].step=target;
+  await assert.rejects(amendRunDefinition(f.runId,{cwd:f.cwd,definition:next,request:request(before,next,`gate-move-${target}`)}),/changes a gate on protected step/);
+ }
+ assert.deepEqual((await loadRun(f.runId,f.cwd)).state,before.state);
+});
