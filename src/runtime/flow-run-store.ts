@@ -2057,6 +2057,7 @@ async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: st
 }
 
 type DefinitionAmendmentPreflight = {
+  protectedSteps?: string[];
   run: Awaited<ReturnType<typeof loadRun>>;
   prior: ReturnType<typeof effectiveDefinitionIdentity>;
   successor: any;
@@ -2151,8 +2152,12 @@ async function preflightDefinitionAmendment(
     || amendments.some((event: FlowDefinitionAmendmentEvent) => event.successor_definition?.version === successor.version || event.successor_definition?.digest === successorDigest)) {
     throw new FlowDefinitionAmendmentError("flow.definition_amendment.compatibility.invalid", "$.successor", "successor version or digest was already used in this run");
   }
-  assertDefinitionCompatibility(run.definition, successor, run.state);
-  return { run, prior, successor };
+  const protectedSteps = request.compatibility_mode === "pending_forward" ? [...new Set((run.manifest.evidence ?? []).flatMap((entry: any) => {
+    const gate = entry.gate_id ? findGate(run.definition, entry.gate_id) : null;
+    return gate ? [gate.step] : [];
+  }))].sort() as string[] : undefined;
+  assertDefinitionCompatibility(run.definition, successor, run.state, "$.successor", { mode: request.compatibility_mode, protectedSteps });
+  return { run, prior, successor, protectedSteps };
 }
 
 /**
@@ -2172,7 +2177,7 @@ export async function amendRunDefinition(runId: string, options: MutableRecord =
   const cwd = path.resolve(options.cwd ?? process.cwd());
   await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
   return withRunMutationLock(runId, cwd, async () => {
-    const { run, prior, successor } = await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
+    const { run, prior, successor, protectedSteps } = await preflightDefinitionAmendment(runId, cwd, request, suppliedSuccessor);
     const successorIdentity = definitionIdentity(successor);
     const at = new Date().toISOString();
     const { definition_amendments: _priorAmendments, ...priorState } = structuredClone(run.state);
@@ -2187,6 +2192,7 @@ export async function amendRunDefinition(runId: string, options: MutableRecord =
       reason: request.reason,
       at
     };
+    if (request.compatibility_mode) { event.compatibility_mode = request.compatibility_mode; event.protected_steps = protectedSteps; }
     run.definition = successor;
     run.state = {
       ...run.state,

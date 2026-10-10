@@ -11,6 +11,7 @@
     "expected_run_head": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "expected_definition": { "$ref": "flow-run.schema.json#/$defs/definition_identity" },
     "successor_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "compatibility_mode": { "const": "pending_forward" },
     "authority": { "$ref": "flow-run.schema.json#/$defs/lifecycle_authority" }
   }
 }

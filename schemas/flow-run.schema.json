@@ -188,6 +188,7 @@
     "definition_amendment": {
       "type": "object",
       "required": ["type", "prior_definition", "successor_definition", "prior_run_head", "prior_state", "successor", "authority", "reason", "at"],
+      "dependentRequired": { "compatibility_mode": ["protected_steps"], "protected_steps": ["compatibility_mode"] },
       "additionalProperties": false,
       "properties": {
         "type": { "const": "definition_amended" },
@@ -202,6 +203,8 @@
           "additionalProperties": true
         },
         "successor": { "$ref": "#/$defs/definition_successor" },
+        "compatibility_mode": { "const": "pending_forward" },
+        "protected_steps": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
         "authority": { "$ref": "#/$defs/lifecycle_authority" },
         "reason": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$" },
         "at": { "type": "string", "format": "date-time" }

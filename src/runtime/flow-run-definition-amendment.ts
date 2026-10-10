@@ -82,14 +82,16 @@ export function definitionIdentity(definition: unknown): FlowDefinitionIdentity 
 export function validateDefinitionAmendmentRequest(value: unknown): FlowDefinitionAmendmentRequest {
   if (!isObject(value)) fail("flow.definition_amendment.request.invalid", "$", "definition amendment request must be an object");
   const request = value as Record<string, unknown>;
-  if (Object.keys(request).some((key) => !["reason", "expected_run_head", "expected_definition", "successor_digest", "authority"].includes(key))) {
+  if (Object.keys(request).some((key) => !["reason", "expected_run_head", "expected_definition", "successor_digest", "authority", "compatibility_mode"].includes(key))) {
     fail("flow.definition_amendment.request.invalid", "$", "definition amendment request contains unsupported fields");
   }
+  if (request.compatibility_mode !== undefined && request.compatibility_mode !== "pending_forward") fail("flow.definition_amendment.request.invalid", "$.compatibility_mode", "unsupported compatibility mode");
   return {
     reason: text(request.reason, "$.reason", LIMITS.reason),
     expected_run_head: digestText(request.expected_run_head, "$.expected_run_head"),
     expected_definition: identity(request.expected_definition, "$.expected_definition"),
     successor_digest: digestText(request.successor_digest, "$.successor_digest"),
+    ...(request.compatibility_mode === "pending_forward" ? { compatibility_mode: "pending_forward" as const } : {}),
     authority: authority(request.authority)
   };
 }
@@ -138,7 +140,10 @@ export function resolveEffectiveDefinition(startDefinition: unknown, state: any)
       || (index > 0 && priorState.definition_digest !== currentIdentity.digest)) {
       fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}].prior_state`, "prior_state definition identity does not match the ledger head");
     }
-    assertDefinitionCompatibility(current, next, priorState, `$.definition_amendments[${index}].successor`);
+    if (event.compatibility_mode !== undefined && event.compatibility_mode !== "pending_forward") fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}]`, "unsupported compatibility mode");
+    if (event.compatibility_mode === undefined && event.protected_steps !== undefined) fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}]`, "protected steps require pending forward mode");
+    if (event.compatibility_mode === "pending_forward" && (!Array.isArray(event.protected_steps) || event.protected_steps.some((id: unknown) => typeof id !== "string" || !id) || new Set(event.protected_steps).size !== event.protected_steps.length)) fail("flow.definition_amendment.compatibility.invalid", `$.definition_amendments[${index}]`, "pending forward amendment requires runtime protected steps");
+    assertDefinitionCompatibility(current, next, priorState, `$.definition_amendments[${index}].successor`, { mode: event.compatibility_mode, protectedSteps: event.protected_steps });
     seenVersions.add(successor.version); seenDigests.add(successor.digest); current = next; currentIdentity = successor;
   }
   if (state?.definition_id !== current.id || state?.definition_version !== current.version) fail("flow.definition_amendment.compatibility.invalid", "$.definition_version", "state definition identity does not match the effective definition");
@@ -146,10 +151,10 @@ export function resolveEffectiveDefinition(startDefinition: unknown, state: any)
   return current;
 }
 
-function same(value: unknown, other: unknown) { return canonicalJson(value) === canonicalJson(other); }
+function same(value: unknown, other: unknown) { return value === undefined || other === undefined ? value === other : canonicalJson(value) === canonicalJson(other); }
 
 /** Strict history proof: history-bearing nodes and accepted contracts may not be reinterpreted. */
-export function assertDefinitionCompatibility(prior: any, successor: any, state: any, path = "$.successor") {
+export function assertDefinitionCompatibility(prior: any, successor: any, state: any, path = "$.successor", options: { mode?: "pending_forward"; protectedSteps?: string[] } = {}) {
   if (prior.id !== successor.id) fail("flow.definition_amendment.compatibility.invalid", `${path}.id`, "successor must retain the definition id");
   if (prior.version === successor.version) fail("flow.definition_amendment.compatibility.invalid", `${path}.version`, "successor must use a different opaque version");
   const successorSteps = new Map((successor.steps as any[]).map((step: any) => [step.id, step]));
@@ -164,10 +169,44 @@ export function assertDefinitionCompatibility(prior: any, successor: any, state:
     if (item?.selected_route) stepIds.add(item.selected_route);
     if (item?.route_back_to) stepIds.add(item.route_back_to);
   }
+  if (options.mode === "pending_forward") {
+    if (!same(prior.execution, successor.execution)) fail("flow.definition_amendment.compatibility.invalid", path, "pending forward amendment cannot change the execution contract");
+    if (state.status !== "active" || (state.multi_cursor?.active_claims ?? []).length) fail("flow.definition_amendment.compatibility.invalid", path, "pending forward amendment requires an active run without execution claims");
+    for (const claim of state.multi_cursor?.claim_history ?? []) if (claim.step_id) stepIds.add(claim.step_id);
+    for (const id of options.protectedSteps ?? []) stepIds.add(id);
+    if ((options.protectedSteps ?? []).some(id => !prior.steps.some((step: any) => step.id === id))) fail("flow.definition_amendment.compatibility.invalid", path, "protected step must exist in the prior definition");
+    for (const gateId of historicalGateIds) { const gate = findGate(prior, gateId); if (gate) stepIds.add(gate.step); }
+    const current = prior.steps.find((step: any) => step.id === state.current_step);
+    const changed = successorSteps.get(state.current_step) as any;
+    if (current && changed && current.next !== changed.next) {
+      if ((state.transitions ?? []).some((transition: any) => transition.from_step === state.current_step && transition.to_step !== state.current_step)) fail("flow.definition_amendment.compatibility.invalid", path, "current forward edge belongs to consumed transition history");
+    }
+    for (const step of successor.steps as any[]) {
+      const old = prior.steps.find((entry: any) => entry.id === step.id);
+      if (!old || old.next !== step.next) for (const target of [old?.next, step.next]) if (target && stepIds.has(target)) fail("flow.definition_amendment.compatibility.invalid", path, `forward edge touches started or historical step ${target}`);
+    }
+    const forwardPath = (definition: any) => {
+      const reached = new Set<string>(); let id = state.current_step;
+      while (id && !reached.has(id)) { reached.add(id); id = definition.steps.find((step: any) => step.id === id)?.next; }
+      return reached;
+    };
+    const beforePath = forwardPath(prior), afterPath = forwardPath(successor);
+    for (const id of stepIds) if (beforePath.has(id) && !afterPath.has(id)) fail("flow.definition_amendment.compatibility.invalid", path, `successor bypasses started or historical step ${id}`);
+    // Current execution and every touched gate keep their complete contract.
+    for (const [gateId, gate] of Object.entries(prior.gates) as [string, any][]) if (stepIds.has(gate.step) && !same(findGate(prior, gateId), findGate(successor, gateId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor changes protected gate ${gateId}`);
+    for (const [gateId, gate] of Object.entries(successor.gates) as [string, any][]) if (stepIds.has(gate.step)) {
+      if (!findGate(prior, gateId)) fail("flow.definition_amendment.compatibility.invalid", path, `successor adds a gate to protected step ${gate.step}`);
+      if (!same(findGate(prior, gateId), findGate(successor, gateId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor changes a gate on protected step ${gate.step}`);
+    }
+  }
   for (const stepId of stepIds) {
     if (!stepId || !successorSteps.has(stepId)) fail("flow.definition_amendment.compatibility.invalid", path, `successor removes persisted step ${stepId}`);
     const oldStep = (prior.steps as any[]).find((step: any) => step.id === stepId);
-    if (oldStep && !same(oldStep, successorSteps.get(stepId))) fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets persisted step ${stepId}`);
+    const nextStep = successorSteps.get(stepId) as any;
+    const compatible = options.mode === "pending_forward" && stepId === state.current_step
+      ? same({ ...oldStep, next: nextStep?.next }, nextStep)
+      : same(oldStep, nextStep);
+    if (oldStep && !compatible) fail("flow.definition_amendment.compatibility.invalid", path, `successor reinterprets persisted step ${stepId}`);
   }
   for (const gateId of historicalGateIds) {
     const oldGate = findGate(prior, gateId); const nextGate = findGate(successor, gateId);
