@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import {
   declarations,
   flowThemeBodies,
-  flowTokensForColorSchemeMedia,
   parseRules,
   readUiTokenSources,
   ruleBody,
@@ -81,28 +80,6 @@ test("npm test checks vendored assets before the build can re-sync them", async 
   assert.equal(scripts["check:ui-assets"], "node scripts/sync-ui-assets.mjs --check");
 });
 
-test("the docs-site token sheet carries the installed Flow theme in both modes", () => {
-  const sheet = flowTokensForColorSchemeMedia(sources);
-  const [darkPart, lightPart] = sheet.split("@media (prefers-color-scheme: light)");
-  assert.ok(lightPart, "light values must sit under prefers-color-scheme");
-  const last = (css, name) => parseRules(css).map((rule) => declarations(rule.body).get(name)).filter(Boolean).at(-1);
-
-  // Pinned literals for ui 1.18 (brand-as-text AA): a ui release that moves
-  // them should be looked at, not absorbed silently.
-  assert.equal(last(darkPart, "--k-brand"), "#3890ae");
-  assert.equal(last(darkPart, "--k-action"), "#2f88a6");
-  assert.equal(last(darkPart, "--k-focus"), "#2f88a6");
-  assert.equal(last(darkPart, "--k-text-faint"), "#75889d");
-  assert.equal(last(darkPart, "--k-brand"), tokenValue(bodies.darkFlow, "--k-brand"));
-
-  // The media block is `@media { :root {…} :root {…} }`; drop the wrapper.
-  const lightRules = lightPart.slice(lightPart.indexOf("{") + 1, lightPart.lastIndexOf("}"));
-  assert.equal(last(lightRules, "--k-brand"), "#1f6f88");
-  assert.equal(last(lightRules, "--k-text-faint"), "#6a707b");
-  assert.equal(last(lightRules, "--k-bg"), tokenValue(bodies.light, "--k-bg"));
-  assert.equal(last(lightRules, "color-scheme"), "light");
-});
-
 test("token extraction refuses a missing rule or declaration instead of emitting nothing", () => {
   assert.throws(() => flowThemeBodies({ tokens: sources.tokens, themes: sources.themes.replaceAll(".theme-flow", ".theme-renamed") }), /expected exactly one rule for `\.theme-flow`, found 0/);
   assert.throws(() => ruleBody(`${sources.tokens}\n:root { --k-bg: red; }`, ":root"), /found 2/);
@@ -114,7 +91,6 @@ test("token extraction refuses a Flow rule that has lost its tokens", () => {
   const emptied = sources.themes.replace(/\.theme-flow \{[^}]*\}/, ".theme-flow {}");
   assert.notEqual(emptied, sources.themes, "the injection must reach the rule");
   assert.throws(() => flowThemeBodies({ tokens: sources.tokens, themes: emptied }), /themes\.css `\.theme-flow`: missing --k-brand, --k-action, --k-action-contrast, --k-focus/);
-  assert.throws(() => flowTokensForColorSchemeMedia({ tokens: sources.tokens, themes: emptied }), /missing --k-brand/);
   const noBrand = sources.tokens.replace("--k-brand: #0e7c64;", "");
   assert.notEqual(noBrand, sources.tokens);
   assert.throws(() => flowThemeBodies({ tokens: noBrand, themes: sources.themes }), /tokens\.css `\[data-theme="light"\]`: missing --k-brand/);
@@ -148,20 +124,6 @@ test("selector lists split on top-level commas only", () => {
   assert.ok(rule.selectors[1].endsWith('[data-theme="light"] [data-theme="dark"] *))'), rule.selectors[1]);
 });
 
-// Site-local custom properties that are deliberately not @kontourai/ui tokens.
-const DOCS_LOCAL_TOKENS = ["--k-brand-bright"];
-
-test("docs-site styles declare no @kontourai/ui token and use only declared ones", async () => {
-  const styles = await read("scripts/docs-site/styles.css");
-  const declared = [...styles.matchAll(/(--k-[a-z0-9-]+)\s*:/g)].map((match) => match[1]);
-  assert.deepEqual([...new Set(declared)], DOCS_LOCAL_TOKENS, "docs-site styles must not re-declare ui tokens; build.ts takes them from the package");
-
-  const available = new Set([...declarations(bodies.dark).keys(), ...DOCS_LOCAL_TOKENS]);
-  const used = new Set([...styles.matchAll(/var\((--k-[a-z0-9-]+)/g)].map((match) => match[1]));
-  assert.ok(used.has("--k-action"), "the scan must reach the stylesheet's var() uses");
-  assert.deepEqual([...used].filter((name) => !available.has(name)), []);
-});
-
 test("console styles use only tokens the vendored sheet declares", async () => {
   const vendored = declarations(ruleBody(await read("src/console-ui/vendor/ui/tokens/tokens.css"), ":root"));
   const styles = await read("src/console-ui/styles.css");
@@ -169,20 +131,4 @@ test("console styles use only tokens the vendored sheet declares", async () => {
   assert.ok(used.has("--k-focus"), "the scan must reach the stylesheet's var() uses");
   assert.deepEqual([...used].filter((name) => !vendored.has(name)), []);
   assert.deepEqual([...styles.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((match) => match[0]), [], "console styles take colors from tokens");
-});
-
-test("docs-site literals that cannot read a custom property match the tokens", async () => {
-  const favicon = await read("scripts/docs-site/favicon.svg");
-  const colors = [...new Set([...favicon.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((match) => match[0].toLowerCase()))].sort();
-  const styles = await read("scripts/docs-site/styles.css");
-  const bright = styles.match(/--k-brand-bright:\s*(#[0-9a-f]{6})/)?.[1];
-  // The favicon is the Flow accent gradient on dark contrast ink. An SVG file
-  // cannot read the page's tokens, so each color is held to its source here.
-  const expected = [
-    bright, // site-local tint (DOCS_LOCAL_TOKENS)
-    tokenValue(bodies.darkFlow, "--k-action"), // the Flow accent
-    tokenValue(bodies.dark, "--k-brand-contrast"),
-  ].sort();
-  assert.deepEqual(colors, expected);
-  assert.deepEqual(expected, ["#06080b", "#2f88a6", "#5cc4e0"].sort());
 });

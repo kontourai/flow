@@ -7,7 +7,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 - Product and vocabulary context: `CONTEXT.md`; docs map: [docs/README.md](docs/README.md).
 - Runtime source lives in `src/` by domain; placement rules: [docs/repo-structure.md](docs/repo-structure.md).
 - Public contracts are JSON Schemas in `schemas/`; published examples in `examples/` (registered by the package-contents test).
-- `dist/`, `site/`, and `test-results/` are generated validation/build output. Flow-owned generated product state lives under `.kontourai/flow/`; never hand-edit it. Root `.flow/config.json` and `.flow/definitions/` are durable authored state.
+- `dist/`, `dist-pages/`, and `test-results/` are generated validation/build output. Flow-owned generated product state lives under `.kontourai/flow/`; never hand-edit it. Root `.flow/config.json` and `.flow/definitions/` are durable authored state.
 
 ## Pull More Context When Needed
 
@@ -21,6 +21,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 
 - Runtime/CLI/schema changes: `npm test` (build, contract checks, Node tests, console smoke, browser tests).
 - Docs or docs-site changes: `npm run docs:check`.
+- Docs are published with docs-kit: `docs-kit.json` lists the published docs and MCP topics, `npm run docs:check` is the gate, and when you change code a document `covers`, update that document.
 - New examples/scenarios: `git add` them first — the package-contents test compares against tracked files.
 - Releases are automated (release-please); use conventional commit prefixes. See [docs/contributing.md](docs/contributing.md).
 
