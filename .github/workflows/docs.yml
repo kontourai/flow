@@ -13,6 +13,11 @@ permissions:
 jobs:
   gate:
     uses: kontourai/.github/.github/workflows/docs-gate.yml@main
+    # src/cli.ts carries internal changes that do not touch the CLI surface
+    # (10 of its last 23 commits left docs/cli.md alone), so stale-doc
+    # findings warn instead of failing the pull request.
+    with:
+      advisory-freshness: true
   pages:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: gate

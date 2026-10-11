@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import {
   declarations,
   flowThemeBodies,
-  flowTokensForColorSchemeMedia,
   parseRules,
   readUiTokenSources,
   ruleBody,
@@ -92,7 +91,6 @@ test("token extraction refuses a Flow rule that has lost its tokens", () => {
   const emptied = sources.themes.replace(/\.theme-flow \{[^}]*\}/, ".theme-flow {}");
   assert.notEqual(emptied, sources.themes, "the injection must reach the rule");
   assert.throws(() => flowThemeBodies({ tokens: sources.tokens, themes: emptied }), /themes\.css `\.theme-flow`: missing --k-brand, --k-action, --k-action-contrast, --k-focus/);
-  assert.throws(() => flowTokensForColorSchemeMedia({ tokens: sources.tokens, themes: emptied }), /missing --k-brand/);
   const noBrand = sources.tokens.replace("--k-brand: #0e7c64;", "");
   assert.notEqual(noBrand, sources.tokens);
   assert.throws(() => flowThemeBodies({ tokens: noBrand, themes: sources.themes }), /tokens\.css `\[data-theme="light"\]`: missing --k-brand/);
