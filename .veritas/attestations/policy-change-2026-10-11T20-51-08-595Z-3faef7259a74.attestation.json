@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-11T20-51-08-595Z-3faef7259a74",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-11T20:51:08.595Z",
+  "repoStandardsHash": "sha256:441399bd8d163f58953b5d2c4f47d42570525c1594a3b1cac6f6d66521c6ba29",
+  "repoMapHash": "sha256:362bc6788fbcec5894238243ff2d4befe535ce4996b6bdf83afe0377c1417f9a",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:00357e5348ddffa2bce2242976e89a4f86137e8a867809445d8d1a5f1acd6b92",
+  "priorAttestationId": "legacy-attestation-v0:f3261b8121715ac2",
+  "validUntilDays": 90,
+  "notes": "Re-attest .veritas/repo-map.json after the pnpm 11 migration (51074eb, #251). Only change: the 'root manifests' node pattern list replaces package-lock.json (deleted in that commit) with pnpm-lock.yaml and adds pnpm-workspace.yaml. Repo standards and authority settings are unchanged. No requirement, work area, authority setting, or evidence check was weakened.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "legacy-attestation-v0:f3261b8121715ac2",
+    "approvalRef": "https://github.com/kontourai/flow/pull/278",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "67e02cd561047660c12dd1566b519c0bb06f995cfb3b725e2627b6db753fd944",
+        "validUntil": "2027-01-09T20:51:08.595Z"
+      },
+      "createdAt": "2026-10-11T20:51:08.595Z",
+      "updatedAt": "2026-10-11T20:51:08.595Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74",
+      "claimId": "veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Re-attest .veritas/repo-map.json after the pnpm 11 migration (51074eb, #251). Only change: the 'root manifests' node pattern list replaces package-lock.json (deleted in that commit) with pnpm-lock.yaml and adds pnpm-workspace.yaml. Repo standards and authority settings are unchanged. No requirement, work area, authority setting, or evidence check was weakened.",
+      "observedAt": "2026-10-11T20:51:08.595Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "67e02cd561047660c12dd1566b519c0bb06f995cfb3b725e2627b6db753fd944",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-11T20:51:08.595Z",
+        "validUntil": "2027-01-09T20:51:08.595Z",
+        "contentHash": "67e02cd561047660c12dd1566b519c0bb06f995cfb3b725e2627b6db753fd944"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74",
+      "status": "verified",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-11T20-51-08-595Z-3faef7259a74"
+      ],
+      "createdAt": "2026-10-11T20:51:08.595Z",
+      "verifiedAt": "2026-10-11T20:51:08.595Z"
+    }
+  }
+}
