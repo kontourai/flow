@@ -30,9 +30,6 @@ importers:
       '@types/node':
         specifier: ^25.9.2
         version: 25.9.2
-      marked:
-        specifier: ^16.4.2
-        version: 16.4.2
       playwright:
         specifier: ^1.60.0
         version: 1.60.0
@@ -185,11 +182,6 @@ packages:
   make-fetch-happen@16.0.1:
     resolution: {integrity: sha512-uUv1yxHzaKVVEPfcFeGSNov/Cehjv08ovlY8ImTljgL7Q+SiA0dAYLQ6SYVa2kkKqNj4Y3aZEI7xv2teadie0A==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
-  marked@16.4.2:
-    resolution: {integrity: sha512-TI3V8YYWvkVf3KJe1dRkpnjs68JUPyEa5vjKrp1XEEJUAOaQc+Qj+L1qWbPd0SJuAdQkFU0h73sXXqwDYxsiDA==}
-    engines: {node: '>= 20'}
-    hasBin: true
 
   minimatch@10.2.6:
     resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
@@ -500,8 +492,6 @@ snapshots:
       - kerberos
       - supports-color
     optional: true
-
-  marked@16.4.2: {}
 
   minimatch@10.2.6:
     dependencies:

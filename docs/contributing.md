@@ -41,13 +41,14 @@ Root `.kontourai/` is the common ignored boundary for generated Kontour product 
 
 ## Docs Site
 
-The GitHub Pages site is generated from `README.md` content and `docs/` by `scripts/docs-site/build.ts` (TypeScript, run directly with Node >= 22.18 native type stripping):
+The GitHub Pages site at <https://kontourai.github.io/flow/> and its `docs-bundle.json` (served to agents by the Kontour docs MCP) are built by the shared [docs-kit](https://github.com/kontourai/docs-kit) from `docs-kit.json`. That manifest lists the published documents in navigation order, the curated agent topics, and the unpublished `exclude` globs.
 
 ```sh
-npm run docs:build
+npm run docs:check   # the docs gate: links, anchors, reachability, topics, covers
+npm run docs:build   # renders the site into dist-pages/ (ignored)
 ```
 
-Output lands in `site/` (ignored). The `Docs` GitHub workflow builds and deploys the site on pushes to `main` that touch `docs/` or `scripts/docs-site/`. When adding, renaming, or retiring a guide, update both `docs/README.md` and the page list in `scripts/docs-site/build.ts`.
+The `Docs` GitHub workflow runs the gate on every pull request and deploys the site on pushes to `main`. When adding, renaming, or retiring a guide, update both `docs/README.md` and `docs-kit.json`. When you change code that a document `covers` in `docs-kit.json`, update that document in the same pull request.
 
 ## Demo Recording
 

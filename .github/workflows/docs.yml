@@ -1,62 +1,28 @@
 name: Docs
 
 on:
+  pull_request:
+  merge_group:
   push:
-    branches:
-      - main
-    paths:
-      - "docs/**"
-      - "scripts/docs-site/**"
-      # The site's tokens are read from the installed @kontourai/ui.
-      - "scripts/lib/ui-tokens.mjs"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/docs.yml"
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build docs site
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build site and check links
-        run: npm run docs:check
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: site
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+  gate:
+    uses: kontourai/.github/.github/workflows/docs-gate.yml@main
+    # src/cli.ts carries internal changes that do not touch the CLI surface
+    # (10 of its last 23 commits left docs/cli.md alone), so stale-doc
+    # findings warn instead of failing the pull request.
+    with:
+      advisory-freshness: true
+  pages:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: gate
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: kontourai/.github/.github/workflows/docs-pages.yml@main

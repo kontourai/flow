@@ -156,21 +156,3 @@ export function flowThemeBodies({ tokens, themes }) {
     lightFlow: requireTokens(ruleBody(themes, '[data-theme="light"].theme-flow', "themes.css"), FLOW_TOKENS, "themes.css light `.theme-flow`"),
   };
 }
-
-// Token sheet for a page that follows the OS color scheme instead of a
-// data-theme attribute (the docs site): the package's dark contract and Flow
-// theme on :root, and its light contract under prefers-color-scheme.
-export function flowTokensForColorSchemeMedia(sources) {
-  const { dark, darkFlow, light, lightFlow } = flowThemeBodies(sources);
-  const block = (body, indent) => body.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => `${indent}${line}`).join("\n");
-  return [
-    "/* Generated from @kontourai/ui tokens by scripts/lib/ui-tokens.mjs. */",
-    `:root {\n${block(dark, "  ")}\n}`,
-    `:root {\n${block(darkFlow, "  ")}\n}`,
-    "@media (prefers-color-scheme: light) {",
-    `  :root {\n${block(light, "    ")}\n  }`,
-    `  :root {\n${block(lightFlow, "    ")}\n  }`,
-    "}",
-    "",
-  ].join("\n");
-}
