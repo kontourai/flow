@@ -54,5 +54,27 @@
     "docs/design/*.md",
     "docs/handoff/*.md",
     "docs/lessons/*.md"
-  ]
+  ],
+  "redirects": {
+    "getting-started.html": "docs/getting-started.md",
+    "use-cases.html": "docs/use-cases.md",
+    "cli.html": "docs/cli.md",
+    "library.html": "docs/library.md",
+    "evidence.html": "docs/evidence.md",
+    "live-verify-gates.html": "docs/live-verify-gates.md",
+    "gates-and-route-back.html": "docs/gates-and-route-back.md",
+    "agent-hooks.html": "docs/agent-hooks.md",
+    "flow-kit-container.html": "docs/flow-kit-container.md",
+    "project-config.html": "docs/project-config.md",
+    "runtime-roots.html": "docs/runtime-roots.md",
+    "release-readiness.html": "docs/release-readiness.md",
+    "product-vision.html": "docs/product-vision.md",
+    "developer-architecture.html": "docs/developer-architecture.md",
+    "contributing.html": "docs/contributing.md",
+    "repo-structure.html": "docs/repo-structure.md",
+    "adr/0001-flow-as-process-transparency-layer.html": "docs/adr/0001-flow-as-process-transparency-layer.md",
+    "adr/0002-gate-expectations-and-project-authority.html": "docs/adr/0002-gate-expectations-and-project-authority.md",
+    "adr/0003-project-config-merge-semantics.html": "docs/adr/0003-project-config-merge-semantics.md",
+    "adr/0008-kit-operation-boundary.html": "docs/adr/0008-kit-operation-boundary.md"
+  }
 }
