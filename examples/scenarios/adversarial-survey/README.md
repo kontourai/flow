@@ -2,7 +2,7 @@
 
 This scenario runs the [adversarial route-back pattern](../../../docs/gates-and-route-back.md#pattern-adversarial-review-with-a-defect-budget) end to end with evidence shaped the way [Kontour Survey](https://kontourai.io/survey) produces it: Surface-shaped trust artifacts whose producer and authority traces point back at a Survey review session and its per-round records.
 
-The artifacts here are authored fixtures in the neutral shape Flow consumes. Survey owns the review reasoning and the per-round [adversarial-pass records](https://kontourai.github.io/survey/adversarial-and-learning.html); Flow evaluates only the artifact fields, the Flow Definition, and persisted transitions.
+The artifacts here are authored fixtures in the neutral shape Flow consumes. Survey owns the review reasoning and the per-round [adversarial-pass records](https://kontourai.github.io/survey/docs/adversarial-and-learning.html); Flow evaluates only the artifact fields, the Flow Definition, and persisted transitions.
 
 ## Files
 

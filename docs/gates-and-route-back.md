@@ -253,7 +253,7 @@ There is nothing special about step names. A [Builder Kit](https://kontourai.git
 | `missing_evidence` | `adversarial-review` | required gate evidence is absent |
 | `default` | `resolve` | unmapped or omitted reasons |
 
-`max_attempts: 2` is the per-case adversarial budget; the third matching route-back exceeds it and `on_exceeded: "block"` stops the run with the exceeded state recorded. External systems own the actual review reasoning and may attach their records as per-round evidence — [Kontour Survey](https://kontourai.io/survey)'s [adversarial-pass records](https://kontourai.github.io/survey/adversarial-and-learning.html) are built for exactly this slot — while Flow owns only the orchestration, route accounting, and the budget.
+`max_attempts: 2` is the per-case adversarial budget; the third matching route-back exceeds it and `on_exceeded: "block"` stops the run with the exceeded state recorded. External systems own the actual review reasoning and may attach their records as per-round evidence — [Kontour Survey](https://kontourai.io/survey)'s [adversarial-pass records](https://kontourai.github.io/survey/docs/adversarial-and-learning.html) are built for exactly this slot — while Flow owns only the orchestration, route accounting, and the budget.
 
 ## Validating definitions
 
