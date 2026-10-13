@@ -34,7 +34,7 @@ This runs the build, contract type checks, Node tests, console smoke check, and 
 Individual checks by change type:
 
 - runtime/CLI/schema changes: `npm test`
-- docs or docs-site changes: `npm run docs:check` (docs-kit; see `docs-kit.json`)
+- docs or docs-site changes: `npm run docs:check` (docs-kit; see `corpus.json`)
 - new examples or scenarios: `git add` them first, then `npm run check:schemas`
 - package metadata, exports, or files changes: `npm run check:package-contents`
 
