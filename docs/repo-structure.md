@@ -17,7 +17,7 @@ Flow is the process transparency and gate enforcement kernel. The repo structure
 | `examples/scenarios/console-projection/runtime-fixture/` | Durable source fixture for console projection checks. | Tests and smoke scripts copy it into ignored `.kontourai/flow/runs/` state before exercising runtime APIs. |
 | `CHANGELOG.md` | Human-readable release history for published package versions. | Tracked package asset. Update when cutting a release that changes developer-facing behavior, package contents, or release operations. |
 | `scripts/` | Operational Node tooling for Kontour UI asset sync/copy, console smoke checks, and repo hook setup/validation. | Tracked tooling. New repository support scripts belong here unless they are product runtime source or a test suite. |
-| `scripts/docs-site/` | VHS tape and script that record `docs/assets/flow-demo.gif`. | Tracked tooling. The docs site itself is built by docs-kit from `docs-kit.json`. |
+| `scripts/docs-site/` | VHS tape and script that record `docs/assets/flow-demo.gif`. | Tracked tooling. The docs site itself is built by docs-kit from `corpus.json`. |
 | `tests/node/` | Node test suites for schema/runtime contracts, package contents, repo hook wiring, and console projection. Domain files keep package runtime, CLI, config, definitions, transitions, release checks, Surface claim handling, route-back behavior, and reports separate. | Tracked Node test lane. Node tests belong here instead of `scripts/`. Shared test-only helpers belong in `tests/node/helpers/`. |
 | `tests/browser/` | Playwright browser tests and the test server for the local Flow Console. | Tracked browser test lane. Browser-only console checks belong here. |
 | `docs/` | Durable product, architecture, ADR, and contributor documentation. | Tracked docs. Start with `docs/README.md` when deciding which guide to edit. New durable developer guidance belongs here. |
@@ -100,7 +100,7 @@ Do not delete, move, or re-ignore tracked scenarios, schemas, examples, or vendo
 
 `npm run test:browser` runs Playwright tests from `tests/browser/`.
 
-`npm run docs:check` runs the docs-kit gate, and `npm run docs:build` generates the GitHub Pages docs site into `dist-pages/` from the documents listed in `docs-kit.json`.
+`npm run docs:check` runs the Corpus gate, and `npm run docs:build` generates the GitHub Pages docs site into `dist-pages/` from the documents listed in `corpus.json`.
 
 `npm run check:repo-hooks`, `npm run setup:repo-hooks`, and `npm run validate:repo-hooks` cover contributor hook setup and validation. Hooks are repository tooling, not Flow gate semantics or merge authority.
 

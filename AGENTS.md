@@ -21,7 +21,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 
 - Runtime/CLI/schema changes: `npm test` (build, contract checks, Node tests, console smoke, browser tests).
 - Docs or docs-site changes: `npm run docs:check`.
-- Docs are published with docs-kit: `docs-kit.json` lists the published docs and MCP topics, `npm run docs:check` is the gate, and when you change code a document `covers`, update that document.
+- Docs are published with docs-kit: `corpus.json` lists the published docs and MCP topics, `npm run docs:check` is the gate, and when you change code a document `covers`, update that document.
 - New examples/scenarios: `git add` them first — the package-contents test compares against tracked files.
 - Releases are automated (release-please); use conventional commit prefixes. See [docs/contributing.md](docs/contributing.md).
 

@@ -41,14 +41,14 @@ Root `.kontourai/` is the common ignored boundary for generated Kontour product 
 
 ## Docs Site
 
-The GitHub Pages site at <https://kontourai.github.io/flow/> and its `docs-bundle.json` (served to agents by the Kontour docs MCP) are built by the shared [docs-kit](https://github.com/kontourai/docs-kit) from `docs-kit.json`. That manifest lists the published documents in navigation order, the curated agent topics, and the unpublished `exclude` globs.
+The GitHub Pages site at <https://kontourai.github.io/flow/> and its `docs-bundle.json` (served to agents by the Kontour docs MCP) are built by the shared [docs-kit](https://github.com/kontourai/docs-kit) from `corpus.json`. That manifest lists the published documents in navigation order, the curated agent topics, and the unpublished `exclude` globs.
 
 ```sh
 npm run docs:check   # the docs gate: links, anchors, reachability, topics, covers
 npm run docs:build   # renders the site into dist-pages/ (ignored)
 ```
 
-The `Docs` GitHub workflow runs the gate on every pull request and deploys the site on pushes to `main`. When adding, renaming, or retiring a guide, update both `docs/README.md` and `docs-kit.json`. When you change code that a document `covers` in `docs-kit.json`, update that document in the same pull request.
+The `Docs` GitHub workflow runs the gate on every pull request and deploys the site on pushes to `main`. When adding, renaming, or retiring a guide, update both `docs/README.md` and `corpus.json`. When you change code that a document `covers` in `corpus.json`, update that document in the same pull request.
 
 ## Demo Recording
 

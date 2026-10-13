@@ -1,5 +1,18 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "purpose": "A durable record of why work was allowed to advance.",
+  "builtOn": [
+    {
+      "product": "surface",
+      "via": "@kontourai/surface",
+      "for": "Validate evidence and derive trust outcomes for process gates."
+    },
+    {
+      "product": "ui",
+      "via": "@kontourai/ui",
+      "for": "Style the local run console with shared tokens and icons."
+    }
+  ],
   "product": "flow",
   "title": "Kontour Flow",
   "tagline": "Process transparency for agentic work: definitions, runs, gates, evidence, route-back, and reports",
