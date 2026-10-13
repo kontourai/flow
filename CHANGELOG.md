@@ -19,6 +19,21 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.2.1](https://github.com/kontourai/flow/compare/v5.2.0...v5.2.1) (2026-10-13)
+
+
+### Fixes
+
+* **deps:** adopt @kontourai/ui 1.20.0 and its contour Flow mark ([#280](https://github.com/kontourai/flow/issues/280)) ([70add3f](https://github.com/kontourai/flow/commit/70add3f5d837fe6a846050c4a6374ff7fc15d7e9))
+
+
+### Documentation
+
+* adopt docs-kit gate, Pages site, and MCP bundle ([#272](https://github.com/kontourai/flow/issues/272)) ([8cddd77](https://github.com/kontourai/flow/commit/8cddd7786d404b4f09d7787dcc1e27ad159ad586))
+* link Survey adversarial-pass page at its canonical URL ([#277](https://github.com/kontourai/flow/issues/277)) ([ebb1175](https://github.com/kontourai/flow/commit/ebb117502aa36664baa55de9f0987207a90caeb0)), closes [#276](https://github.com/kontourai/flow/issues/276)
+* **readme:** add Docs badge and kontourai.io link to header ([#279](https://github.com/kontourai/flow/issues/279)) ([a028ab4](https://github.com/kontourai/flow/commit/a028ab467a6ff56075735842176be79a65ff5456))
+* redirect pre-docs-kit page URLs to their new pages ([#275](https://github.com/kontourai/flow/issues/275)) ([41ead1f](https://github.com/kontourai/flow/commit/41ead1f1c885e8e32fcfcf3979fb72bca1195fad))
+
 ## [5.2.0](https://github.com/kontourai/flow/compare/v5.1.4...v5.2.0) (2026-10-10)
 
 
