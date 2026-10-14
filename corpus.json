@@ -89,5 +89,10 @@
     "adr/0002-gate-expectations-and-project-authority.html": "docs/adr/0002-gate-expectations-and-project-authority.md",
     "adr/0003-project-config-merge-semantics.html": "docs/adr/0003-project-config-merge-semantics.md",
     "adr/0008-kit-operation-boundary.html": "docs/adr/0008-kit-operation-boundary.md"
+  },
+  "decisions": {
+    "adr": {
+      "dir": "docs/adr"
+    }
   }
 }
