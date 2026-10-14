@@ -22,6 +22,7 @@ Flow is the process-transparency kernel: definitions, runs, gates, evidence, rou
 - Runtime/CLI/schema changes: `npm test` (build, contract checks, Node tests, console smoke, browser tests).
 - Docs or docs-site changes: `npm run docs:check`.
 - Docs are published with docs-kit: `corpus.json` lists the published docs and MCP topics, `npm run docs:check` is the gate, and when you change code a document `covers`, update that document.
+- Decisions: one living record per subject in `docs/decisions/<slug>.md`, in the [Corpus decision-record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md). Numbered ADRs in `docs/adr/` are frozen history; never add one. After editing a record, run `npm run gen:decisions-index`. `npm run check:decisions` validates the records and the index, and refuses ADR files added since `$DECISIONS_BASE` (default `origin/main`; CI sets it to the pull request base).
 - New examples/scenarios: `git add` them first — the package-contents test compares against tracked files.
 - Releases are automated (release-please); use conventional commit prefixes. See [docs/contributing.md](docs/contributing.md).
 
