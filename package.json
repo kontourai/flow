@@ -102,6 +102,7 @@
   },
   "devDependencies": {
     "@kontourai/ui": "^1.20.0",
+    "@kontourai/veritas": "1.11.2",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
     "playwright": "^1.60.0",
