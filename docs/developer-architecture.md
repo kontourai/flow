@@ -2,13 +2,13 @@
 
 Flow is the process transparency and gate enforcement kernel for required-path work. It records the path a run is expected to follow, the typed expectations each gate declares, the evidence that was actually attached, exceptions accepted by an authority, and the continuation state another person or agent needs to resume the run locally.
 
-This guide is self-contained for Flow developers. It explains the current v0.1 implementation, product ownership boundaries, runtime and evidence lifecycles, and the future Resource Contract alignment direction without requiring the Flow Agents cross-product guide.
+This guide is self-contained for Flow developers. It explains the current implementation, product ownership boundaries, runtime and evidence lifecycles, and the future Resource Contract alignment direction without requiring the Flow Agents cross-product guide.
 
 For file placement, generated artifact policy, and validation lane ownership, see the repo structure guide in [docs/repo-structure.md](repo-structure.md).
 
 ## Current Implementation
 
-Flow v0.1 is a local, file-backed CLI and library published as `@kontourai/flow`.
+Flow is a local, file-backed CLI and library published as `@kontourai/flow`.
 
 Flow owns these primitives:
 
@@ -22,7 +22,7 @@ Flow owns these primitives:
 - Continuation state: enough local state for `flow resume` and downstream agents to continue without chat memory.
 - Console projection: a read-only, deterministic local read model derived from Flow-owned run files.
 
-Flow does not run agents, dispatch work, replace CI, own repo governance, own Surface trust semantics, or call hosted services as part of v0.1 gate evaluation.
+Flow does not run agents, dispatch work, replace CI, own repo governance, own Surface trust semantics, or call hosted services as part of gate evaluation.
 
 For configured producer policy, Flow consumes Surface/Hachure's validated
 bundle facts rather than inventing an authority representation: `producerId`
@@ -72,7 +72,7 @@ flowchart TD
 
 Current implementation: the authoritative run record is the local run directory. `definition.json`, `state.json`, `evidence/manifest.json`, copied evidence files, `report.md`, and `report.json` are Flow-owned files.
 
-Future Resource Contract alignment: Flow Definition, Flow Run, and Flow Project Config are strong candidates for `apiVersion`, `kind`, `metadata`, `spec`, and `status` shape. That is migration guidance only; v0.1 still uses the existing flat JSON schemas.
+Future Resource Contract alignment: Flow Definition, Flow Run, and Flow Project Config are strong candidates for `apiVersion`, `kind`, `metadata`, `spec`, and `status` shape. That is migration guidance only; the runtime still uses the existing flat JSON schemas.
 
 ## Gate Evaluation And Transition Enforcement
 
@@ -222,7 +222,7 @@ Run file authority is intentionally split:
 - `evidence/manifest.json` is the evidence metadata index for that run and points at copied evidence files under `evidence/`.
 - `report.md`, `report.json`, and console projections are derived explanations regenerated from the definition snapshot, run state, and evidence manifest.
 
-Future Resource Contract alignment: Flow Run state, evidence manifests, reports, and console projection resources should likely be evaluated for Resource Contract shape when they become durable provider-facing or console-facing contracts. The current v0.1 runtime keeps `.kontourai/flow/runs/<run-id>/state.json` flat and schema-versioned; Resource Contract support is limited to authored Flow Definition and authored Flow Project Config inputs.
+Future Resource Contract alignment: Flow Run state, evidence manifests, reports, and console projection resources should likely be evaluated for Resource Contract shape when they become durable provider-facing or console-facing contracts. The current runtime keeps `.kontourai/flow/runs/<run-id>/state.json` flat and schema-versioned; Resource Contract support is limited to authored Flow Definition and authored Flow Project Config inputs.
 
 ## Reports And Console Projection
 
@@ -265,7 +265,7 @@ flowchart TD
 
 Current implementation: a copied Hachure TrustBundle backs a `trust.bundle` evidence entry. Flow consumes neutral bundle fields such as `source`, `claims`, `evidence`, `policies`, and `events`. Flow matches `bundle_claim` selectors against bundle claims and events to produce normal diagnostics.
 
-Flow does not import Surface services or Veritas-specific schema fields as the runtime contract. Veritas may produce compatible evidence, but Flow evaluates only TrustBundle fields under the Flow Definition and `.flow/config.json`.
+Flow uses the `@kontourai/surface` library in-process to validate trust bundles and derive claim status, without requiring a hosted Surface service. Veritas may produce compatible evidence, but the producer contract uses TrustBundle fields rather than Veritas-specific schema fields. Flow evaluates those fields under the Flow Definition and `.flow/config.json`.
 
 ## Local Relationship Map
 
@@ -293,7 +293,7 @@ The canonical product ownership summary lives in the Boundaries section of [prod
 - Flow owns provider-neutral process semantics: definitions, runs, steps, gates, transitions, route-back policy, evidence manifests, accepted exceptions, reports, continuation, transition validation, config merge semantics, and local console projection.
 - Flow decides whether a gate passes, blocks, routes back, waits, or is allowed by accepted exception from Flow-owned contracts and local project config.
 - `.flow/config.json` is the Flow authority source for trusted producer mappings and gate overrides during gate evaluation.
-- TrustBundle-compatible artifacts are evidence inputs; Flow does not decide global Surface trust meaning or call Surface services in v0.1 gate evaluation.
+- TrustBundle-compatible artifacts are evidence inputs; Flow does not decide global Surface trust meaning and uses the Surface library in-process without requiring a hosted Surface service for gate evaluation.
 - Veritas readiness can appear as compatible evidence; Flow does not import Veritas policy semantics.
 - Flow Agents and Builder Kit can package, install, adapt, or propose Flow definitions/config, but Flow core does not special-case agent runtimes or step names.
 
@@ -306,7 +306,7 @@ Kontour Resource Contracts own cross-product shape conventions:
 
 Current implementation:
 
-- Flow v0.1 is local and file-backed.
+- Flow is local and file-backed.
 - Flow Definitions, Flow Runs, evidence manifests, Flow Reports, project config, transition validation, release readiness outputs, and version release reports use the current v0.1 schemas.
 - Console projection is read-only and derived from local Flow run files.
 - TrustBundle evidence is consumed through neutral copied artifacts.
