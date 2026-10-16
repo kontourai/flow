@@ -40,7 +40,7 @@ report: .kontourai/flow/runs/dev-1847/report.md
 - **Deterministic route-back.** Failed evidence routes work back to the right step (`implementation_defect` → implement, `plan_gap` → plan) with attempt budgets, so agents cannot loop silently forever.
 - **Authorized retry epochs.** An exhausted blocked route-back can return only to its declared route in the same run through a provider-neutral, authority-bearing `flow authorize-retry` request; it preserves failure history and requires fresh re-entry evidence.
 - **Audit-ready reports.** Every run regenerates a human-readable `report.md` and machine-readable `report.json` that explain what passed, what blocked, what was excepted, and what happens next.
-- **Local-first, zero lock-in.** v0.1 is a file-backed CLI and TypeScript library. No hosted service, no account, no telemetry. Your evidence stays in your repo.
+- **Local-first, zero lock-in.** Flow is a file-backed CLI and TypeScript library. No hosted service, no account, no telemetry. Your evidence stays in your repo.
 
 ## See it
 

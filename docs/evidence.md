@@ -146,7 +146,7 @@ Flow consumes a neutral bundle shape:
 
 Flow matches `bundle_claim` selectors against bundle claims and derives the claim status from bundle events. The legacy `surface.claim` / `claim` projection was replaced by `trust.bundle` / `bundle_claim` during the trust-bundle migration.
 
-This is a neutral contract: Flow does not import Surface services or Veritas-specific schema fields at runtime. Any tool that can write this JSON shape — CI, Veritas, a review bot, a script — is an evidence producer.
+Flow uses the `@kontourai/surface` library in-process to validate trust bundles and derive claim status; gate evaluation does not require a hosted Surface service. The producer contract remains neutral: Flow consumes TrustBundle fields rather than Veritas-specific schema fields. Any tool that can write this JSON shape — CI, Veritas, a review bot, a script — can supply evidence, subject to the Flow Definition and configured producer policy.
 
 ### Bounded Surface derivation
 
