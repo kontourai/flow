@@ -2,7 +2,7 @@
 
 This guide takes you from `npm install` to a complete, evidence-gated Flow Run — including a deliberate failure that routes work back, and a resume from recorded state. Every command and every output block below was produced by the real CLI.
 
-Flow v0.1 is local and file-backed. Nothing here talks to a hosted service.
+Flow is local and file-backed. Nothing here talks to a hosted service.
 
 ## Install
 
