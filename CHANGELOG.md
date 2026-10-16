@@ -19,6 +19,15 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.2.2](https://github.com/kontourai/flow/compare/v5.2.1...v5.2.2) (2026-10-16)
+
+
+### Documentation
+
+* check and docs:build move to the same Corpus pin. ([e1493a4](https://github.com/kontourai/flow/commit/e1493a4e5495cf2ea915d5bb9c85cdacf829e7b7))
+* clarify runtime dependency and current-version wording ([#287](https://github.com/kontourai/flow/issues/287)) ([bb6b9fc](https://github.com/kontourai/flow/commit/bb6b9fcf3aa1ba52c9e22dc2407bc5711e7625e9))
+* declare product purpose and verified building blocks ([#282](https://github.com/kontourai/flow/issues/282)) ([9b2de04](https://github.com/kontourai/flow/commit/9b2de043460bfbea079406acc4b30bab25a660b1))
+
 ## [5.2.1](https://github.com/kontourai/flow/compare/v5.2.0...v5.2.1) (2026-10-13)
 
 
