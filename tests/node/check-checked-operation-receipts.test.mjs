@@ -278,3 +278,17 @@ test("a foreign store has no operation proof and a foreign run id cannot disclos
   assert.equal(await flow.readCheckedRunOperation(f.run.runId, { cwd: foreign.cwd, operation: f.options.operation, admission }), null);
   await assert.rejects(flow.readCheckedRunOperation('different-run', { cwd: f.cwd, operation: f.options.operation, admission }));
 });
+
+
+test("snapshot bytes use the unchanged canonical full-state hash domain and refuse equivalent noncanonical JSON", async t => {
+  const f = await fixture(t);
+  const result = await flow.evaluateRunChecked(f.run.runId, f.options);
+  const file = path.join(f.run.dir, "checked-operations", `${result.operationReceipt.snapshotDigest}.json`);
+  const bytes = await readFile(file), snapshot = JSON.parse(bytes);
+  assert.equal(bytes.toString('utf8'), flow.canonicalJson(snapshot));
+  assert.equal(flow.flowRunHead(snapshot), result.operationReceipt.snapshotDigest);
+  await writeFile(file, JSON.stringify(snapshot, null, 2));
+  await assert.rejects(lookup(f), /snapshot.digest/);
+  await writeFile(file, bytes);
+  assert.deepEqual(await lookup(f), result.operationReceipt);
+});

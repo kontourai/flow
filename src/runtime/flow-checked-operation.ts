@@ -1,4 +1,5 @@
 import { constants } from "node:fs";
+import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readdir } from "node:fs/promises";
 import path from "node:path";
 import type { FlowDefinitionIdentity, FlowRetryAuthorizationRequest, FlowRunState, GateOutcome } from "../contracts/flow-types.js";
@@ -162,7 +163,9 @@ export async function readCheckedSnapshot(dir: string, digest: string, confirmDu
     if (named.isSymbolicLink() || named.dev !== stat.dev || named.ino !== stat.ino || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || after.nlink !== 1 || offset !== stat.size) checkedFailure("snapshot.changed");
     const text = bytes.subarray(0, offset).toString("utf8");
     const value: unknown = JSON.parse(text);
-    if (flowRunHead(value) !== digest || canonicalJson(value) !== text) checkedFailure("snapshot.digest");
+    const canonical = canonicalJson(value);
+    if (canonical !== text || !Buffer.from(text, "utf8").equals(bytes.subarray(0, offset))
+      || createHash("sha256").update(canonical).digest("hex") !== digest) checkedFailure("snapshot.digest");
     if (confirmDurability) {
       await handle.sync();
       await syncSnapshotDirectory(location);
@@ -174,7 +177,7 @@ export async function readCheckedSnapshot(dir: string, digest: string, confirmDu
 }
 export async function writeCheckedSnapshot(dir: string, state: FlowRunState): Promise<string> {
   const { checked_operation_ledger: _ledger, ...snapshot } = state;
-  const bytes = canonicalJson(snapshot), digest = flowRunHead(snapshot);
+  const bytes = canonicalJson(snapshot), digest = createHash("sha256").update(bytes).digest("hex");
   if (Buffer.byteLength(bytes) > FLOW_CHECKED_OPERATION_LIMITS.snapshotBytes) checkedFailure("snapshot.capacity");
   const rootIdentity = await lstat(dir);
   const location = await snapshotDirectory(dir, true);

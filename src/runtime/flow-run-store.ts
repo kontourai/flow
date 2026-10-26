@@ -587,6 +587,8 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     records.set(key, record);
     lastByGate.set(record.ref.gateId, record);
   }
+  const exceptionKeys = new Set((state.exceptions ?? []).map((exception: any) => canonicalJson([exception.id, exception.gate_id])));
+  const manifestEntries = manifest ? new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry])) : undefined;
   const historyReferenced = new Set<string>();
   const historyOutcomes = new Set<string>();
   for (const outcome of state.gate_outcome_history ?? []) {
@@ -614,7 +616,7 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     if (record.exceptionId !== outcome.accepted_exception_id) {
       throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
     }
-    if (record.exceptionId && !(state.exceptions ?? []).some((exception: any) => exception.id === record.exceptionId && exception.gate_id === outcome.gate_id)) {
+    if (record.exceptionId && !exceptionKeys.has(canonicalJson([record.exceptionId, outcome.gate_id]))) {
       throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
     }
     const routed = outcome.status === "route-back" || outcome.limit_exceeded === true;
@@ -626,10 +628,9 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
         || record.routeBack?.selectedRoute !== outcome.selected_route))) {
       throw new Error(`flow.gate_evaluation_ledger.route_back.conflict: ${ref.evaluationId}`);
     }
-    if (manifest) {
-      const entries = new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+    if (manifestEntries) {
       for (const selection of record.selections) {
-        const entry = entries.get(selection.evidenceId);
+        const entry = manifestEntries.get(selection.evidenceId);
         if (entry && selection.sha256 !== undefined && entry.sha256?.toLowerCase() !== selection.sha256) {
           throw new Error(`flow.gate_evaluation_ledger.selection.digest_conflict: ${ref.evaluationId}`);
         }
