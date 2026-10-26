@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
@@ -1104,4 +1105,49 @@ test("self-route recovery cannot reuse evidence attached before authorization", 
   assert.notEqual(evaluated.outcomes[0].status, "pass");
   assert.equal(evaluated.outcomes[0].route_reason, "missing_evidence");
   assert.equal(evaluated.outcomes[0].retry_epoch, 2);
+});
+
+test("checked retry refuses lost host authority at publication and releases the lease", async () => {
+  const fixture = await exhaustedRun("checked-retry-authorization");
+  const artifacts = () => Promise.all(["state.json", "evidence/manifest.json", "report.json", "report.md"].map(name => readFile(path.join(fixture.started.dir, name), "utf8")));
+  const before = await artifacts();
+  const reportIdentity = () => Promise.all(["report.json", "report.md"].map(async name => {
+    const value = await lstat(path.join(fixture.started.dir, name));
+    return { inode: value.ino, mtime: value.mtimeMs };
+  }));
+  const reportBefore = await reportIdentity();
+  let releases = 0;
+  const admission = { async acquire() { return {
+    assertCurrent() { if (readdirSync(fixture.started.dir).some(name => name.includes(".retry-") && name.endsWith(".tmp"))) throw new Error("host retry authority revoked"); },
+    async release() { releases++; }
+  }; } };
+  await assert.rejects(flow.authorizeRetryChecked(fixture.started.runId, {
+    cwd: fixture.cwd, request: fixture.request, admission
+  }), /host retry authority revoked/);
+  assert.deepEqual(await artifacts(), before);
+  assert.deepEqual(await reportIdentity(), reportBefore);
+  assert.equal(releases, 1);
+  const accepted = await flow.authorizeRetryChecked(fixture.started.runId, {
+    cwd: fixture.cwd, request: fixture.request,
+    admission: { async acquire() { return { assertCurrent() {}, async release() { releases++; } }; } }
+  });
+  assert.equal(accepted.idempotent, false);
+  assert.equal(accepted.state.status, "active");
+  assert.equal(releases, 2);
+});
+
+test("checked retry snapshots its cwd and request before awaiting the host lease", async () => {
+  const fixture = await exhaustedRun("checked-retry-snapshot");
+  const actor = fixture.request.authority.actor;
+  const options = { cwd: fixture.cwd, request: fixture.request, admission: {
+    async acquire() {
+      options.cwd = path.join(fixture.cwd, "foreign-directory");
+      options.request.authority.actor = "operator:substituted";
+      options.request.expected_run_head = "0".repeat(64);
+      return { assertCurrent() {}, release() {} };
+    }
+  } };
+  const result = await flow.authorizeRetryChecked(fixture.started.runId, options);
+  assert.equal(result.transition.authority.actor, actor);
+  assert.equal(result.idempotent, false);
 });

@@ -900,7 +900,50 @@ export async function loadRun(runId, cwd = process.cwd()) {
   });
 }
 
-async function saveRun(run) {
+/** A host lease must exclude relevant authority/source changes until release completes.
+ * Acquisition precedes Flow's native lock; lease methods must not acquire that lock.
+ */
+export interface FlowRunMutationAdmission {
+  acquire(): Promise<FlowRunMutationLease>;
+}
+
+export interface FlowRunMutationLease {
+  assertCurrent(): undefined;
+  release(): Promise<void> | void;
+}
+
+export interface FlowCheckedEvaluationOptions {
+  cwd?: string;
+  gate?: string;
+  now?: string;
+  expectedRunHead: string;
+  admission: FlowRunMutationAdmission;
+}
+
+export interface FlowCheckedRetryAuthorizationOptions {
+  cwd?: string;
+  request: FlowRetryAuthorizationRequest;
+  admission: FlowRunMutationAdmission;
+}
+
+async function withHostMutationLease<T>(admission: FlowRunMutationAdmission, work: (assertCurrent: () => void) => Promise<T>): Promise<T> {
+  if (!admission || typeof admission.acquire !== "function") throw new Error("flow.mutation_admission.invalid: admission.acquire is required");
+  const lease = await admission.acquire();
+  if (!lease || typeof lease.release !== "function") throw new Error("flow.mutation_admission.invalid: lease.release is required");
+  try {
+    if (typeof lease.assertCurrent !== "function") throw new Error("flow.mutation_admission.invalid: lease.assertCurrent is required");
+    const assertCurrent = () => {
+      const result: unknown = lease.assertCurrent();
+      if (result !== undefined) throw new Error("flow.mutation_admission.invalid: assertCurrent must return synchronously without a value");
+    };
+    assertCurrent();
+    return await work(assertCurrent);
+  } finally {
+    await lease.release();
+  }
+}
+
+async function saveRun(run, assertPublicationCurrent?: () => void) {
   const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
   await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
   assertGateEvaluationLedgerVersionSupported(run.state);
@@ -925,7 +968,7 @@ async function saveRun(run) {
     { path: reportMarkdownPath, contents: renderMarkdownReport(run.definition, run.state, run.manifest) },
     { path: manifestPath, contents: serializeJson(run.manifest) },
     { path: statePath, contents: serializeJson(run.state) }
-  ], _publishRunArtifactsFaultHooks);
+  ], _publishRunArtifactsFaultHooks, assertPublicationCurrent);
 }
 
 /** Canonical on-disk JSON encoding for run artifacts. */
@@ -2017,7 +2060,7 @@ export async function finalizeRunRecoveryFence(
   });
 }
 
-async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: string) => void) {
+async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: string) => void, assertPublicationCurrent?: () => void) {
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
@@ -2036,18 +2079,21 @@ async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: st
     { target: reportMarkdownPath, contents: await readFile(reportMarkdownPath, "utf8") }
   ];
   let stateCommitted = false;
+  let publicationStarted = false;
   try {
     for (const entry of staged) {
       faultInjection?.(`before_stage_${entry.stage}`);
       await writeFile(entry.temp, entry.contents, { flag: "wx", mode: 0o600 });
     }
+    assertPublicationCurrent?.();
     for (const entry of staged) {
       faultInjection?.(`before_rename_${entry.stage}`);
       await rename(entry.temp, entry.target);
+      publicationStarted = true;
       if (entry.stage === "state") stateCommitted = true;
     }
   } catch (error) {
-    if (!stateCommitted) {
+    if (publicationStarted && !stateCommitted) {
       await publishRunArtifacts(run.dir, priorReports.map((entry) => ({ path: entry.target, contents: entry.contents })));
     }
     throw error;
@@ -2271,6 +2317,18 @@ async function preflightRetryAuthorization(
  * This is a run transition, deliberately separate from pause/resume/cancel.
  */
 export async function authorizeRetry(runId: string, options: MutableRecord = {}): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+  return authorizeRetryAdmitted(runId, options);
+}
+
+export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const request = validateRetryAuthorizationRequest(options.request);
+  return withHostMutationLease(options.admission, (assertCurrent) => authorizeRetryAdmitted(runId, {
+    cwd, request
+  }, assertCurrent));
+}
+
+async function authorizeRetryAdmitted(runId: string, options: MutableRecord = {}, assertPublicationCurrent?: () => void): Promise<FlowRetryAuthorizationResult & MutableRecord> {
   if (Object.hasOwn(options, "at")) {
     throw new FlowRetryAuthorizationError("flow.retry_authorization.request.invalid", "$.at", "authorization timestamps are runtime-derived and cannot be supplied by callers");
   }
@@ -2286,6 +2344,7 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
     return { ...initialPreflight.run, transition: initialPreflight.transition, idempotent: true };
   }
   return withRunMutationLock(runId, cwd, async () => {
+    assertPublicationCurrent?.();
     const preflight = await preflightRetryAuthorization(runId, cwd, request);
     if (preflight.kind === "replay") {
       return { ...preflight.run, transition: preflight.transition, idempotent: true };
@@ -2330,7 +2389,7 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
       next_action: nextActionForStep(run.definition, request.target_step),
       updated_at: at
     };
-    await saveRetryAuthorizationState(run, typeof options.faultInjection === "function" ? options.faultInjection : undefined);
+    await saveRetryAuthorizationState(run, typeof options.faultInjection === "function" ? options.faultInjection : undefined, assertPublicationCurrent);
     return { ...run, transition, idempotent: false };
   });
 }
@@ -3084,9 +3143,13 @@ function gatedStepsBetween(definition: any, from: string, to: string): string[] 
   return cursor === to ? between : [];
 }
 
-async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
+async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, assertPublicationCurrent?: () => void, expectedRunHead?: string) {
   const run = await loadRun(runId, options.cwd);
   assertRunMutationLifecycleEligible("evaluate", run);
+  if (expectedRunHead !== undefined && flowRunHead(run.state) !== expectedRunHead) {
+    throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
+  }
+  assertPublicationCurrent?.();
   // §1: re-derive freshness-bearing reports with the current `now` BEFORE
   // gates read them, so a claim that has gone stale flips the gate outcome.
   // The existing route-back cascade (invalidateDescendants) then clears any
@@ -3167,8 +3230,24 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}) {
       if (outcome.status !== "pass") break;
     }
   }
-  await saveRun(run);
+  await saveRun(run, assertPublicationCurrent);
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
+}
+
+export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions) {
+  const { expectedRunHead, gate } = options;
+  if (typeof expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(expectedRunHead)) {
+    throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
+  }
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const now = options.now ?? new Date().toISOString();
+  if (typeof now !== "string" || parseRfc3339Timestamp(now) === null) throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
+  return withHostMutationLease(options.admission, async (assertCurrent) => {
+    await preflightRunMutationLifecycle(runId, cwd, "evaluate");
+    return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, {
+      cwd, now, gate
+    }, assertCurrent, expectedRunHead.toLowerCase()));
+  });
 }
 
 export async function evaluateRun(runId: string, options: MutableRecord = {}) {

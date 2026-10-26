@@ -395,3 +395,17 @@ void [
   runStateWithOpenRuntimeMaps,
   configWithOpenTrustMaps
 ];
+
+const checkedMutationAdmission: import("../../src/index.js").FlowRunMutationAdmission = {
+  async acquire() { return { assertCurrent() {}, async release() {} }; }
+};
+const checkedEvaluation: import("../../src/index.js").FlowCheckedEvaluationOptions = {
+  expectedRunHead: "a".repeat(64), admission: checkedMutationAdmission
+};
+const asynchronousMutationLease: import("../../src/index.js").FlowRunMutationLease = {
+  // @ts-expect-error publication checks must finish synchronously.
+  async assertCurrent() {},
+  release() {}
+};
+void checkedEvaluation;
+void asynchronousMutationLease;

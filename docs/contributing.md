@@ -12,7 +12,7 @@ npm test
 
 `npm run build` syncs Console Kit assets, compiles the TypeScript runtime, compiles the local console UI, and writes package output under `dist/`.
 
-`npm test` runs the full local lane: build, Node contract checks, local console smoke, and Playwright browser tests.
+`npm test` runs the full local lane: build, Node contract checks, local console smoke, and Playwright browser tests. CI and npm publication pin browser-installing jobs to Ubuntu 24.04: the pinned Playwright 1.60.0 does not support Ubuntu 26.04. Keep the runner and browser dependency support aligned when upgrading either.
 
 ## Optional Git Hooks
 

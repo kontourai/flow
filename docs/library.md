@@ -601,3 +601,38 @@ See [Project Config](project-config.md) for merge semantics and conflict handlin
 ## Types
 
 The package root exports the public contract types — among them `FlowDefinition`, `FlowRunState`, `FlowRunStatus`, `FlowLifecycleAction`, `FlowLifecycleAuthority`, `FlowLifecycleEvent`, `FlowLifecycleRequest`, `FlowLifecycleDiagnostic`, `FlowGate`, `FlowExpectation`, `FlowEvidenceEntry`, `FlowEvidenceManifest`, `GateOutcome`, `FlowDiagnostic`, `TransitionValidationResult`, `ReleaseReadinessPolicy`, `ReleaseReadinessResult`, `VersionReleaseReport`, `ConfigMergeReport`, `FlowConfigMergeApplyOptions`, `FlowConfigMergePublisher`, `FlowConfigMergePublisherRequest`, `FlowConfigMergePublisherReceipt`, and the `FlowConsole*Projection` family. It also exports `flowRoot()`, `flowConfigPath()`, `flowRuntimeRoot()`, and canonical `runDir()` path helpers. The corresponding JSON Schemas live in [`schemas/`](../schemas/), and `npm test` fails if the runtime drifts from them. See [Runtime Roots](runtime-roots.md) for the semver-major `runDir()` contract and compatibility guidance.
+
+### Checked host-admitted evaluation and retry
+
+`evaluateRunChecked(runId, {cwd, gate, now, expectedRunHead, admission})`
+requires a SHA-256 run head and a host-owned mutation lease. Flow acquires the
+lease before its native run mutation ticket, checks the head after loading the
+locked run, and checks the lease again after staging artifacts and before the
+first publication. The lease remains held through all artifact renames and
+native ticket release. A stale head or failed admission prevents publication.
+The ordinary `evaluateRun` API remains available without host admission.
+
+`authorizeRetryChecked(runId, {cwd, request, admission})` applies the same lease
+lifetime to retry authorization. `request` is the existing retry request,
+including `expected_run_head`; exact replay retains its existing read-only
+behavior. Neither checked operation grants execution authority.
+
+The host supplies `admission.acquire()`, returning a lease with synchronous
+`assertCurrent()` and an awaited `release()`. The host must authenticate the
+caller and keep relevant authority and source changes excluded for the entire
+lease lifetime, including across processes when those processes can revoke the
+authority. Flow cannot implement that host policy. A callback that merely
+checks authority once does not satisfy the lease contract. `assertCurrent`
+throws on loss of authority and returns no value; asynchronous checks belong in
+`acquire`, before returning the lease. Flow releases an acquired lease on both
+success and failure. The operation snapshots its input before acquiring the
+lease, so a caller cannot change the admitted head, gate, workspace or retry
+request while acquisition waits. A release error can reject the call after a
+transition was committed, and can replace an earlier error. A rejection alone
+therefore does not prove no effect; inspect the run before choosing recovery.
+
+Lock order is host lease, then native Flow ticket. Lease methods must not acquire
+the native Flow ticket, and callers must not enter these APIs while holding it.
+The native ticket timeout is unchanged. Publication I/O failures retain the
+existing artifact recovery semantics; holding a lease does not turn a failed
+filesystem operation into a successful transition or guarantee a rollback.

@@ -272,7 +272,8 @@ export function directorySyncUnsupported(error: unknown): boolean {
 export async function publishRunArtifacts(
   dir: string,
   entries: Array<{ path: string; contents: string }>,
-  hooks: PublishRunArtifactsHooks = {}
+  hooks: PublishRunArtifactsHooks = {},
+  assertPublicationCurrent?: () => void
 ) {
   const staged: Array<Awaited<ReturnType<typeof stageRunArtifact>>> = [];
   try {
@@ -280,6 +281,7 @@ export async function publishRunArtifacts(
       staged.push(await stageRunArtifact(entry.path, entry.contents));
       await hooks.afterStage?.(index, entry.path);
     }
+    assertPublicationCurrent?.();
     for (const [index, entry] of staged.entries()) {
       await entry.commit();
       await hooks.afterCommit?.(index, entry.target);

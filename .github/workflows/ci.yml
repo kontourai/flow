@@ -20,7 +20,7 @@ jobs:
 
   test:
     name: Test and package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -111,7 +111,7 @@ jobs:
   # provided. Proven in kontourai/ui#70.
   publish-path:
     name: Publish path (dry run)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
