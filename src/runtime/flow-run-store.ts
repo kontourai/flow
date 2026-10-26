@@ -2079,6 +2079,7 @@ async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: st
     { target: reportMarkdownPath, contents: await readFile(reportMarkdownPath, "utf8") }
   ];
   let stateCommitted = false;
+  let publicationStarted = false;
   try {
     for (const entry of staged) {
       faultInjection?.(`before_stage_${entry.stage}`);
@@ -2088,10 +2089,11 @@ async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: st
     for (const entry of staged) {
       faultInjection?.(`before_rename_${entry.stage}`);
       await rename(entry.temp, entry.target);
+      publicationStarted = true;
       if (entry.stage === "state") stateCommitted = true;
     }
   } catch (error) {
-    if (!stateCommitted) {
+    if (publicationStarted && !stateCommitted) {
       await publishRunArtifacts(run.dir, priorReports.map((entry) => ({ path: entry.target, contents: entry.contents })));
     }
     throw error;
@@ -2319,8 +2321,10 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
 }
 
 export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const request = validateRetryAuthorizationRequest(options.request);
   return withHostMutationLease(options.admission, (assertCurrent) => authorizeRetryAdmitted(runId, {
-    cwd: options.cwd, request: options.request
+    cwd, request
   }, assertCurrent));
 }
 
@@ -2340,6 +2344,7 @@ async function authorizeRetryAdmitted(runId: string, options: MutableRecord = {}
     return { ...initialPreflight.run, transition: initialPreflight.transition, idempotent: true };
   }
   return withRunMutationLock(runId, cwd, async () => {
+    assertPublicationCurrent?.();
     const preflight = await preflightRetryAuthorization(runId, cwd, request);
     if (preflight.kind === "replay") {
       return { ...preflight.run, transition: preflight.transition, idempotent: true };
@@ -3230,7 +3235,8 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, a
 }
 
 export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions) {
-  if (typeof options.expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(options.expectedRunHead)) {
+  const { expectedRunHead, gate } = options;
+  if (typeof expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(expectedRunHead)) {
     throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
   }
   const cwd = path.resolve(options.cwd ?? process.cwd());
@@ -3239,8 +3245,8 @@ export async function evaluateRunChecked(runId: string, options: FlowCheckedEval
   return withHostMutationLease(options.admission, async (assertCurrent) => {
     await preflightRunMutationLifecycle(runId, cwd, "evaluate");
     return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, {
-      cwd, now, gate: options.gate
-    }, assertCurrent, options.expectedRunHead.toLowerCase()));
+      cwd, now, gate
+    }, assertCurrent, expectedRunHead.toLowerCase()));
   });
 }
 

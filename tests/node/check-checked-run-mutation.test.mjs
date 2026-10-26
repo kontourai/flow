@@ -64,3 +64,17 @@ test("checked evaluation rechecks authority after staging and holds its lease th
   assert.equal(host.state.released, 2);
   assert.equal(host.state.held, false);
 });
+
+test("checked evaluation snapshots the operation before awaiting the host lease", async () => {
+  const { cwd, run, expectedRunHead } = await fixture();
+  const options = { cwd, expectedRunHead, gate: "plan-gate", admission: {
+    async acquire() {
+      options.gate = "foreign-gate";
+      options.expectedRunHead = "0".repeat(64);
+      options.cwd = path.join(cwd, "foreign-directory");
+      return { assertCurrent() {}, release() {} };
+    }
+  } };
+  const result = await flow.evaluateRunChecked(run.runId, options);
+  assert.equal(result.outcomes[0].gate_id, "plan-gate");
+});

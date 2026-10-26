@@ -625,7 +625,11 @@ authority. Flow cannot implement that host policy. A callback that merely
 checks authority once does not satisfy the lease contract. `assertCurrent`
 throws on loss of authority and returns no value; asynchronous checks belong in
 `acquire`, before returning the lease. Flow releases an acquired lease on both
-success and failure.
+success and failure. The operation snapshots its input before acquiring the
+lease, so a caller cannot change the admitted head, gate, workspace or retry
+request while acquisition waits. A release error can reject the call after a
+transition was committed, and can replace an earlier error. A rejection alone
+therefore does not prove no effect; inspect the run before choosing recovery.
 
 Lock order is host lease, then native Flow ticket. Lease methods must not acquire
 the native Flow ticket, and callers must not enter these APIs while holding it.
