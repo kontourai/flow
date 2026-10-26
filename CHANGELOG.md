@@ -19,6 +19,20 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [5.3.0](https://github.com/kontourai/flow/compare/v5.2.2...v5.3.0) (2026-10-26)
+
+
+### Features
+
+* **runtime:** admit checked mutations under host leases ([ad9c356](https://github.com/kontourai/flow/commit/ad9c356bb122de7090cf3f3c07fb1e6320361606))
+* **runtime:** admit checked mutations under host leases ([#289](https://github.com/kontourai/flow/issues/289)) ([543ada4](https://github.com/kontourai/flow/commit/543ada43bd7c1557efed2f372d9dbf4e394697d8))
+
+
+### Fixes
+
+* **ci:** pin browser jobs to supported Ubuntu 24.04 ([3ae1608](https://github.com/kontourai/flow/commit/3ae160862497e2f411b1bd8bbbe45c6c041c1dc6))
+* **runtime:** bind checked inputs before host admission ([642fd6d](https://github.com/kontourai/flow/commit/642fd6d20d6fef04e3b9580fb09212bc5575ef2f))
+
 ## [5.2.2](https://github.com/kontourai/flow/compare/v5.2.1...v5.2.2) (2026-10-16)
 
 
