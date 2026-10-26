@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, constants, mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -364,40 +364,119 @@ test("CLI capture escalates a SIGTERM-trapping command to SIGKILL within the tim
   assert.equal(receipt.signal, "SIGKILL");
 });
 
-test("CLI capture timeout kills SIGTERM-trapping descendants in the command process group", { skip: process.platform === "win32", timeout: 10000 }, async () => {
+test("CLI capture timeout kills SIGTERM-trapping descendants in the command process group", { skip: process.platform === "win32", timeout: 10000 }, async (t) => {
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-group-"));
   const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
   const runId = "capture-group";
   const childScript = path.join(cwd, "grandchild.cjs");
   const parentScript = path.join(cwd, "parent.cjs");
-  await writeFile(childScript, "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\n");
-  await writeFile(parentScript, [
-    "const { spawn } = require('node:child_process');",
-    "const { writeFileSync } = require('node:fs');",
-    "process.on('SIGTERM', () => {});",
-    `const child = spawn(process.execPath, [${JSON.stringify(childScript)}], { stdio: 'ignore' });`,
-    "writeFileSync('grandchild.pid', String(child.pid));",
-    "setInterval(() => {}, 1000);",
-    ""
-  ].join("\n"));
-  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
-
-  await assert.rejects(execFile(process.execPath, [
-    cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd, "--", process.execPath, parentScript
-  ], { timeout: 8000 }));
-  const grandchildPid = Number(await readFile(path.join(cwd, "grandchild.pid"), "utf8"));
-  const deadline = Date.now() + 1000;
-  let alive = true;
-  while (alive && Date.now() < deadline) {
+  const ownerFile = path.join(cwd, "process-owner.json");
+  const token = randomUUID();
+  const started = performance.now();
+  const phases = [];
+  const phase = (name) => phases.push({ name, elapsedMs: Math.round(performance.now() - started) });
+  let activeChild, activeSettlement, cleanupPromise;
+  const cli = (args, options = {}) => {
+    const command = execFile(process.execPath, args, { ...options, signal: t.signal });
+    activeChild = command.child;
+    activeSettlement = command.then(() => undefined, () => undefined);
+    return command;
+  };
+  const processIdentity = async (pid) => {
+    assert.ok(Number.isSafeInteger(pid) && pid > 1, "fixture PID must be a positive process identity");
     try {
-      process.kill(grandchildPid, 0);
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      const result = await execFile("ps", ["-p", String(pid), "-o", "pid=,pgid=,args="], { timeout: 1000 });
+      const match = result.stdout.trim().match(/^(\d+)\s+(\d+)\s+([\s\S]+)$/);
+      assert.ok(match && Number(match[1]) === pid, "ps must return the exact fixture PID");
+      return { group: Number(match[2]), args: match[3] };
     } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-      alive = false;
+      if (error.code === 1 && !error.stdout?.trim()) return null;
+      throw error;
     }
+  };
+  const cleanup = () => cleanupPromise ??= (async () => {
+    if (activeChild && activeChild.exitCode === null && activeChild.signalCode === null) {
+      const observed = await processIdentity(activeChild.pid);
+      if (observed) {
+        assert.ok(observed.args.includes(cliPath) && observed.args.includes(cwd), "refuse to signal a CLI PID whose fixture identity changed");
+        activeChild.kill("SIGKILL");
+      }
+    }
+    await activeSettlement;
+    let owned;
+    try { owned = JSON.parse(await readFile(ownerFile, "utf8")); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    assert.equal(owned.token, token);
+    for (const [pid, script] of [[owned.parent, parentScript], [owned.grandchild, childScript]]) {
+      const observed = await processIdentity(pid);
+      if (!observed) continue;
+      assert.ok(observed.args.includes(script) && observed.args.includes(token) && observed.group === owned.parent,
+        "refuse to signal a process whose exact fixture path/token/group changed");
+      try { process.kill(pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+      const deadline = Date.now() + 1000;
+      while (await processIdentity(pid)) {
+        assert.ok(Date.now() < deadline, "owned fixture process did not settle during cleanup");
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    }
+    phase("cleanup-settled");
+  })();
+  t.after(async () => {
+    try { await cleanup(); }
+    finally { t.diagnostic(JSON.stringify({ fixture: path.basename(cwd), token, phases })); }
+  });
+  try {
+    await writeFile(childScript, "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\n");
+    await writeFile(parentScript, [
+      "const { spawn } = require('node:child_process');",
+      "const { writeFileSync } = require('node:fs');",
+      "process.on('SIGTERM', () => {});",
+      `const child = spawn(process.execPath, [${JSON.stringify(childScript)}, ${JSON.stringify(token)}], { stdio: 'ignore' });`,
+      `writeFileSync(${JSON.stringify(ownerFile)}, JSON.stringify({ parent: process.pid, grandchild: child.pid, token: ${JSON.stringify(token)} }));`,
+      "setInterval(() => {}, 1000);", ""
+    ].join("\n"));
+    phase("start-cli");
+    await cli([cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+    phase("start-complete");
+    phase("capture-cli");
+    await assert.rejects(cli([
+      cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd, "--", process.execPath, parentScript, token
+    ], { timeout: 8000 }), (error) => {
+      phase("capture-exit");
+      assert.equal(error.code, 1, "capture must exit with its failed-evidence result, not an exec timeout");
+      assert.equal(error.signal, null);
+      assert.equal(error.killed, false);
+      assert.match(error.stdout, /status: failed/);
+      return true;
+    });
+    const runDir = path.join(cwd, ".kontourai", "flow", "runs", runId);
+    const manifest = JSON.parse(await readFile(path.join(runDir, "evidence", "manifest.json"), "utf8"));
+    assert.equal(manifest.evidence.length, 1);
+    assert.equal(manifest.evidence[0].status, "failed");
+    const receipt = JSON.parse(await readFile(path.join(runDir, manifest.evidence[0].stored_path), "utf8"));
+    assert.equal(receipt.timed_out, true);
+    assert.equal(receipt.exit_code, null);
+    assert.equal(receipt.signal, "SIGKILL");
+    assert.deepEqual(receipt.command, [process.execPath, parentScript, token]);
+    phase("receipt-confirmed");
+    const owned = JSON.parse(await readFile(ownerFile, "utf8"));
+    assert.equal(owned.token, token);
+    const deadline = Date.now() + 1000;
+    let alive = true;
+    while (alive && Date.now() < deadline) {
+      try {
+        process.kill(owned.grandchild, 0);
+        await new Promise(resolve => setTimeout(resolve, 25));
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+        alive = false;
+      }
+    }
+    assert.equal(alive, false, "grandchild is no longer alive after process-group escalation");
+    phase("descendant-absent");
+  } finally {
+    await cleanup();
   }
-  assert.equal(alive, false, "grandchild is no longer alive after process-group escalation");
 });
 
 test("CLI lifecycle commands require structured authority and preserve read-only resume", async () => {
