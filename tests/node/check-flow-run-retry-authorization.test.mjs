@@ -1105,3 +1105,27 @@ test("self-route recovery cannot reuse evidence attached before authorization", 
   assert.equal(evaluated.outcomes[0].route_reason, "missing_evidence");
   assert.equal(evaluated.outcomes[0].retry_epoch, 2);
 });
+
+test("checked retry refuses lost host authority at publication and releases the lease", async () => {
+  const fixture = await exhaustedRun("checked-retry-authorization");
+  const artifacts = () => Promise.all(["state.json", "evidence/manifest.json", "report.json", "report.md"].map(name => readFile(path.join(fixture.started.dir, name), "utf8")));
+  const before = await artifacts();
+  let checks = 0;
+  let releases = 0;
+  const admission = { async acquire() { return {
+    assertCurrent() { if (++checks === 2) throw new Error("host retry authority revoked"); },
+    async release() { releases++; }
+  }; } };
+  await assert.rejects(flow.authorizeRetryChecked(fixture.started.runId, {
+    cwd: fixture.cwd, request: fixture.request, admission
+  }), /host retry authority revoked/);
+  assert.deepEqual(await artifacts(), before);
+  assert.equal(releases, 1);
+  const accepted = await flow.authorizeRetryChecked(fixture.started.runId, {
+    cwd: fixture.cwd, request: fixture.request,
+    admission: { async acquire() { return { assertCurrent() {}, async release() { releases++; } }; } }
+  });
+  assert.equal(accepted.idempotent, false);
+  assert.equal(accepted.state.status, "active");
+  assert.equal(releases, 2);
+});

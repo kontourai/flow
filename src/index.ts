@@ -263,6 +263,7 @@ export {
   acceptException,
   amendRunDefinition,
   authorizeRetry,
+  authorizeRetryChecked,
   attachEvidence,
   cancelRun,
   claimReadyStep,
@@ -270,6 +271,7 @@ export {
   continuePausedGate,
   ensureFlowLayout,
   evaluateRun,
+  evaluateRunChecked,
   finalizeRunRecoveryFence,
   flowReadme,
   listRuns,
@@ -295,7 +297,11 @@ export {
 } from "./runtime/flow-run-store.js";
 export type {
   FlowRunRecoveryFenceFinalizeHooks,
-  RunMutationLockHooks
+  RunMutationLockHooks,
+  FlowRunMutationAdmission,
+  FlowRunMutationLease,
+  FlowCheckedEvaluationOptions,
+  FlowCheckedRetryAuthorizationOptions
 } from "./runtime/flow-run-store.js";
 export {
   renderAndWriteReport,
