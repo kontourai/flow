@@ -674,7 +674,12 @@ before current lifecycle, expected-head and gate eligibility, but still requires
 current host authorization and an open recovery fence. Replay returns the
 original state, definition and outcomes/transition, not the current run head;
 its `freshness_transitions` is empty because no new freshness evaluation ran.
-A historical receipt cannot authorize a new retry against today's state.
+The replay object's ancillary `manifest`, `config` and diagnostics come from the
+current load; they are not a coherent historical run bundle. Use the named
+historical fields and `operationReceipt` for original effect proof. Supplying a
+required `operation` selects typed overloads with a definite receipt; legacy
+options expose an optional receipt. A historical receipt cannot authorize a new
+retry against today's state.
 Consumers must compare the echoed request and origin identity with their own
 original durable intent. A legacy retry request-ref match is never backfilled
 into a new operation identity.

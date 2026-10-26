@@ -301,6 +301,8 @@ export type {
   FlowRunMutationAdmission,
   FlowRunMutationLease,
   FlowCheckedEvaluationOptions,
+  FlowCheckedEvaluationResult,
+  FlowCheckedRetryAuthorizationResult,
   FlowCheckedRetryAuthorizationOptions
 } from "./runtime/flow-run-store.js";
 export {

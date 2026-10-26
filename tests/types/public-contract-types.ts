@@ -421,3 +421,16 @@ const checkedProof: Promise<FlowCheckedRunOperationReceipt | null> = readChecked
 void checkedProof;
 void evaluateRunChecked("run", { expectedRunHead: "a".repeat(64), operation: checkedIdentity, admission: checkedAdmission });
 void authorizeRetryChecked("run", { request: retryRequest, operation: checkedIdentity, admission: checkedAdmission });
+
+void evaluateRunChecked("run", { expectedRunHead: "a".repeat(64), operation: checkedIdentity, admission: checkedAdmission }).then(result => {
+  const receipt: FlowCheckedRunOperationReceipt = result.operationReceipt;
+  // @ts-expect-error operation-aware results expose the strict receipt, not an index-any record.
+  const invalid: string = result.operationReceipt.inventedField;
+  return receipt;
+});
+void authorizeRetryChecked("run", { request: retryRequest, operation: checkedIdentity, admission: checkedAdmission }).then(result => {
+  const receipt: FlowCheckedRunOperationReceipt = result.operationReceipt;
+  // @ts-expect-error retry proof is the same strict public receipt contract.
+  const invalid: string = result.operationReceipt.inventedField;
+  return receipt;
+});

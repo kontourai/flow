@@ -2424,7 +2424,10 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
   return authorizeRetryAdmitted(runId, options);
 }
 
-export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+export type FlowCheckedRetryAuthorizationResult = FlowRetryAuthorizationResult & { operationReceipt?: FlowCheckedRunOperationReceipt };
+export function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions & { operation: FlowCheckedOperationIdentity }): Promise<FlowCheckedRetryAuthorizationResult & { operationReceipt: FlowCheckedRunOperationReceipt }>;
+export function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowCheckedRetryAuthorizationResult>;
+export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowCheckedRetryAuthorizationResult> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const request = validateRetryAuthorizationRequest(options.request);
   const operation = options.operation === undefined ? undefined : checkedIdentity(options.operation);
@@ -3367,15 +3370,18 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, a
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
 }
 
-export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions) {
+export type FlowCheckedEvaluationResult = Awaited<ReturnType<typeof evaluateRunUnlocked>> & { idempotent?: boolean; operationReceipt?: FlowCheckedRunOperationReceipt };
+export function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions & { operation: FlowCheckedOperationIdentity }): Promise<FlowCheckedEvaluationResult & { idempotent: boolean; operationReceipt: FlowCheckedRunOperationReceipt }>;
+export function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions): Promise<FlowCheckedEvaluationResult>;
+export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions): Promise<FlowCheckedEvaluationResult> {
   const { expectedRunHead, gate } = options;
   if (typeof expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(expectedRunHead)) throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const suppliedNow = options.now ?? null;
   const now = suppliedNow ?? new Date().toISOString();
   if (typeof now !== "string" || parseRfc3339Timestamp(now) === null) throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
-  if (gate !== undefined && (typeof gate !== "string" || !gate || gate.length > 512)) checkedFailure("gate.invalid");
   const operation = options.operation === undefined ? undefined : checkedIdentity(options.operation);
+  if (operation && gate !== undefined && (typeof gate !== "string" || !gate || gate.length > 512)) checkedFailure("gate.invalid");
   const semantic: FlowCheckedOperationRequest = { kind: "evaluate", runId, expectedRunHead: expectedRunHead.toLowerCase(), gate: gate ?? null, now: suppliedNow };
   return withHostMutationLease(options.admission, async (assertCurrent) => {
     if (!operation) {
