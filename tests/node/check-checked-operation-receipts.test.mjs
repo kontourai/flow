@@ -292,3 +292,22 @@ test("snapshot bytes use the unchanged canonical full-state hash domain and refu
   await writeFile(file, bytes);
   assert.deepEqual(await lookup(f), result.operationReceipt);
 });
+
+
+for (const defect of ["future-record", "altered-record", "missing-ledger"]) test(`non-target snapshot ${defect} cannot borrow validated future history`, async t => {
+  const f = await fixture(t);
+  const first = await flow.evaluateRunChecked(f.run.runId, f.options);
+  const later = await flow.evaluateRunChecked(f.run.runId, { ...f.options, expectedRunHead: first.operationReceipt.originalResultHead, operation: identity("later") });
+  const stateFile = path.join(f.run.dir, "state.json"), state = JSON.parse(await readFile(stateFile, 'utf8'));
+  const old = state.checked_operation_ledger.records[0];
+  const snapshot = JSON.parse(await readFile(path.join(f.run.dir, "checked-operations", `${old.snapshotDigest}.json`), 'utf8'));
+  if (defect === 'future-record') snapshot.gate_outcomes[0].evaluation_ref = later.operationReceipt.evaluationRefs[0];
+  if (defect === 'altered-record') snapshot.gate_evaluation_ledger.records[0].evaluatedAt = '2026-01-01T00:00:00Z';
+  if (defect === 'missing-ledger') delete snapshot.gate_evaluation_ledger;
+  old.snapshotDigest = flow.flowRunHead(snapshot);
+  state.checked_operation_ledger.records[1].priorReceiptDigest = flow.flowRunHead(old);
+  await writeFile(path.join(f.run.dir, "checked-operations", `${old.snapshotDigest}.json`), flow.canonicalJson(snapshot));
+  await writeFile(stateFile, JSON.stringify(state));
+  await assert.rejects(flow.loadRun(f.run.runId, f.cwd), /gate_evaluation_ledger/);
+  await assert.rejects(lookup(f, later.operationReceipt.operation), /gate_evaluation_ledger/);
+});

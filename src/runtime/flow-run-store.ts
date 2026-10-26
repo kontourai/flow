@@ -29,7 +29,7 @@ import {
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { parseGateEvaluationLedger } from "../contracts/gate-evaluation-contract.js";
-import type { GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
+import type { GateEvaluationLedger, GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -543,6 +543,30 @@ function validateGateEvaluationSelections(record: GateEvaluationRecord, outcome:
  * ledger is never inferred, repaired, or silently downgraded.
  */
 export function validateGateEvaluationLedger(definition: any, state: any, manifest?: any, historicalDefinitions: any[] = []) {
+  return validateGateEvaluationProjection(definition, state, manifest, historicalDefinitions);
+}
+
+type GateRecordHistory = Readonly<{
+  records: readonly GateEvaluationRecord[];
+  canonical: readonly string[];
+}>;
+
+function gateRecordHistory(definition: any, state: FlowRunState, historicalDefinitions: any[]): GateRecordHistory | undefined {
+  const ledger = validateGateEvaluationLedger(definition, state, undefined, historicalDefinitions);
+  return ledger ? Object.freeze({ records: Object.freeze(ledger.records), canonical: Object.freeze((state.gate_evaluation_ledger?.records ?? []).map(canonicalJson)) }) : undefined;
+}
+
+function gateRecordPrefix(raw: unknown, history: GateRecordHistory): GateEvaluationLedger {
+  if (raw === null || typeof raw !== "object" || !("records" in raw) || !("version" in raw)
+    || raw.version !== "1" || Object.keys(raw).sort().join() !== "records,version" || !Array.isArray(raw.records)
+    || raw.records.length > history.records.length
+    || !raw.records.every((record, index) => canonicalJson(record) === history.canonical[index])) {
+    throw new Error("flow.gate_evaluation_ledger.snapshot_prefix.invalid");
+  }
+  return { version: "1", records: history.records.slice(0, raw.records.length) };
+}
+
+function validateGateEvaluationProjection(definition: any, state: any, manifest: any, historicalDefinitions: any[], history?: GateRecordHistory) {
   const raw = state.gate_evaluation_ledger;
   if (raw === undefined) {
     if ([...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])].some((outcome: any) => outcome?.evaluation_ref !== undefined)) {
@@ -553,14 +577,14 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
   if (!isObject(raw) || raw.version !== "1") {
     throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
   }
-  const ledger = parseGateEvaluationLedger(raw);
+  const ledger = history ? gateRecordPrefix(raw, history) : parseGateEvaluationLedger(raw);
   if (!ledger) throw new Error("flow.gate_evaluation_ledger.invalid: ledger does not satisfy the v1 contract");
   const historicalByIdentity = new Map(historicalDefinitions.map(candidate => [canonicalJson(definitionIdentity(candidate)), candidate]));
   const records = new Map<string, GateEvaluationRecord>();
   const lastByGate = new Map<string, GateEvaluationRecord>();
   for (const record of ledger.records) {
     const key = gateEvaluationRefKey(record.ref);
-    if (records.has(key)) throw new Error(`flow.gate_evaluation_ledger.duplicate_id: ${record.ref.evaluationId}`);
+    if (!history && records.has(key)) throw new Error(`flow.gate_evaluation_ledger.duplicate_id: ${record.ref.evaluationId}`);
     if (record.ref.runId !== state.run_id) throw new Error(`flow.gate_evaluation_ledger.run_mismatch: ${record.ref.evaluationId}`);
     const gate = findGate(definition, record.ref.gateId);
     if (!gate || record.gate.id !== record.ref.gateId) throw new Error(`flow.gate_evaluation_ledger.gate_mismatch: ${record.ref.evaluationId}`);
@@ -577,11 +601,11 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
       }
     }
     const prior = lastByGate.get(record.ref.gateId);
-    if (record.previousRef) {
+    if (!history && record.previousRef) {
       if (!prior || gateEvaluationRefKey(record.previousRef) !== gateEvaluationRefKey(prior.ref)) {
         throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
       }
-    } else if (prior) {
+    } else if (!history && prior) {
       throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
     }
     records.set(key, record);
@@ -715,7 +739,7 @@ export function validateRunStateConsistency(
   return result;
 }
 
-function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown, options: { runId?: string } = {}) {
+function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown, options: { runId?: string } = {}, gateHistory?: GateRecordHistory) {
   const startDefinition = validateDefinition(startDefinitionValue);
   assertGateEvaluationLedgerVersionSupported(stateValue);
   validateRunStateSchema(stateValue);
@@ -724,7 +748,7 @@ function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
   validateMultiCursorState(definition, state);
-  validateGateEvaluationLedger(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)]);
+  validateGateEvaluationProjection(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)], gateHistory);
   return { startDefinition, definition, state };
 }
 
@@ -916,9 +940,11 @@ export async function loadRun(runId, cwd = process.cwd()) {
 async function validateCheckedSnapshots(dir: string, startDefinition: unknown, state: FlowRunState) {
   const records = checkedRecords(state);
   const history = checkedHistory(state);
+  const definitions = [startDefinition, ...(state.definition_amendments ?? []).map(event => event.successor)];
+  const gateHistory = gateRecordHistory(resolveEffectiveDefinition(startDefinition, state), state, definitions);
   for (let start = 0; start < records.length; start += 4) {
     const results = await Promise.allSettled(records.slice(start, start + 4).map((_record, offset) =>
-      readValidatedCheckedSnapshot(dir, startDefinition, state, start + offset, false, history)));
+      readValidatedCheckedSnapshot(dir, startDefinition, state, start + offset, false, history, gateHistory)));
     for (const result of results) if (result.status === "rejected") throw result.reason;
   }
 }
@@ -934,11 +960,11 @@ function matchesCheckedPrefix(entries: unknown[], prefix: string[]): boolean {
   return entries.length <= prefix.length && entries.every((entry, index) => canonicalJson(entry) === prefix[index]);
 }
 
-async function readValidatedCheckedSnapshot(dir: string, startDefinition: unknown, current: FlowRunState, index: number, confirmDurability = false, history = checkedHistory(current)) {
+async function readValidatedCheckedSnapshot(dir: string, startDefinition: unknown, current: FlowRunState, index: number, confirmDurability = false, history = checkedHistory(current), gateHistory?: GateRecordHistory) {
   const records = checkedRecords(current), record = records[index];
   const value = await readCheckedSnapshot(dir, record.snapshotDigest, confirmDurability);
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.hasOwn(value, "checked_operation_ledger")) checkedFailure("snapshot.invalid");
-  const historical = validateRunStateBody(startDefinition, value, { runId: current.run_id });
+  const historical = validateRunStateBody(startDefinition, value, { runId: current.run_id }, gateHistory);
   const state = historical.state;
   if (canonicalJson(definitionIdentity(historical.definition)) !== canonicalJson(record.originDefinition)
     || state.transitions.length !== record.transitionStart + record.transitionRefs.length
