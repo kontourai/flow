@@ -18,6 +18,7 @@ Flow separates durable authored project state from generated runtime state.
 └── runs/dev-1847/
     ├── definition.json
     ├── state.json
+    ├── checked-operations/<sha256>.json
     ├── evidence/manifest.json
     ├── recovery-fence.json
     ├── report.md
@@ -115,3 +116,13 @@ automatic legacy migration, digest backfill, downgrade, or rollback: submit a
 fresh compatible amendment with a new exact head instead.
 
 Downstream read-only consumers must adopt the same hard cut. The Kontour Console bridge update is tracked in `kontourai/console#141`; it must not introduce a legacy fallback.
+
+
+## Checked-operation snapshots
+
+Optional [checked-operation receipts](library.md#exact-checked-operation-receipts)
+anchor immutable `checked-operations/<sha256>.json` snapshots in the canonical
+state ledger. Snapshot files alone, including orphans, are never commit markers.
+Preserve all anchored blobs when moving or recovering a run. Exact readers do
+not repair or delete them. The bounded opt-in protocol requires strict directory
+durability; legacy publication portability does not imply receipt qualification.

@@ -16,6 +16,26 @@
     }
   ],
   "properties": {
+    "checked_operation_ledger": {
+      "type": "object",
+      "required": [
+        "version",
+        "records"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "1"
+        },
+        "records": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/checked_operation_record"
+          }
+        }
+      }
+    },
     "schema_version": {
       "type": "string",
       "const": "0.1",
@@ -136,6 +156,212 @@
     }
   },
   "$defs": {
+    "checked_operation_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "intentDigest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "intentDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "checked_operation_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "operation",
+        "kind",
+        "runId",
+        "request",
+        "requestSemanticDigest",
+        "originDefinition",
+        "priorRunHead",
+        "snapshotDigest",
+        "transitionStart",
+        "evaluationStart",
+        "transitionRefs",
+        "evaluationRefs",
+        "outcomes",
+        "priorReceiptDigest"
+      ],
+      "properties": {
+        "version": {
+          "const": "1"
+        },
+        "operation": {
+          "$ref": "#/$defs/checked_operation_identity"
+        },
+        "kind": {
+          "enum": [
+            "evaluate",
+            "authorize-retry"
+          ]
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "request": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "runId",
+                "expectedRunHead",
+                "gate",
+                "now"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "evaluate"
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "expectedRunHead": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "gate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 512
+                },
+                "now": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "runId",
+                "request"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "authorize-retry"
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "reason",
+                    "target_step",
+                    "blocked_transition_ref",
+                    "expected_run_head",
+                    "authority"
+                  ],
+                  "properties": {
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "target_step": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "blocked_transition_ref": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "expected_run_head": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "authority": {
+                      "$ref": "#/$defs/lifecycle_authority"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "requestSemanticDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "originDefinition": {
+          "$ref": "#/$defs/definition_identity"
+        },
+        "priorRunHead": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "snapshotDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "transitionStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evaluationStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionRefs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "evaluationRefs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/gate_evaluation_ref"
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/gate_outcome"
+          }
+        },
+        "priorReceiptDigest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
     "step_claim_actor": {
       "type": "object", "required": ["key"], "additionalProperties": false,
       "properties": { "key": { "$ref": "#/$defs/identifier" }, "kind": { "$ref": "#/$defs/identifier" } }

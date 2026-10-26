@@ -323,6 +323,7 @@ export interface FlowFreshnessGateRecheck {
 }
 
 export interface FlowRunState extends MutableRecord {
+  checked_operation_ledger?: import("../runtime/flow-checked-operation.js").FlowCheckedOperationLedger;
   schema_version?: string;
   run_id: string;
   definition_id: string;
