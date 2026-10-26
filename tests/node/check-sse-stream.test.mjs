@@ -34,12 +34,13 @@ function collectSseEvents(baseUrl, eventName, maxCount, timeoutMs) {
 
     const req = http.get(url.toString(), (res) => {
       let buf = "";
+      let currentEvent = null;
+      let currentData = null;
+      res.setEncoding("utf8");
       res.on("data", (chunk) => {
         buf += chunk.toString();
         const lines = buf.split("\n");
         buf = lines.pop() ?? "";
-        let currentEvent = null;
-        let currentData = null;
         for (const line of lines) {
           if (line.startsWith("event: ")) {
             currentEvent = line.slice("event: ".length).trim();
@@ -93,8 +94,7 @@ test("SSE /api/stream emits projection event when run state file changes", async
     // Start collecting SSE events BEFORE mutating the file
     const eventsPromise = collectSseEvents(server.url, "projection", 1, 5000);
 
-    // Small pause so the SSE connection is established before we mutate
-    await new Promise((r) => setTimeout(r, 200));
+    await waitFor(() => consoleSseSubscriberCount(server) === 1);
 
     // Mutate the state file — change next_action to trigger a projection diff
     const state = JSON.parse(originalState);
@@ -457,5 +457,25 @@ test("the live-stream set tracks only connected streams across disconnect and re
     }
   } finally {
     await server.close().catch(() => undefined);
+  }
+});
+
+test("SSE fixture collector preserves a complete event split across HTTP chunks", async () => {
+  let releaseData;
+  const dataReady = new Promise(resolve => { releaseData = resolve; });
+  const server = http.createServer(async (_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write("event: projection\n", () => setTimeout(releaseData, 50));
+    await dataReady;
+    response.write('data: {"complete":true}\n\n');
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const events = collectSseEvents(`http://127.0.0.1:${server.address().port}`, "projection", 1, 5000);
+    assert.deepEqual(await events, [{ complete: true }]);
+  } finally {
+    releaseData();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
   }
 });
