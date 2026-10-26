@@ -556,17 +556,17 @@ function gateRecordHistory(definition: any, state: FlowRunState, historicalDefin
   return ledger ? Object.freeze({ records: Object.freeze(ledger.records), canonical: Object.freeze((state.gate_evaluation_ledger?.records ?? []).map(canonicalJson)) }) : undefined;
 }
 
-function gateRecordPrefix(raw: unknown, history: GateRecordHistory): GateEvaluationLedger {
+function gateRecordPrefix(raw: unknown, history: GateRecordHistory, serializeRecord = canonicalJson): GateEvaluationLedger {
   if (raw === null || typeof raw !== "object" || !("records" in raw) || !("version" in raw)
     || raw.version !== "1" || Object.keys(raw).sort().join() !== "records,version" || !Array.isArray(raw.records)
     || raw.records.length > history.records.length
-    || !raw.records.every((record, index) => canonicalJson(record) === history.canonical[index])) {
+    || !raw.records.every((record, index) => serializeRecord(record) === history.canonical[index])) {
     throw new Error("flow.gate_evaluation_ledger.snapshot_prefix.invalid");
   }
   return { version: "1", records: history.records.slice(0, raw.records.length) };
 }
 
-function validateGateEvaluationProjection(definition: any, state: any, manifest: any, historicalDefinitions: any[], history?: GateRecordHistory) {
+function validateGateEvaluationProjection(definition: any, state: any, manifest: any, historicalDefinitions: any[], history?: GateRecordHistory, serializeRecord = canonicalJson) {
   const raw = state.gate_evaluation_ledger;
   if (raw === undefined) {
     if ([...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])].some((outcome: any) => outcome?.evaluation_ref !== undefined)) {
@@ -577,7 +577,7 @@ function validateGateEvaluationProjection(definition: any, state: any, manifest:
   if (!isObject(raw) || raw.version !== "1") {
     throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
   }
-  const ledger = history ? gateRecordPrefix(raw, history) : parseGateEvaluationLedger(raw);
+  const ledger = history ? gateRecordPrefix(raw, history, serializeRecord) : parseGateEvaluationLedger(raw);
   if (!ledger) throw new Error("flow.gate_evaluation_ledger.invalid: ledger does not satisfy the v1 contract");
   const historicalByIdentity = new Map(historicalDefinitions.map(candidate => [canonicalJson(definitionIdentity(candidate)), candidate]));
   const records = new Map<string, GateEvaluationRecord>();
@@ -739,7 +739,7 @@ export function validateRunStateConsistency(
   return result;
 }
 
-function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown, options: { runId?: string } = {}, gateHistory?: GateRecordHistory) {
+function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown, options: { runId?: string } = {}, gateHistory?: GateRecordHistory, serializeRecord = canonicalJson) {
   const startDefinition = validateDefinition(startDefinitionValue);
   assertGateEvaluationLedgerVersionSupported(stateValue);
   validateRunStateSchema(stateValue);
@@ -748,7 +748,7 @@ function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
   validateMultiCursorState(definition, state);
-  validateGateEvaluationProjection(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)], gateHistory);
+  validateGateEvaluationProjection(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)], gateHistory, serializeRecord);
   return { startDefinition, definition, state };
 }
 
@@ -957,21 +957,27 @@ function checkedHistory(state: FlowRunState) {
     amendments: (state.definition_amendments ?? []).map(canonicalJson)
   };
 }
-function matchesCheckedPrefix(entries: unknown[], prefix: string[]): boolean {
-  return entries.length <= prefix.length && entries.every((entry, index) => canonicalJson(entry) === prefix[index]);
+function matchesCheckedPrefix(entries: unknown[], prefix: string[], serializeRecord = canonicalJson): boolean {
+  return entries.length <= prefix.length && entries.every((entry, index) => serializeRecord(entry) === prefix[index]);
 }
 
 async function readValidatedCheckedSnapshot(dir: string, startDefinition: unknown, current: FlowRunState, index: number, confirmDurability = false, history = checkedHistory(current), gateHistory?: GateRecordHistory) {
   const records = checkedRecords(current), record = records[index];
   const value = await readCheckedSnapshot(dir, record.snapshotDigest, confirmDurability);
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.hasOwn(value, "checked_operation_ledger")) checkedFailure("snapshot.invalid");
-  const historical = validateRunStateBody(startDefinition, value, { runId: current.run_id }, gateHistory);
+  const serializedRecords = new Map<unknown, string>();
+  // Both checks consume the same freshly parsed record objects without an intervening mutation or await.
+  const serializeRecord = gateHistory ? (record: unknown) => {
+    if (!serializedRecords.has(record)) serializedRecords.set(record, canonicalJson(record));
+    return serializedRecords.get(record)!;
+  } : canonicalJson;
+  const historical = validateRunStateBody(startDefinition, value, { runId: current.run_id }, gateHistory, serializeRecord);
   const state = historical.state;
   if (canonicalJson(definitionIdentity(historical.definition)) !== canonicalJson(record.originDefinition)
     || state.transitions.length !== record.transitionStart + record.transitionRefs.length
     || (state.gate_evaluation_ledger?.records.length ?? 0) !== record.evaluationStart + record.evaluationRefs.length
     || !matchesCheckedPrefix(state.transitions, history.transitions)
-    || !matchesCheckedPrefix(state.gate_evaluation_ledger?.records ?? [], history.evaluations)
+    || !matchesCheckedPrefix(state.gate_evaluation_ledger?.records ?? [], history.evaluations, serializeRecord)
     || !matchesCheckedPrefix(state.definition_amendments ?? [], history.amendments)) checkedFailure("snapshot.history");
   return historical;
 }
