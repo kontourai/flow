@@ -939,6 +939,7 @@ export async function loadRun(runId, cwd = process.cwd()) {
 
 async function validateCheckedSnapshots(dir: string, startDefinition: unknown, state: FlowRunState) {
   const records = checkedRecords(state);
+  if (!records.length) return;
   const history = checkedHistory(state);
   const definitions = [startDefinition, ...(state.definition_amendments ?? []).map(event => event.successor)];
   const gateHistory = gateRecordHistory(resolveEffectiveDefinition(startDefinition, state), state, definitions);
