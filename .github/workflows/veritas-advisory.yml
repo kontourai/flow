@@ -12,3 +12,4 @@ jobs:
     uses: kontourai/.github/.github/workflows/veritas-advisory.yml@main
     with:
       install-browser: true
+      runner-image: ubuntu-24.04
