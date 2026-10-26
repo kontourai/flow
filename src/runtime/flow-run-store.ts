@@ -965,9 +965,9 @@ async function readValidatedCheckedSnapshot(dir: string, startDefinition: unknow
   const records = checkedRecords(current), record = records[index];
   const value = await readCheckedSnapshot(dir, record.snapshotDigest, confirmDurability);
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.hasOwn(value, "checked_operation_ledger")) checkedFailure("snapshot.invalid");
-  const serializedRecords = new Map<unknown, string>();
+  const serializedRecords = gateHistory ? new Map<unknown, string>() : undefined;
   // Both checks consume the same freshly parsed record objects without an intervening mutation or await.
-  const serializeRecord = gateHistory ? (record: unknown) => {
+  const serializeRecord = serializedRecords ? (record: unknown) => {
     if (!serializedRecords.has(record)) serializedRecords.set(record, canonicalJson(record));
     return serializedRecords.get(record)!;
   } : canonicalJson;
