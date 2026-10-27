@@ -636,3 +636,78 @@ the native Flow ticket, and callers must not enter these APIs while holding it.
 The native ticket timeout is unchanged. Publication I/O failures retain the
 existing artifact recovery semantics; holding a lease does not turn a failed
 filesystem operation into a successful transition or guarantee a rollback.
+
+
+### Exact checked-operation receipts
+
+Both checked methods accept optional `operation: {id, intentDigest}`. `id` is a
+1–128 character token (`[A-Za-z0-9][A-Za-z0-9._:-]*`); `intentDigest` is a
+lowercase 64-character SHA-256 digest of the host's immutable intent. The host
+still authenticates that intent and holds its admission lease; the digest is
+not authority. Flow snapshots the operation and semantic request before awaiting
+host admission. Omitting `operation` retains the legacy behavior.
+
+An operation-aware result adds `operationReceipt` and `idempotent`. The receipt
+echoes the complete `request`, its `requestSemanticDigest`, `operation`, `kind`,
+`runId`, `originDefinition`, `priorRunHead`, actual `transitionRefs`,
+`evaluationRefs` and `outcomes`. Evaluation requests retain a supplied `now`, or
+`null` when Flow chose the time; replay never chooses a new time. Retry requests
+retain their complete authority/request tuple. The original result's full state
+hash is `originalResultHead`. `flowRunHead` still hashes the entire persisted
+state, including its operation ledger; no hash semantics are changed.
+
+```ts
+const operation = { id: "review-42", intentDigest: originalIntentSha256 };
+const result = await evaluateRunChecked(runId, {
+  cwd, gate: "review", expectedRunHead: originalHead, admission, operation
+});
+// After a lost return, including after another operation advanced the run:
+const receipt = await readCheckedRunOperation(runId, { cwd, operation, admission });
+```
+
+`readCheckedRunOperation` is an exact observational lookup. It takes the host
+lease then Flow's native ticket and returns the detached original receipt, or
+`null` only when no canonical receipt has that id. A mismatched intent or changed
+semantic request on mutation replay conflicts. Corrupt, unsupported or missing
+anchored snapshots throw; they never become absence. Exact replay is checked
+before current lifecycle, expected-head and gate eligibility, but still requires
+current host authorization and an open recovery fence. Replay returns the
+original state, definition and outcomes/transition, not the current run head;
+its `freshness_transitions` is empty because no new freshness evaluation ran.
+The replay object's ancillary `manifest`, `config` and diagnostics come from the
+current load; they are not a coherent historical run bundle. Use the named
+historical fields and `operationReceipt` for original effect proof. Supplying a
+required `operation` selects typed overloads with a definite receipt; legacy
+options expose an optional receipt. A historical receipt cannot authorize a new
+retry against today's state.
+Consumers must compare the echoed request and origin identity with their own
+original durable intent. A legacy retry request-ref match is never backfilled
+into a new operation identity.
+
+The canonical `checked_operation_ledger` is append-only and versioned. Each
+record commits the preceding receipt digest and an immutable post-effect state
+snapshot digest. The snapshot excludes the top-level operation ledger, is
+written and strictly fsynced before the receipt and effect publish together in
+`state.json`, and cannot prove an effect on its own. Exact read validates the
+snapshot against start/amendment history and preserved effects, then restores
+the original validated receipt prefix to reconstruct `originalResultHead`.
+The snapshot's full state stays private to storage; lookup returns only the
+receipt. Ordinary writers preserve receipts and their referenced history.
+
+`FLOW_CHECKED_OPERATION_LIMITS` exports the opt-in bounds: 128 receipts,
+64 KiB per receipt, 4 MiB serialized receipt ledger, 8 MiB per snapshot,
+64 MiB aggregate snapshot bytes and 256 snapshot files. Orphans from failed
+publication count against storage limits. New operations reserve room for one
+maximum-sized snapshot/receipt before evaluation; oversized produced data refuses
+before canonical effect publication. No eviction or automatic orphan adoption
+occurs. Exact replay/lookup remains available at capacity. Failures before the
+canonical receipt may leave an orphan; failures after canonical publication may
+have committed and must be resolved by exact lookup, not another effect.
+
+This opt-in durability contract requires strict file and directory fsync and
+nofollow support. Windows operation-aware mutation is explicitly unavailable;
+unsupported directory durability elsewhere also refuses. Ordinary operationless
+behavior is unchanged. Normal loads validate all anchored snapshot bytes/history;
+exact receipt disclosure additionally reconfirms the target and canonical state
+durability. Local storage remains trusted: these unsigned commitments detect
+inconsistent history, not an attacker coherently rewriting all state and hashes.

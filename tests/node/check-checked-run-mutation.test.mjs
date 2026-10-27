@@ -78,3 +78,15 @@ test("checked evaluation snapshots the operation before awaiting the host lease"
   const result = await flow.evaluateRunChecked(run.runId, options);
   assert.equal(result.outcomes[0].gate_id, "plan-gate");
 });
+
+test("operationless empty gate retains omitted-gate evaluation without receipt opt-in", async () => {
+  const omitted = await fixture(), empty = await fixture();
+  const now = new Date().toISOString();
+  const first = await flow.evaluateRunChecked(omitted.run.runId, { cwd: omitted.cwd, expectedRunHead: omitted.expectedRunHead, now, admission: hostLease().admission });
+  const second = await flow.evaluateRunChecked(empty.run.runId, { cwd: empty.cwd, expectedRunHead: empty.expectedRunHead, now, gate: "", admission: hostLease().admission });
+  assert.deepEqual(second.outcomes.map(outcome => [outcome.gate_id, outcome.status]), first.outcomes.map(outcome => [outcome.gate_id, outcome.status]));
+  assert.equal(second.state.current_step, first.state.current_step);
+  assert.equal(second.state.status, first.state.status);
+  assert.equal(Object.hasOwn(second.state, "checked_operation_ledger"), false);
+  assert.equal(Object.hasOwn(second, "operationReceipt"), false);
+});

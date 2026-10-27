@@ -301,6 +301,8 @@ export type {
   FlowRunMutationAdmission,
   FlowRunMutationLease,
   FlowCheckedEvaluationOptions,
+  FlowCheckedEvaluationResult,
+  FlowCheckedRetryAuthorizationResult,
   FlowCheckedRetryAuthorizationOptions
 } from "./runtime/flow-run-store.js";
 export {
@@ -365,3 +367,7 @@ export type {
   KitContainerDiagnostic,
   KitContainerValidationResult
 } from "./kit/flow-kit-container.js";
+
+export { readCheckedRunOperation } from "./runtime/flow-run-store.js";
+export { FLOW_CHECKED_OPERATION_LIMITS } from "./runtime/flow-checked-operation.js";
+export type { FlowCheckedOperationIdentity, FlowCheckedOperationRequest, FlowCheckedOperationRecord, FlowCheckedRunOperationReceipt, FlowCheckedOperationLedger } from "./runtime/flow-checked-operation.js";

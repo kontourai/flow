@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, constants, mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -364,40 +364,287 @@ test("CLI capture escalates a SIGTERM-trapping command to SIGKILL within the tim
   assert.equal(receipt.signal, "SIGKILL");
 });
 
-test("CLI capture timeout kills SIGTERM-trapping descendants in the command process group", { skip: process.platform === "win32", timeout: 10000 }, async () => {
+const pauseForProcess = () => new Promise(resolve => setTimeout(resolve, 25));
+
+async function captureProcessRows(pid) {
+  try {
+    const { stdout } = await execFile("ps", [
+      ...(pid === undefined ? ["-axww"] : ["-ww", "-p", String(pid)]),
+      "-o", "pid=,pgid=,lstart=,args="
+    ], { timeout: 1000, env: { ...process.env, LC_ALL: "C" } });
+    return stdout.trim().split("\n").filter(Boolean).map(line => {
+      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d+)\s+(.+)$/);
+      assert.ok(match, "process census must include PID, group, birth time, and argv");
+      return { pid: Number(match[1]), group: Number(match[2]), birth: match[3], args: match[4] };
+    });
+  } catch (error) {
+    if (pid !== undefined && error.code === 1 && !error.stdout?.trim()) return [];
+    throw error;
+  }
+}
+
+function captureProcessCustody(t, { cwd, parentScript, childScript, token }) {
+  const parentArgs = [process.execPath, parentScript, token].join(" ");
+  const childArgs = [process.execPath, childScript, token].join(" ");
+  let parent, activeChild, activeArgs, activeSettlement, observer, stopObserver = false, cleanupPromise;
+  const observationErrors = [];
+  const parentReady = Promise.withResolvers();
+  parentReady.promise.catch(() => undefined);
+  const started = performance.now();
+  const diagnostics = { fixture: path.basename(cwd), scans: 0, maxScanMs: 0, events: [] };
+  const record = (event, detail = {}) => diagnostics.events.push({ event, elapsedMs: Math.round(performance.now() - started), ...detail });
+  const observe = async () => {
+    const scanStarted = performance.now();
+    const rows = await captureProcessRows();
+    diagnostics.scans++;
+    diagnostics.maxScanMs = Math.max(diagnostics.maxScanMs, Math.round(performance.now() - scanStarted));
+    for (const row of rows) {
+      if (row.args !== parentArgs) continue;
+      assert.equal(row.pid, row.group, "detached fixture parent must lead its process group");
+      if (parent) assert.deepEqual(row, parent, "fixture parent identity must not change");
+      else {
+        parent = row;
+        record("parent-observed", { pid: row.pid, group: row.group });
+        parentReady.resolve(row);
+      }
+    }
+    return rows;
+  };
+  const cli = (args, options = {}, watch = false) => {
+    const command = execFile(process.execPath, args, { ...options, signal: t.signal });
+    activeChild = command.child;
+    activeArgs = [process.execPath, ...args].join(" ");
+    record("cli-start", { command: args[1], pid: activeChild.pid });
+    activeSettlement = command.then(
+      () => { record("cli-terminal", { code: 0 }); },
+      error => { record("cli-terminal", { code: error.code, signal: error.signal, killed: error.killed }); return error; }
+    );
+    if (watch) observer = (async () => {
+      while (!stopObserver) {
+        try { await observe(); } catch (error) {
+          observationErrors.push(error);
+          parentReady.reject(error);
+          break;
+        }
+        await pauseForProcess();
+      }
+    })();
+    return command;
+  };
+  const waitForParent = async () => {
+    const aborted = Promise.withResolvers();
+    const onAbort = () => aborted.reject(t.signal.reason);
+    t.signal.addEventListener("abort", onAbort, { once: true });
+    if (t.signal.aborted) onAbort();
+    try {
+      return await Promise.race([
+        parentReady.promise,
+        activeSettlement.then(error => { throw new Error("capture CLI terminated before fixture readiness", { cause: error }); }),
+        aborted.promise
+      ]);
+    } finally {
+      t.signal.removeEventListener("abort", onAbort);
+    }
+  };
+  const stopCli = async () => {
+    if (activeChild && activeChild.exitCode === null && activeChild.signalCode === null) {
+      const [row] = await captureProcessRows(activeChild.pid);
+      if (row) {
+        assert.equal(row.args, activeArgs, "refuse to signal a CLI whose exact argv changed");
+        activeChild.kill("SIGKILL");
+      }
+    }
+    await activeSettlement;
+  };
+  const cleanup = () => {
+    if (cleanupPromise) return cleanupPromise;
+    cleanupPromise = (async () => {
+      const errors = [];
+      try { await observe(); } catch (error) { errors.push(error); }
+      try { await stopCli(); } catch (error) { errors.push(error); }
+      stopObserver = true;
+      await observer;
+      errors.push(...observationErrors);
+      const deadline = Date.now() + 1000;
+      let drained = false;
+      do {
+        let rows;
+        try { rows = await observe(); } catch (error) { errors.push(error); break; }
+        if (parent) {
+          const members = rows.filter(row => row.group === parent.group);
+          if (members.length === 0) { drained = true; break; }
+          for (const row of members) {
+            if (row.args !== parentArgs && row.args !== childArgs) continue;
+            try {
+              const [current] = await captureProcessRows(row.pid);
+              if (!current) continue;
+              assert.deepEqual(current, row, "refuse to signal a fixture whose birth/group/argv changed");
+              if (row.pid === parent.pid) assert.deepEqual(current, parent);
+              try { process.kill(row.pid, "SIGKILL"); }
+              catch (error) { if (error.code !== "ESRCH") throw error; }
+            } catch (error) { errors.push(error); }
+          }
+        }
+        await pauseForProcess();
+      } while (Date.now() < deadline);
+      if (!drained) errors.push(new Error(parent
+        ? "fixture cleanup unconfirmed: verified process group still has members"
+        : "fixture cleanup unconfirmed: detached parent was never observed"));
+      if (errors.length) throw new AggregateError(errors, `fixture cleanup failed: ${path.basename(cwd)}`);
+    })().catch(error => { cleanupPromise = undefined; throw error; });
+    return cleanupPromise;
+  };
+  const finish = async (bodyError) => {
+    try { await cleanup(); }
+    catch (cleanupError) {
+      if (bodyError) throw new AggregateError([bodyError, cleanupError], "capture test failed and fixture cleanup was unconfirmed");
+      throw cleanupError;
+    }
+  };
+  t.after(async () => {
+    try { await cleanup(); }
+    catch (error) {
+      record("after-cleanup-failed", { message: error.message, errors: error.errors?.map(item => item.message) });
+      throw error;
+    } finally { t.diagnostic(JSON.stringify(diagnostics)); }
+  });
+  return { cli, stopCli, waitForParent, cleanup, finish, observe, get parent() { return parent; } };
+}
+
+async function writeCaptureGroupFixture({ parentScript, childScript, ownerFile, token, lifetimeDeadline, barrier }) {
+  const lifetime = [
+    `const lifetimeDeadline = ${lifetimeDeadline};`,
+    "if (Date.now() >= lifetimeDeadline) process.exit(97);",
+    "setTimeout(() => process.exit(97), lifetimeDeadline - Date.now());",
+    "process.on('SIGTERM', () => {});"
+  ];
+  await writeFile(childScript, [...lifetime, "setInterval(() => {}, 1000);", ""].join("\n"));
+  await writeFile(parentScript, [
+    ...lifetime,
+    "const { spawn } = require('node:child_process');",
+    "const { existsSync, writeFileSync } = require('node:fs');",
+    "function startChild() {",
+    "  if (Date.now() >= lifetimeDeadline) process.exit(97);",
+    `  writeFileSync(${JSON.stringify(ownerFile)}, JSON.stringify({ parent: process.pid, token: ${JSON.stringify(token)} }));`,
+    "  if (Date.now() >= lifetimeDeadline) process.exit(97);",
+    `  const child = spawn(process.execPath, [${JSON.stringify(childScript)}, ${JSON.stringify(token)}], { stdio: 'ignore' });`,
+    `  writeFileSync(${JSON.stringify(ownerFile)}, JSON.stringify({ parent: process.pid, grandchild: child.pid, token: ${JSON.stringify(token)} }));`,
+    "}",
+    ...(barrier ? [
+      `const barrierTimer = setInterval(() => { if (existsSync(${JSON.stringify(barrier)})) { clearInterval(barrierTimer); startChild(); } }, 10);`
+    ] : ["startChild();"]),
+    "setInterval(() => {}, 1000);", ""
+  ].join("\n"));
+}
+
+test("CLI capture timeout kills SIGTERM-trapping descendants in the command process group", { skip: process.platform === "win32", timeout: 10000 }, async (t) => {
+  const lifetimeDeadline = Date.now() + 10000;
   const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-group-"));
   const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
   const runId = "capture-group";
   const childScript = path.join(cwd, "grandchild.cjs");
   const parentScript = path.join(cwd, "parent.cjs");
-  await writeFile(childScript, "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\n");
-  await writeFile(parentScript, [
-    "const { spawn } = require('node:child_process');",
-    "const { writeFileSync } = require('node:fs');",
-    "process.on('SIGTERM', () => {});",
-    `const child = spawn(process.execPath, [${JSON.stringify(childScript)}], { stdio: 'ignore' });`,
-    "writeFileSync('grandchild.pid', String(child.pid));",
-    "setInterval(() => {}, 1000);",
-    ""
-  ].join("\n"));
-  await execFile(process.execPath, [cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
-
-  await assert.rejects(execFile(process.execPath, [
-    cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd, "--", process.execPath, parentScript
-  ], { timeout: 8000 }));
-  const grandchildPid = Number(await readFile(path.join(cwd, "grandchild.pid"), "utf8"));
-  const deadline = Date.now() + 1000;
-  let alive = true;
-  while (alive && Date.now() < deadline) {
-    try {
-      process.kill(grandchildPid, 0);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-      alive = false;
+  const ownerFile = path.join(cwd, "process-owner.json");
+  const token = randomUUID();
+  const started = performance.now();
+  const phases = [];
+  const phase = (name) => phases.push({ name, elapsedMs: Math.round(performance.now() - started) });
+  const fixture = { cwd, parentScript, childScript, ownerFile, token, lifetimeDeadline };
+  const { cli, finish } = captureProcessCustody(t, fixture);
+  let bodyError;
+  t.after(() => t.diagnostic(JSON.stringify({ fixture: path.basename(cwd), token, phases })));
+  try {
+    await writeCaptureGroupFixture(fixture);
+    phase("start-cli");
+    await cli([cliPath, "start", definition, "--run-id", runId, "--cwd", cwd]);
+    phase("start-complete");
+    phase("capture-cli");
+    await assert.rejects(cli([
+      cliPath, "capture", runId, "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd, "--", process.execPath, parentScript, token
+    ], { timeout: 8000 }, true), (error) => {
+      phase("capture-exit");
+      assert.equal(error.code, 1, "capture must exit with its failed-evidence result, not an exec timeout");
+      assert.equal(error.signal, null);
+      assert.equal(error.killed, false);
+      assert.match(error.stdout, /status: failed/);
+      return true;
+    });
+    const runDir = path.join(cwd, ".kontourai", "flow", "runs", runId);
+    const manifest = JSON.parse(await readFile(path.join(runDir, "evidence", "manifest.json"), "utf8"));
+    assert.equal(manifest.evidence.length, 1);
+    assert.equal(manifest.evidence[0].status, "failed");
+    const receipt = JSON.parse(await readFile(path.join(runDir, manifest.evidence[0].stored_path), "utf8"));
+    assert.equal(receipt.timed_out, true);
+    assert.equal(receipt.exit_code, null);
+    assert.equal(receipt.signal, "SIGKILL");
+    assert.deepEqual(receipt.command, [process.execPath, parentScript, token]);
+    phase("receipt-confirmed");
+    const owned = JSON.parse(await readFile(ownerFile, "utf8"));
+    assert.equal(owned.token, token);
+    const deadline = Date.now() + 1000;
+    let alive = true;
+    while (alive && Date.now() < deadline) {
+      try {
+        process.kill(owned.grandchild, 0);
+        await new Promise(resolve => setTimeout(resolve, 25));
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+        alive = false;
+      }
     }
+    assert.equal(alive, false, "grandchild is no longer alive after process-group escalation");
+    assert.ok(Date.now() < lifetimeDeadline, "product receipt and descendant death must precede fixture watchdog eligibility");
+    phase("descendant-absent");
+  } catch (error) {
+    bodyError = error;
+    throw error;
+  } finally {
+    await finish(bodyError);
   }
-  assert.equal(alive, false, "grandchild is no longer alive after process-group escalation");
+});
+
+
+test("CLI capture fixture cleanup drains a detached parent before its owner marker exists", { skip: process.platform === "win32", timeout: 10000 }, async (t) => {
+  const lifetimeDeadline = Date.now() + 10000;
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-cli-capture-delayed-marker-"));
+  const fixture = {
+    cwd, parentScript: path.join(cwd, "parent.cjs"), childScript: path.join(cwd, "grandchild.cjs"),
+    ownerFile: path.join(cwd, "process-owner.json"), token: randomUUID(), lifetimeDeadline,
+    barrier: path.join(cwd, "release-parent")
+  };
+  const custody = captureProcessCustody(t, fixture);
+  let bodyError;
+  try {
+    await writeCaptureGroupFixture(fixture);
+    const definition = new URL("../../examples/agent-dev-flow.json", import.meta.url).pathname;
+    await custody.cli([cliPath, "start", definition, "--run-id", "delayed-marker", "--cwd", cwd]);
+    const capture = custody.cli([
+      cliPath, "capture", "delayed-marker", "--gate", "plan-gate", "--kind", "command", "--timeout", "500", "--cwd", cwd,
+      "--", process.execPath, fixture.parentScript, fixture.token
+    ], { timeout: 8000 }, true);
+    const terminal = capture.then(() => ({ error: null }), error => ({ error }));
+    await custody.waitForParent();
+    assert.ok(custody.parent, "observe the actual detached command before forcing CLI termination");
+    await assert.rejects(access(fixture.ownerFile), { code: "ENOENT" });
+    await custody.stopCli();
+    const { error: interrupted } = await terminal;
+    assert.ok(interrupted, "interrupted CLI must reject");
+    assert.equal(interrupted.signal, "SIGKILL");
+    await custody.cleanup();
+    const remaining = (await captureProcessRows()).filter(row => row.group === custody.parent.group);
+    assert.deepEqual(remaining, [], "cleanup must drain the observed group even without an owner marker");
+    await writeFile(fixture.barrier, "release\n");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await assert.rejects(access(fixture.ownerFile), { code: "ENOENT" });
+    assert.deepEqual((await captureProcessRows()).filter(row => row.group === custody.parent.group), [], "no late child may survive cleanup");
+    assert.ok(Date.now() < lifetimeDeadline, "cleanup control must finish before fixture watchdog eligibility");
+    t.diagnostic(JSON.stringify({ fixture: path.basename(cwd), parent: custody.parent, delayedMarker: true, drained: true }));
+  } catch (error) {
+    bodyError = error;
+    throw error;
+  } finally {
+    await custody.finish(bodyError);
+  }
 });
 
 test("CLI lifecycle commands require structured authority and preserve read-only resume", async () => {

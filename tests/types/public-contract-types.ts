@@ -409,3 +409,28 @@ const asynchronousMutationLease: import("../../src/index.js").FlowRunMutationLea
 };
 void checkedEvaluation;
 void asynchronousMutationLease;
+
+
+// Checked-operation proof is available through the package API, without storage imports.
+import { readCheckedRunOperation, evaluateRunChecked, authorizeRetryChecked } from "../../src/index.js";
+import type { FlowCheckedOperationIdentity, FlowCheckedRunOperationReceipt, FlowRunMutationAdmission, FlowRetryAuthorizationRequest } from "../../src/index.js";
+declare const checkedAdmission: FlowRunMutationAdmission;
+declare const checkedIdentity: FlowCheckedOperationIdentity;
+declare const retryRequest: FlowRetryAuthorizationRequest;
+const checkedProof: Promise<FlowCheckedRunOperationReceipt | null> = readCheckedRunOperation("run", { operation: checkedIdentity, admission: checkedAdmission });
+void checkedProof;
+void evaluateRunChecked("run", { expectedRunHead: "a".repeat(64), operation: checkedIdentity, admission: checkedAdmission });
+void authorizeRetryChecked("run", { request: retryRequest, operation: checkedIdentity, admission: checkedAdmission });
+
+void evaluateRunChecked("run", { expectedRunHead: "a".repeat(64), operation: checkedIdentity, admission: checkedAdmission }).then(result => {
+  const receipt: FlowCheckedRunOperationReceipt = result.operationReceipt;
+  // @ts-expect-error operation-aware results expose the strict receipt, not an index-any record.
+  const invalid: string = result.operationReceipt.inventedField;
+  return receipt;
+});
+void authorizeRetryChecked("run", { request: retryRequest, operation: checkedIdentity, admission: checkedAdmission }).then(result => {
+  const receipt: FlowCheckedRunOperationReceipt = result.operationReceipt;
+  // @ts-expect-error retry proof is the same strict public receipt contract.
+  const invalid: string = result.operationReceipt.inventedField;
+  return receipt;
+});

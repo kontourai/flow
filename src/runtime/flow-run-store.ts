@@ -29,7 +29,7 @@ import {
 import { FLOW_SCHEMA_VERSION } from "../contracts/flow-types.js";
 import type { FlowDefinitionAmendmentEvent, FlowDefinitionAmendmentRequest, FlowDefinitionAmendmentResult, FlowEvidenceAttachmentOptions, FlowEvidenceEntry, FlowLifecycleAction, FlowLifecycleEvent, FlowPausedGateContinuationOptions, FlowPausedGateContinuationResult, FlowRetryAuthorizationRequest, FlowRetryAuthorizationResult, FlowRetryAuthorizationTransition, FlowRunState, GateOutcome, MutableRecord } from "../contracts/flow-types.js";
 import { parseGateEvaluationLedger } from "../contracts/gate-evaluation-contract.js";
-import type { GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
+import type { GateEvaluationLedger, GateEvaluationRecord, GateEvaluationRef } from "../contracts/gate-evaluation-contract.js";
 import { loadFlowConfig, defaultFlowConfig } from "../config/flow-config.js";
 import {
   findGate,
@@ -107,6 +107,13 @@ import {
   resolveEffectiveDefinition,
   validateDefinitionAmendmentRequest
 } from "./flow-run-definition-amendment.js";
+
+import {
+  checkedIdentity, checkedRecords, checkedPriorHead, checkedFailure,
+  validateCheckedOperations, checkCheckedOperationCapacity, readCheckedSnapshot, writeCheckedSnapshot, confirmCheckedRunDurability,
+  type FlowCheckedOperationIdentity, type FlowCheckedOperationRequest,
+  type FlowCheckedOperationRecord, type FlowCheckedRunOperationReceipt
+} from "./flow-checked-operation.js";
 
 type RunLocationDiagnostic = {
   code: string;
@@ -536,6 +543,30 @@ function validateGateEvaluationSelections(record: GateEvaluationRecord, outcome:
  * ledger is never inferred, repaired, or silently downgraded.
  */
 export function validateGateEvaluationLedger(definition: any, state: any, manifest?: any, historicalDefinitions: any[] = []) {
+  return validateGateEvaluationProjection(definition, state, manifest, historicalDefinitions);
+}
+
+type GateRecordHistory = Readonly<{
+  records: readonly GateEvaluationRecord[];
+  canonical: readonly string[];
+}>;
+
+function gateRecordHistory(definition: any, state: FlowRunState, historicalDefinitions: any[]): GateRecordHistory | undefined {
+  const ledger = validateGateEvaluationLedger(definition, state, undefined, historicalDefinitions);
+  return ledger ? Object.freeze({ records: Object.freeze(ledger.records), canonical: Object.freeze((state.gate_evaluation_ledger?.records ?? []).map(canonicalJson)) }) : undefined;
+}
+
+function gateRecordPrefix(raw: unknown, history: GateRecordHistory, serializeRecord = canonicalJson): GateEvaluationLedger {
+  if (raw === null || typeof raw !== "object" || !("records" in raw) || !("version" in raw)
+    || raw.version !== "1" || Object.keys(raw).sort().join() !== "records,version" || !Array.isArray(raw.records)
+    || raw.records.length > history.records.length
+    || !raw.records.every((record, index) => serializeRecord(record) === history.canonical[index])) {
+    throw new Error("flow.gate_evaluation_ledger.snapshot_prefix.invalid");
+  }
+  return { version: "1", records: history.records.slice(0, raw.records.length) };
+}
+
+function validateGateEvaluationProjection(definition: any, state: any, manifest: any, historicalDefinitions: any[], history?: GateRecordHistory, serializeRecord = canonicalJson) {
   const raw = state.gate_evaluation_ledger;
   if (raw === undefined) {
     if ([...(state.gate_outcomes ?? []), ...(state.gate_outcome_history ?? [])].some((outcome: any) => outcome?.evaluation_ref !== undefined)) {
@@ -546,13 +577,14 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
   if (!isObject(raw) || raw.version !== "1") {
     throw new Error(`flow.gate_evaluation_ledger.unsupported: version ${String((raw as any)?.version)} is not supported`);
   }
-  const ledger = parseGateEvaluationLedger(raw);
+  const ledger = history ? gateRecordPrefix(raw, history, serializeRecord) : parseGateEvaluationLedger(raw);
   if (!ledger) throw new Error("flow.gate_evaluation_ledger.invalid: ledger does not satisfy the v1 contract");
+  const historicalByIdentity = new Map(historicalDefinitions.map(candidate => [canonicalJson(definitionIdentity(candidate)), candidate]));
   const records = new Map<string, GateEvaluationRecord>();
   const lastByGate = new Map<string, GateEvaluationRecord>();
   for (const record of ledger.records) {
     const key = gateEvaluationRefKey(record.ref);
-    if (records.has(key)) throw new Error(`flow.gate_evaluation_ledger.duplicate_id: ${record.ref.evaluationId}`);
+    if (!history && records.has(key)) throw new Error(`flow.gate_evaluation_ledger.duplicate_id: ${record.ref.evaluationId}`);
     if (record.ref.runId !== state.run_id) throw new Error(`flow.gate_evaluation_ledger.run_mismatch: ${record.ref.evaluationId}`);
     const gate = findGate(definition, record.ref.gateId);
     if (!gate || record.gate.id !== record.ref.gateId) throw new Error(`flow.gate_evaluation_ledger.gate_mismatch: ${record.ref.evaluationId}`);
@@ -563,25 +595,24 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
       throw new Error(`flow.gate_evaluation_ledger.definition_mismatch: ${record.ref.evaluationId}`);
     }
     if (historicalDefinitions.length) {
-      const snapshot = historicalDefinitions.find((candidate) => {
-        const identity = definitionIdentity(candidate);
-        return identity.id === record.definition.id && identity.version === record.definition.version && identity.digest === record.definition.digest;
-      });
+      const snapshot = historicalByIdentity.get(canonicalJson(record.definition));
       if (!snapshot || !findGate(snapshot, record.ref.gateId)) {
         throw new Error(`flow.gate_evaluation_ledger.definition_mismatch: ${record.ref.evaluationId}`);
       }
     }
     const prior = lastByGate.get(record.ref.gateId);
-    if (record.previousRef) {
+    if (!history && record.previousRef) {
       if (!prior || gateEvaluationRefKey(record.previousRef) !== gateEvaluationRefKey(prior.ref)) {
         throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
       }
-    } else if (prior) {
+    } else if (!history && prior) {
       throw new Error(`flow.gate_evaluation_ledger.previous_chain.invalid: ${record.ref.evaluationId}`);
     }
     records.set(key, record);
     lastByGate.set(record.ref.gateId, record);
   }
+  const exceptionKeys = new Set((state.exceptions ?? []).map((exception: any) => canonicalJson([exception.id, exception.gate_id])));
+  const manifestEntries = manifest ? new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry])) : undefined;
   const historyReferenced = new Set<string>();
   const historyOutcomes = new Set<string>();
   for (const outcome of state.gate_outcome_history ?? []) {
@@ -609,7 +640,7 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
     if (record.exceptionId !== outcome.accepted_exception_id) {
       throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
     }
-    if (record.exceptionId && !(state.exceptions ?? []).some((exception: any) => exception.id === record.exceptionId && exception.gate_id === outcome.gate_id)) {
+    if (record.exceptionId && !exceptionKeys.has(canonicalJson([record.exceptionId, outcome.gate_id]))) {
       throw new Error(`flow.gate_evaluation_ledger.exception.conflict: ${ref.evaluationId}`);
     }
     const routed = outcome.status === "route-back" || outcome.limit_exceeded === true;
@@ -621,10 +652,9 @@ export function validateGateEvaluationLedger(definition: any, state: any, manife
         || record.routeBack?.selectedRoute !== outcome.selected_route))) {
       throw new Error(`flow.gate_evaluation_ledger.route_back.conflict: ${ref.evaluationId}`);
     }
-    if (manifest) {
-      const entries = new Map<string, any>((manifest.evidence ?? []).map((entry: any): [string, any] => [entry.id, entry]));
+    if (manifestEntries) {
       for (const selection of record.selections) {
-        const entry = entries.get(selection.evidenceId);
+        const entry = manifestEntries.get(selection.evidenceId);
         if (entry && selection.sha256 !== undefined && entry.sha256?.toLowerCase() !== selection.sha256) {
           throw new Error(`flow.gate_evaluation_ledger.selection.digest_conflict: ${ref.evaluationId}`);
         }
@@ -704,6 +734,12 @@ export function validateRunStateConsistency(
   stateValue: unknown,
   options: { runId?: string } = {}
 ) {
+  const result = validateRunStateBody(startDefinitionValue, stateValue, options);
+  validateCheckedOperations(result.startDefinition, result.state);
+  return result;
+}
+
+function validateRunStateBody(startDefinitionValue: unknown, stateValue: unknown, options: { runId?: string } = {}, gateHistory?: GateRecordHistory, serializeRecord = canonicalJson) {
   const startDefinition = validateDefinition(startDefinitionValue);
   assertGateEvaluationLedgerVersionSupported(stateValue);
   validateRunStateSchema(stateValue);
@@ -712,7 +748,7 @@ export function validateRunStateConsistency(
   validateRunStateIdentity(definition, state, options.runId ?? state.run_id);
   validateRetryAuthorizationHistory(definition, state);
   validateMultiCursorState(definition, state);
-  validateGateEvaluationLedger(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)]);
+  validateGateEvaluationProjection(definition, state, undefined, [startDefinition, ...(state.definition_amendments ?? []).map((event: any) => event.successor)], gateHistory, serializeRecord);
   return { startDefinition, definition, state };
 }
 
@@ -788,6 +824,7 @@ async function readRunAtLocation(runId: string, location: RunLocation, cwd: stri
   const rawDefinition = await readJson(path.join(dir, FLOW_RUN_DEFINITION_FILE));
   const parsedState = await readJson(path.join(dir, FLOW_RUN_STATE_FILE));
   const { startDefinition, definition, state } = validateRunStateConsistency(rawDefinition, parsedState, { runId });
+  await validateCheckedSnapshots(dir, startDefinition, state);
   const config = await loadFlowConfig(cwd);
   const manifestPath = path.join(dir, FLOW_RUN_EVIDENCE_MANIFEST_PATH);
   const manifest = existsSync(manifestPath)
@@ -900,6 +937,106 @@ export async function loadRun(runId, cwd = process.cwd()) {
   });
 }
 
+async function validateCheckedSnapshots(dir: string, startDefinition: unknown, state: FlowRunState) {
+  const records = checkedRecords(state);
+  if (!records.length) return;
+  const history = checkedHistory(state);
+  const definitions = [startDefinition, ...(state.definition_amendments ?? []).map(event => event.successor)];
+  const gateHistory = gateRecordHistory(resolveEffectiveDefinition(startDefinition, state), state, definitions);
+  for (let start = 0; start < records.length; start += 4) {
+    const results = await Promise.allSettled(records.slice(start, start + 4).map((_record, offset) =>
+      readValidatedCheckedSnapshot(dir, startDefinition, state, start + offset, false, history, gateHistory)));
+    for (const result of results) if (result.status === "rejected") throw result.reason;
+  }
+}
+
+function checkedHistory(state: FlowRunState) {
+  return {
+    transitions: state.transitions.map(canonicalJson),
+    evaluations: (state.gate_evaluation_ledger?.records ?? []).map(canonicalJson),
+    amendments: (state.definition_amendments ?? []).map(canonicalJson)
+  };
+}
+function matchesCheckedPrefix(entries: unknown[], prefix: string[], serializeRecord = canonicalJson): boolean {
+  return entries.length <= prefix.length && entries.every((entry, index) => serializeRecord(entry) === prefix[index]);
+}
+
+async function readValidatedCheckedSnapshot(dir: string, startDefinition: unknown, current: FlowRunState, index: number, confirmDurability = false, history = checkedHistory(current), gateHistory?: GateRecordHistory) {
+  const records = checkedRecords(current), record = records[index];
+  const value = await readCheckedSnapshot(dir, record.snapshotDigest, confirmDurability);
+  if (value === null || typeof value !== "object" || Array.isArray(value) || Object.hasOwn(value, "checked_operation_ledger")) checkedFailure("snapshot.invalid");
+  const serializedRecords = gateHistory ? new Map<unknown, string>() : undefined;
+  // Both checks consume the same freshly parsed record objects without an intervening mutation or await.
+  const serializeRecord = serializedRecords ? (record: unknown) => {
+    if (!serializedRecords.has(record)) serializedRecords.set(record, canonicalJson(record));
+    return serializedRecords.get(record)!;
+  } : canonicalJson;
+  const historical = validateRunStateBody(startDefinition, value, { runId: current.run_id }, gateHistory, serializeRecord);
+  const state = historical.state;
+  if (canonicalJson(definitionIdentity(historical.definition)) !== canonicalJson(record.originDefinition)
+    || state.transitions.length !== record.transitionStart + record.transitionRefs.length
+    || (state.gate_evaluation_ledger?.records.length ?? 0) !== record.evaluationStart + record.evaluationRefs.length
+    || !matchesCheckedPrefix(state.transitions, history.transitions)
+    || !matchesCheckedPrefix(state.gate_evaluation_ledger?.records ?? [], history.evaluations, serializeRecord)
+    || !matchesCheckedPrefix(state.definition_amendments ?? [], history.amendments)) checkedFailure("snapshot.history");
+  return historical;
+}
+
+async function reconstructCheckedOperation(dir: string, startDefinition: unknown, current: FlowRunState, index: number) {
+  const historical = await readValidatedCheckedSnapshot(dir, startDefinition, current, index, true);
+  const records = checkedRecords(current);
+  const { state } = validateRunStateConsistency(startDefinition, {
+    ...historical.state, checked_operation_ledger: { version: "1", records: records.slice(0, index + 1) }
+  }, { runId: current.run_id });
+  const receipt: FlowCheckedRunOperationReceipt = { ...structuredClone(records[index]), originalResultHead: flowRunHead(state) };
+  return { receipt, state, definition: historical.definition };
+}
+
+async function findCheckedOperation(run: { dir: string; startDefinition: unknown; state: FlowRunState }, operation: FlowCheckedOperationIdentity, request?: FlowCheckedOperationRequest) {
+  const index = checkedRecords(run.state).findIndex(record => record.operation.id === operation.id);
+  if (index < 0) return null;
+  const record = checkedRecords(run.state)[index];
+  if (record.operation.intentDigest !== operation.intentDigest || (request && canonicalJson(record.request) !== canonicalJson(request))) checkedFailure("conflict");
+  const result = await reconstructCheckedOperation(run.dir, run.startDefinition, run.state, index);
+  await confirmCheckedRunDurability(run.dir, run.state);
+  return result;
+}
+
+async function appendCheckedOperation(run: Awaited<ReturnType<typeof loadRun>>, before: FlowRunState, operation: FlowCheckedOperationIdentity, request: FlowCheckedOperationRequest, outcomes: GateOutcome[]) {
+  const snapshotDigest = await writeCheckedSnapshot(run.dir, run.state);
+  const record: FlowCheckedOperationRecord = {
+    version: "1", operation, kind: request.kind, runId: before.run_id, request,
+    requestSemanticDigest: flowRunHead(request), originDefinition: definitionIdentity(run.definition),
+    priorRunHead: checkedPriorHead(request), snapshotDigest,
+    priorReceiptDigest: checkedRecords(before).length ? flowRunHead(checkedRecords(before).at(-1)) : null,
+    transitionStart: before.transitions.length,
+    evaluationStart: before.gate_evaluation_ledger?.records.length ?? 0,
+    transitionRefs: run.state.transitions.slice(before.transitions.length).map(flowTransitionRef),
+    evaluationRefs: (run.state.gate_evaluation_ledger?.records ?? []).slice(before.gate_evaluation_ledger?.records.length ?? 0).map(entry => entry.ref),
+    outcomes: JSON.parse(canonicalJson(outcomes))
+  };
+  run.state.checked_operation_ledger = { version: "1", records: [...checkedRecords(before), record] };
+}
+
+async function assertCheckedOperationPreservation(run: { dir: string; startDefinition?: unknown; definition: unknown; state: FlowRunState }) {
+  const previous = await readJson(path.join(run.dir, FLOW_RUN_STATE_FILE));
+  const prefix = checkedRecords(previous);
+  if (canonicalJson(checkedRecords(run.state).slice(0, prefix.length)) !== canonicalJson(prefix)) checkedFailure("history.truncated");
+  validateRunStateConsistency(run.startDefinition ?? run.definition, run.state);
+  await validateCheckedSnapshots(run.dir, run.startDefinition ?? run.definition, run.state);
+}
+
+/** Observational lookup of canonical operation proof. A blob without its receipt is absent. */
+export async function readCheckedRunOperation(runId: string, options: { cwd?: string; operation: FlowCheckedOperationIdentity; admission: FlowRunMutationAdmission }): Promise<FlowCheckedRunOperationReceipt | null> {
+  const operation = checkedIdentity(options.operation), cwd = path.resolve(options.cwd ?? process.cwd());
+  return withHostMutationLease(options.admission, assertCurrent => withRunMutationLock(runId, cwd, async () => {
+    const run = await loadRun(runId, cwd);
+    const found = await findCheckedOperation(run, operation);
+    assertCurrent();
+    return found?.receipt ?? null;
+  }));
+}
+
 /** A host lease must exclude relevant authority/source changes until release completes.
  * Acquisition precedes Flow's native lock; lease methods must not acquire that lock.
  */
@@ -913,6 +1050,7 @@ export interface FlowRunMutationLease {
 }
 
 export interface FlowCheckedEvaluationOptions {
+  operation?: FlowCheckedOperationIdentity;
   cwd?: string;
   gate?: string;
   now?: string;
@@ -921,6 +1059,7 @@ export interface FlowCheckedEvaluationOptions {
 }
 
 export interface FlowCheckedRetryAuthorizationOptions {
+  operation?: FlowCheckedOperationIdentity;
   cwd?: string;
   request: FlowRetryAuthorizationRequest;
   admission: FlowRunMutationAdmission;
@@ -944,13 +1083,9 @@ async function withHostMutationLease<T>(admission: FlowRunMutationAdmission, wor
 }
 
 async function saveRun(run, assertPublicationCurrent?: () => void) {
+  await assertCheckedOperationPreservation(run);
   const context = resolvedRunContexts.get(run) ?? inferResolvedRunContext(run.state.run_id, run.dir);
   await validateResolvedRunDirectory(run.state.run_id, run.dir, context.cwd);
-  assertGateEvaluationLedgerVersionSupported(run.state);
-  validateRunStateSchema(run.state);
-  validateRunStateIdentity(run.definition, run.state, run.state.run_id);
-  validateRetryAuthorizationHistory(run.definition, run.state);
-  validateMultiCursorState(run.definition, run.state);
   validateEvidenceManifestIdentity(run.manifest, run.startDefinition ?? run.definition, run.state);
   validateGateEvaluationLedger(run.definition, run.state, run.manifest, [run.startDefinition ?? run.definition, ...(run.state.definition_amendments ?? []).map((event: any) => event.successor)]);
   const [statePath, manifestPath, reportJsonPath, reportMarkdownPath] = await Promise.all([
@@ -977,6 +1112,7 @@ function serializeJson(value: unknown) {
 }
 
 async function saveLifecycleState(run) {
+  await assertCheckedOperationPreservation(run);
   assertGateEvaluationLedgerVersionSupported(run.state);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
@@ -2061,6 +2197,7 @@ export async function finalizeRunRecoveryFence(
 }
 
 async function saveRetryAuthorizationState(run: any, faultInjection?: (stage: string) => void, assertPublicationCurrent?: () => void) {
+  await assertCheckedOperationPreservation(run);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
@@ -2123,6 +2260,7 @@ function invokeAmendmentFault(options: MutableRecord, stage: string) {
 
 /** State is the only canonical amendment commit. Reports are repairable projections. */
 async function saveDefinitionAmendmentState(run: any, options: MutableRecord) {
+  await assertCheckedOperationPreservation(run);
   validateRunStateSchema(run.state);
   validateRunStateIdentity(run.definition, run.state, run.state.run_id);
   validateRetryAuthorizationHistory(run.definition, run.state);
@@ -2320,12 +2458,36 @@ export async function authorizeRetry(runId: string, options: MutableRecord = {})
   return authorizeRetryAdmitted(runId, options);
 }
 
-export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+export type FlowCheckedRetryAuthorizationResult = FlowRetryAuthorizationResult & { operationReceipt?: FlowCheckedRunOperationReceipt };
+export function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions & { operation: FlowCheckedOperationIdentity }): Promise<FlowCheckedRetryAuthorizationResult & { operationReceipt: FlowCheckedRunOperationReceipt }>;
+export function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowCheckedRetryAuthorizationResult>;
+export async function authorizeRetryChecked(runId: string, options: FlowCheckedRetryAuthorizationOptions): Promise<FlowCheckedRetryAuthorizationResult> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const request = validateRetryAuthorizationRequest(options.request);
-  return withHostMutationLease(options.admission, (assertCurrent) => authorizeRetryAdmitted(runId, {
-    cwd, request
-  }, assertCurrent));
+  const operation = options.operation === undefined ? undefined : checkedIdentity(options.operation);
+  const semantic: FlowCheckedOperationRequest = { kind: "authorize-retry", runId, request };
+  return withHostMutationLease(options.admission, async (assertCurrent) => {
+    if (!operation) return authorizeRetryAdmitted(runId, { cwd, request }, assertCurrent);
+    return withRunMutationLock(runId, cwd, async () => {
+      const before = await loadRun(runId, cwd);
+      const existing = await findCheckedOperation(before, operation, semantic);
+      if (existing) {
+        const transition = existing.state.transitions.find((entry): entry is FlowRetryAuthorizationTransition =>
+          entry.type === "retry_authorized" && flowTransitionRef(entry) === existing.receipt.transitionRefs[0]);
+        if (!transition) checkedFailure("retry.invalid");
+        assertCurrent();
+        return { ...before, definition: existing.definition, state: existing.state, transition, idempotent: true, operationReceipt: existing.receipt };
+      }
+      if (before.state.transitions.some(transition => transition.authority?.request_ref === request.authority.request_ref)) checkedFailure("retry.backfill_refused");
+      await checkCheckedOperationCapacity(before.dir, before.state);
+      const result = await authorizeRetryInLock(runId, { cwd, request }, assertCurrent, async run => {
+        await appendCheckedOperation(run, before.state, operation, semantic, []);
+      });
+      const retained = await findCheckedOperation(await loadRun(runId, cwd), operation, semantic);
+      assertCurrent();
+      return { ...result, operationReceipt: retained.receipt };
+    });
+  });
 }
 
 async function authorizeRetryAdmitted(runId: string, options: MutableRecord = {}, assertPublicationCurrent?: () => void): Promise<FlowRetryAuthorizationResult & MutableRecord> {
@@ -2343,7 +2505,12 @@ async function authorizeRetryAdmitted(runId: string, options: MutableRecord = {}
   if (initialPreflight.kind === "replay") {
     return { ...initialPreflight.run, transition: initialPreflight.transition, idempotent: true };
   }
-  return withRunMutationLock(runId, cwd, async () => {
+  return withRunMutationLock(runId, cwd, () => authorizeRetryInLock(runId, { ...options, cwd, request }, assertPublicationCurrent));
+}
+
+async function authorizeRetryInLock(runId: string, options: MutableRecord, assertPublicationCurrent?: () => void, prepareCommit?: (run: Awaited<ReturnType<typeof loadRun>>) => Promise<void>): Promise<FlowRetryAuthorizationResult & MutableRecord> {
+    const request = validateRetryAuthorizationRequest(options.request);
+    const cwd = path.resolve(options.cwd ?? process.cwd());
     assertPublicationCurrent?.();
     const preflight = await preflightRetryAuthorization(runId, cwd, request);
     if (preflight.kind === "replay") {
@@ -2389,9 +2556,11 @@ async function authorizeRetryAdmitted(runId: string, options: MutableRecord = {}
       next_action: nextActionForStep(run.definition, request.target_step),
       updated_at: at
     };
-    await saveRetryAuthorizationState(run, typeof options.faultInjection === "function" ? options.faultInjection : undefined, assertPublicationCurrent);
+    if (prepareCommit) {
+      await prepareCommit(run);
+      await saveRun(run, assertPublicationCurrent);
+    } else await saveRetryAuthorizationState(run, typeof options.faultInjection === "function" ? options.faultInjection : undefined, assertPublicationCurrent);
     return { ...run, transition, idempotent: false };
-  });
 }
 
 export async function sha256File(file) {
@@ -3143,8 +3312,8 @@ function gatedStepsBetween(definition: any, from: string, to: string): string[] 
   return cursor === to ? between : [];
 }
 
-async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, assertPublicationCurrent?: () => void, expectedRunHead?: string) {
-  const run = await loadRun(runId, options.cwd);
+async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, assertPublicationCurrent?: () => void, expectedRunHead?: string, prepareCommit?: (run: Awaited<ReturnType<typeof loadRun>>, outcomes: GateOutcome[]) => Promise<void>, loaded?: Awaited<ReturnType<typeof loadRun>>) {
+  const run = loaded ?? await loadRun(runId, options.cwd);
   assertRunMutationLifecycleEligible("evaluate", run);
   if (expectedRunHead !== undefined && flowRunHead(run.state) !== expectedRunHead) {
     throw new Error("flow.run_head.stale: expectedRunHead does not match the current run state");
@@ -3230,23 +3399,45 @@ async function evaluateRunUnlocked(runId: string, options: MutableRecord = {}, a
       if (outcome.status !== "pass") break;
     }
   }
+  await prepareCommit?.(run, outcomes);
   await saveRun(run, assertPublicationCurrent);
   return { ...run, outcomes, freshness_transitions: freshnessTransitions };
 }
 
-export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions) {
+export type FlowCheckedEvaluationResult = Awaited<ReturnType<typeof evaluateRunUnlocked>> & { idempotent?: boolean; operationReceipt?: FlowCheckedRunOperationReceipt };
+export function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions & { operation: FlowCheckedOperationIdentity }): Promise<FlowCheckedEvaluationResult & { idempotent: boolean; operationReceipt: FlowCheckedRunOperationReceipt }>;
+export function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions): Promise<FlowCheckedEvaluationResult>;
+export async function evaluateRunChecked(runId: string, options: FlowCheckedEvaluationOptions): Promise<FlowCheckedEvaluationResult> {
   const { expectedRunHead, gate } = options;
-  if (typeof expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(expectedRunHead)) {
-    throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
-  }
+  if (typeof expectedRunHead !== "string" || !/^[a-f0-9]{64}$/i.test(expectedRunHead)) throw new Error("flow.run_head.invalid: expectedRunHead must be a SHA-256 hex digest");
   const cwd = path.resolve(options.cwd ?? process.cwd());
-  const now = options.now ?? new Date().toISOString();
+  const suppliedNow = options.now ?? null;
+  const now = suppliedNow ?? new Date().toISOString();
   if (typeof now !== "string" || parseRfc3339Timestamp(now) === null) throw new Error("flow.evaluate.now.invalid: now must be an RFC3339 date-time");
+  const operation = options.operation === undefined ? undefined : checkedIdentity(options.operation);
+  if (operation && gate !== undefined && (typeof gate !== "string" || !gate || gate.length > 512)) checkedFailure("gate.invalid");
+  const semantic: FlowCheckedOperationRequest = { kind: "evaluate", runId, expectedRunHead: expectedRunHead.toLowerCase(), gate: gate ?? null, now: suppliedNow };
   return withHostMutationLease(options.admission, async (assertCurrent) => {
-    await preflightRunMutationLifecycle(runId, cwd, "evaluate");
-    return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, {
-      cwd, now, gate
-    }, assertCurrent, expectedRunHead.toLowerCase()));
+    if (!operation) {
+      await preflightRunMutationLifecycle(runId, cwd, "evaluate");
+      return withRunMutationLock(runId, cwd, () => evaluateRunUnlocked(runId, { cwd, now, gate }, assertCurrent, expectedRunHead.toLowerCase()));
+    }
+    return withRunMutationLock(runId, cwd, async () => {
+      const before = await loadRun(runId, cwd);
+      const existing = await findCheckedOperation(before, operation, semantic);
+      if (existing) {
+        assertCurrent();
+        return { ...before, definition: existing.definition, state: existing.state, outcomes: existing.receipt.outcomes, freshness_transitions: [], idempotent: true, operationReceipt: existing.receipt };
+      }
+      await checkCheckedOperationCapacity(before.dir, before.state);
+      const prior = structuredClone(before.state);
+      const result = await evaluateRunUnlocked(runId, { cwd, now, gate }, assertCurrent, semantic.expectedRunHead, async (run, outcomes) => {
+        await appendCheckedOperation(run, prior, operation, semantic, outcomes);
+      }, before);
+      const retained = await findCheckedOperation(result, operation, semantic);
+      assertCurrent();
+      return { ...result, idempotent: false, operationReceipt: retained.receipt };
+    });
   });
 }
 
