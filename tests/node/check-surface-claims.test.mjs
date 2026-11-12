@@ -203,7 +203,7 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
         {
           id: "evidence.tests",
           claimId: "claim.quality.tests.verify",
-          evidenceType: "test_output",
+          evidenceType: "test_output", passing: true,
           method: "validation",
           sourceRef: "ci:run",
           excerptOrSummary: "All tests passed.",
@@ -211,7 +211,7 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
           collectedBy: "ci/main"
         }
       ],
-      policies: [],
+      policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
       events: [
         {
           id: "event.verified",
@@ -274,14 +274,14 @@ test("trust.bundle claims must be current after a gate is revisited", () => {
     evidence: [{
       id: "evidence.tests",
       claimId: "claim.quality.tests.verify",
-      evidenceType: "test_output",
+      evidenceType: "test_output", passing: true,
       method: "validation",
       sourceRef: "ci:run",
       excerptOrSummary: "All tests passed.",
       observedAt,
       collectedBy: "ci/main"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.verified",
       claimId: "claim.quality.tests.verify",
@@ -545,7 +545,7 @@ test("surface timestamp canonicalization preserves timestamp-shaped claim identi
       {
         id: "evidence.tests",
         claimId,
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: claimId,
         excerptOrSummary: "All tests passed.",
@@ -553,7 +553,7 @@ test("surface timestamp canonicalization preserves timestamp-shaped claim identi
         collectedBy: "ci/main"
       }
     ],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [
       {
         id: "event.verified",
@@ -616,14 +616,14 @@ test("trust.bundle current-visit checks preserve fractional precision and reject
       evidence: [{
         id: "evidence.fractional-precision",
         claimId: "claim.fractional-precision",
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: "ci:run",
         excerptOrSummary: "All tests passed.",
         observedAt: "2026-06-16t00:00:00.0001z",
         collectedBy: "ci/main"
       }],
-      policies: [],
+      policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
       events: [{
         id: "event.fractional-precision.verified",
         claimId: "claim.fractional-precision",
@@ -694,4 +694,24 @@ test("trust.bundle Hachure conformance: test vectors produce expected claim stat
     checked++;
   }
   assert.ok(checked > 0, "should have validated at least one Hachure conformance vector");
+});
+
+test("Surface 6 migration refuses policy-free and result-less verified events", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const evaluate = manifest => {
+    const state = initialState(definition, "surface-6-policy");
+    state.current_step = "verify";
+    return evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig(), new Date("2026-06-15T00:01:00Z"));
+  };
+  const good = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  assert.equal(evaluate(good).status, "pass");
+  for (const mutation of ["no-policy", "missing-policy", "empty-policy", "missing-result", "failed-check"]) {
+    const manifest = structuredClone(good), bundle = manifest.evidence[0].bundle;
+    if (mutation === "no-policy") { delete bundle.claims[0].verificationPolicyId; bundle.policies = []; }
+    if (mutation === "missing-policy") bundle.claims[0].verificationPolicyId = "absent";
+    if (mutation === "empty-policy") { bundle.policies[0].requiredEvidence = []; bundle.policies[0].requiredMethods = []; }
+    if (mutation === "missing-result") delete bundle.evidence[0].passing;
+    if (mutation === "failed-check") bundle.evidence[0].passing = false;
+    assert.notEqual(evaluate(manifest).status, "pass", mutation);
+  }
 });

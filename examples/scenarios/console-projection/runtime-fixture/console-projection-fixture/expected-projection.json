@@ -231,6 +231,7 @@
           {
             "claimType": "quality.tests",
             "createdAt": "2026-06-07T14:12:00.000Z",
+            "facet": "quality.developer-evidence",
             "fieldOrBehavior": "testSuite",
             "freshness": {
               "asOf": "2026-06-10T00:00:00.000Z",
@@ -241,7 +242,6 @@
             "status": "verified",
             "subjectId": "console-projection-fixture",
             "subjectType": "flow-step",
-            "facet": "quality.developer-evidence",
             "updatedAt": "2026-06-07T14:12:00.000Z",
             "value": "fixture tests passed",
             "verificationPolicyId": "policy.software-evidence.commit"
@@ -270,6 +270,7 @@
             "id": "evidence.tests.output",
             "method": "validation",
             "observedAt": "2026-06-07T14:12:00.000Z",
+            "passing": true,
             "sourceRef": "ci:fixture-run"
           }
         ],
@@ -403,12 +404,12 @@
             {
               "claimType": "quality.tests",
               "createdAt": "2026-06-07T14:12:00.000Z",
+              "facet": "quality.developer-evidence",
               "fieldOrBehavior": "testSuite",
               "id": "claim.quality.tests.fixture",
               "impactLevel": "high",
               "subjectId": "console-projection-fixture",
               "subjectType": "flow-step",
-              "facet": "quality.developer-evidence",
               "updatedAt": "2026-06-07T14:12:00.000Z",
               "value": "fixture tests passed",
               "verificationPolicyId": "policy.software-evidence.commit"
@@ -437,6 +438,7 @@
               "id": "evidence.tests.output",
               "method": "validation",
               "observedAt": "2026-06-07T14:12:00.000Z",
+              "passing": true,
               "sourceRef": "ci:fixture-run"
             }
           ],
@@ -475,6 +477,7 @@
             {
               "claimType": "quality.tests",
               "createdAt": "2026-06-07T14:12:00.000Z",
+              "facet": "quality.developer-evidence",
               "fieldOrBehavior": "testSuite",
               "freshness": {
                 "asOf": "2026-06-10T00:00:00.000Z",
@@ -485,7 +488,6 @@
               "status": "verified",
               "subjectId": "console-projection-fixture",
               "subjectType": "flow-step",
-              "facet": "quality.developer-evidence",
               "updatedAt": "2026-06-07T14:12:00.000Z",
               "value": "fixture tests passed",
               "verificationPolicyId": "policy.software-evidence.commit"
@@ -514,6 +516,7 @@
               "id": "evidence.tests.output",
               "method": "validation",
               "observedAt": "2026-06-07T14:12:00.000Z",
+              "passing": true,
               "sourceRef": "ci:fixture-run"
             }
           ],
@@ -1018,6 +1021,7 @@
               {
                 "claimType": "quality.tests",
                 "createdAt": "2026-06-07T14:12:00.000Z",
+                "facet": "quality.developer-evidence",
                 "fieldOrBehavior": "testSuite",
                 "freshness": {
                   "asOf": "2026-06-10T00:00:00.000Z",
@@ -1028,7 +1032,6 @@
                 "status": "verified",
                 "subjectId": "console-projection-fixture",
                 "subjectType": "flow-step",
-                "facet": "quality.developer-evidence",
                 "updatedAt": "2026-06-07T14:12:00.000Z",
                 "value": "fixture tests passed",
                 "verificationPolicyId": "policy.software-evidence.commit"
@@ -1057,6 +1060,7 @@
                 "id": "evidence.tests.output",
                 "method": "validation",
                 "observedAt": "2026-06-07T14:12:00.000Z",
+                "passing": true,
                 "sourceRef": "ci:fixture-run"
               }
             ],
@@ -1190,12 +1194,12 @@
                 {
                   "claimType": "quality.tests",
                   "createdAt": "2026-06-07T14:12:00.000Z",
+                  "facet": "quality.developer-evidence",
                   "fieldOrBehavior": "testSuite",
                   "id": "claim.quality.tests.fixture",
                   "impactLevel": "high",
                   "subjectId": "console-projection-fixture",
                   "subjectType": "flow-step",
-                  "facet": "quality.developer-evidence",
                   "updatedAt": "2026-06-07T14:12:00.000Z",
                   "value": "fixture tests passed",
                   "verificationPolicyId": "policy.software-evidence.commit"
@@ -1224,6 +1228,7 @@
                   "id": "evidence.tests.output",
                   "method": "validation",
                   "observedAt": "2026-06-07T14:12:00.000Z",
+                  "passing": true,
                   "sourceRef": "ci:fixture-run"
                 }
               ],
@@ -1262,6 +1267,7 @@
                 {
                   "claimType": "quality.tests",
                   "createdAt": "2026-06-07T14:12:00.000Z",
+                  "facet": "quality.developer-evidence",
                   "fieldOrBehavior": "testSuite",
                   "freshness": {
                     "asOf": "2026-06-10T00:00:00.000Z",
@@ -1272,7 +1278,6 @@
                   "status": "verified",
                   "subjectId": "console-projection-fixture",
                   "subjectType": "flow-step",
-                  "facet": "quality.developer-evidence",
                   "updatedAt": "2026-06-07T14:12:00.000Z",
                   "value": "fixture tests passed",
                   "verificationPolicyId": "policy.software-evidence.commit"
@@ -1301,6 +1306,7 @@
                   "id": "evidence.tests.output",
                   "method": "validation",
                   "observedAt": "2026-06-07T14:12:00.000Z",
+                  "passing": true,
                   "sourceRef": "ci:fixture-run"
                 }
               ],
@@ -1925,11 +1931,11 @@
         "invalidated_steps": [
           "release"
         ],
+        "limit_exceeded": false,
         "max_attempts": 2,
         "reason": "implementation_defect",
         "route_reason": "implementation_defect",
         "selected_route": "build",
-        "limit_exceeded": false,
         "status": "blocked",
         "to_step": "build",
         "type": "route_back"

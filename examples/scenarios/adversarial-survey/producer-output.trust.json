@@ -26,7 +26,28 @@
       "collectedBy": "survey/adversarial-workbench"
     }
   ],
-  "policies": [],
+  "policies": [
+    {
+      "id": "policy.claim.adversarial.producer-output",
+      "claimType": "adversarial.producer-output",
+      "requiredEvidence": [
+        "source_excerpt"
+      ],
+      "requiredMethods": [
+        "observation"
+      ],
+      "acceptanceCriteria": [
+        "Recorded fixture evidence"
+      ],
+      "reviewAuthority": "scenario producer",
+      "validityRule": {
+        "kind": "historical"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "medium"
+    }
+  ],
   "events": [
     {
       "id": "event.adversarial.producer-output.verified",
@@ -34,7 +55,9 @@
       "status": "verified",
       "actor": "survey/adversarial-workbench",
       "method": "observation",
-      "evidenceIds": ["evidence.adversarial.producer-output"],
+      "evidenceIds": [
+        "evidence.adversarial.producer-output"
+      ],
       "createdAt": "2025-01-01T00:00:00.000Z",
       "verifiedAt": "2025-01-01T00:00:00.000Z"
     }

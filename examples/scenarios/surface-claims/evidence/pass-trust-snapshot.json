@@ -30,7 +30,7 @@
           {
             "id": "evidence.quality.tests.snapshot.output",
             "claimId": "claim.quality.tests.snapshot",
-            "evidenceType": "test_output",
+            "evidenceType": "test_output", "passing": true,
             "method": "validation",
             "sourceRef": "ci:run-snapshot",
             "excerptOrSummary": "Snapshot tests passed.",

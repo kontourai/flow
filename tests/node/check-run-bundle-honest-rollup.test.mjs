@@ -76,7 +76,7 @@ function gateBundle(claimType, step) {
       createdAt: FIXED, updatedAt: FIXED
     }],
     evidence: [{
-      id: `evidence.${claimType}`, claimId: `claim.${claimType}`, evidenceType: "test_output",
+      id: `evidence.${claimType}`, claimId: `claim.${claimType}`, evidenceType: "test_output", passing: true,
       method: "validation", sourceRef: "ci:1", excerptOrSummary: "ok",
       observedAt: FIXED, collectedBy: "ci"
     }],
@@ -85,7 +85,7 @@ function gateBundle(claimType, step) {
       actor: "ci", method: "validation", evidenceIds: [`evidence.${claimType}`],
       createdAt: FIXED, verifiedAt: FIXED
     }],
-    policies: []
+    policies: [{ id: "policy.fixture", claimType: claimType, requiredEvidence: ["test_output"], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }]
   };
 }
 

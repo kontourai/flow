@@ -47,7 +47,7 @@ function freshnessBearingManifest() {
             {
               id: "evidence.window",
               claimId: "claim.window",
-              evidenceType: "test_output",
+              evidenceType: "test_output", passing: true,
               method: "validation",
               sourceRef: "ci:1",
               excerptOrSummary: "tests passed",
@@ -129,7 +129,7 @@ test("inquiry records pin statusFunctionVersion and an asOf", () => {
   const manifest = freshnessBearingManifest();
   reDeriveBundleReports(manifest, new Date(T0));
   const record = manifest.evidence[0].inquiry_records[0];
-  assert.equal(record.statusFunctionVersion, "2");
+  assert.equal(record.statusFunctionVersion, "4");
   assert.ok(typeof record.asOf === "string" && record.asOf.length > 0);
   assert.equal(record.statusByClaimId["claim.window"], "verified");
 });

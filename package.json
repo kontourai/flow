@@ -60,10 +60,10 @@
     "typecheck": "tsc --noEmit",
     "check:types:contracts": "tsc -p tsconfig.types.json --noEmit",
     "typecheck:console-ui": "tsc -p tsconfig.console-ui.json --noEmit",
-    "docs:build": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus build",
-    "docs:check": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus check",
-    "check:decisions": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus decisions check --base ${DECISIONS_BASE:-origin/main}",
-    "gen:decisions-index": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus decisions index",
+    "docs:build": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/7c5ce04a3db278169da85bded2e25bb2cd92dc29 -- corpus build",
+    "docs:check": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/7c5ce04a3db278169da85bded2e25bb2cd92dc29 -- corpus check",
+    "check:decisions": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/7c5ce04a3db278169da85bded2e25bb2cd92dc29 -- corpus decisions check --base ${DECISIONS_BASE:-origin/main}",
+    "gen:decisions-index": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/7c5ce04a3db278169da85bded2e25bb2cd92dc29 -- corpus decisions index",
     "sync:ui": "node scripts/sync-ui-assets.mjs",
     "check:ui-assets": "node scripts/sync-ui-assets.mjs --check",
     "check:console-smoke": "node scripts/with-build-lease.mjs npm run check:console-smoke:locked",
@@ -94,23 +94,23 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@12.18.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kontourai/flow.git"
   },
   "devDependencies": {
-    "@kontourai/ui": "^1.20.0",
-    "@kontourai/veritas": "1.11.2",
-    "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.2",
-    "playwright": "^1.60.0",
-    "typescript": "^6.0.3"
+    "@kontourai/ui": "^1.20.1",
+    "@kontourai/veritas": "1.12.2",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "playwright": "^1.65.0",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@kontourai/surface": "2.14.0",
+    "@kontourai/surface": "6.3.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "hachure": "0.15.0"
+    "hachure": "0.18.0"
   }
 }

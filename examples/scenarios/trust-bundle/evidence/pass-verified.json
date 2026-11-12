@@ -30,7 +30,7 @@
           {
             "id": "evidence.quality.tests.output",
             "claimId": "claim.quality.tests.verify",
-            "evidenceType": "test_output",
+            "evidenceType": "test_output", "passing": true,
             "method": "validation",
             "sourceRef": "ci:run-1847",
             "excerptOrSummary": "All test suites passed.",

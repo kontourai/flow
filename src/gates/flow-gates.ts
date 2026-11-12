@@ -32,7 +32,7 @@ interface GateAuthorityDependencies {
 
 const DEFAULT_GATE_AUTHORITY_DEPENDENCIES: GateAuthorityDependencies = {
   validate: validateTrustBundle,
-  buildReport: buildTrustReport,
+  buildReport: (bundle, options) => buildTrustReport(bundle, { ...options, statusFunctionVersion: "4" }),
   checkAuthorityActive
 };
 
@@ -87,17 +87,13 @@ function findClaimsInReport(report: any, selector: any): any[] {
 }
 
 /**
- * Surface 2.14.0 accepts a `Date` as its evaluation clock. Date truncates
+ * Surface 6.3.0 accepts a `Date` as its evaluation clock. Date truncates
  * RFC3339 fractional seconds below milliseconds, so Flow applies this small
  * chronology fence only after Surface has selected an otherwise accepted
  * claim. Surface remains responsible for status/policy derivation; Flow only
  * refuses an accepted result when the claim's own issue/expiry or the event
  * timeline that Surface folds cannot be true at Flow's exact instant.
  */
-function surfaceDateMilliseconds(timestamp: ParsedRfc3339Timestamp): number {
-  return (timestamp.epochSecond * 1000) + Number(timestamp.fractionalSecond.slice(0, 3).padEnd(3, "0"));
-}
-
 type TimedEvent = { event: any; index: number; createdAt: ParsedRfc3339Timestamp; verifiedAt?: ParsedRfc3339Timestamp };
 type TimedTrace = { trace: any; index: number; observedAt?: ParsedRfc3339Timestamp; validFrom?: ParsedRfc3339Timestamp; validUntil?: ParsedRfc3339Timestamp; revokedAt?: ParsedRfc3339Timestamp; invalidTimestamp: boolean };
 type Reconciliation = { reason: string | null; status: "stale" | "unknown" | null; governing?: TimedEvent; expiresAt?: string; freshnessStale?: boolean };
@@ -152,8 +148,7 @@ function latestEvent(events: TimedEvent[], comparison: (left: TimedEvent, right:
 }
 
 function surfaceEventOrder(left: TimedEvent, right: TimedEvent) {
-  const byMillisecond = surfaceDateMilliseconds(left.createdAt) - surfaceDateMilliseconds(right.createdAt);
-  return byMillisecond || right.index - left.index;
+  return exactEventOrder(left, right);
 }
 
 function exactEventOrder(left: TimedEvent, right: TimedEvent) {
@@ -265,12 +260,7 @@ function exactResolutionAuthorizedForClaim(event: TimedEvent, trace: TimedTrace,
 }
 
 function surfaceResolutionAuthorized(event: TimedEvent, trace: TimedTrace): boolean {
-  const atDecision = event.event.createdAt;
-  return trace.trace?.actorRef === event.event.actor
-    && (event.event.authorityRef === undefined || trace.trace.authorityRef === event.event.authorityRef)
-    && (!trace.trace.revokedAt || trace.trace.revokedAt > atDecision)
-    && (!trace.trace.validFrom || trace.trace.validFrom <= atDecision)
-    && (!trace.trace.validUntil || trace.trace.validUntil >= atDecision);
+  return exactResolutionAuthorized(event, trace);
 }
 
 function semanticallyEquivalentEvents(left: TimedEvent, right: TimedEvent) {
@@ -327,7 +317,7 @@ function reconciliationForClaim(context: BundleContext, reportClaim: any, evalua
 
   const surfaceTop = latestEvent(events, surfaceEventOrder);
   const exactTop = latestEvent(events, exactEventOrder);
-  // Surface's stable sort retains input order for same-millisecond events.
+  // Status function 4 compares instants exactly and retains input order on exact ties.
   // If exact order selects a different governing event, actor provenance and
   // terminal status are both unknowable from Surface's Date-based result.
   if (surfaceTop?.event.id !== exactTop?.event.id && (!surfaceTop || !exactTop || !semanticallyEquivalentEvents(surfaceTop, exactTop))) return { reason: "claim_time_ambiguous", status: replacementStatus };
@@ -342,6 +332,13 @@ function reconciliationForClaim(context: BundleContext, reportClaim: any, evalua
     "exact"
   );
   if (surfaceResolution === "over_budget" || exactResolution === "over_budget") return { reason: "claim_time_ambiguous", status: replacementStatus };
+  // A latest verification can still fold as verified when an invalid resolution
+  // is ignored by Surface's dispute-clearing branch. Flow requires the actual
+  // governing resolution to have an exact, claim-bound authority witness.
+  if (exactTop?.event.resolvesDispute === true && exactTop.event.status === reportClaim.status
+    && exactResolution?.event.event.id !== exactTop.event.id) {
+    return { reason: "claim_time_ambiguous", status: replacementStatus };
+  }
   if (surfaceResolution && surfaceResolution.event.event.status === reportClaim.status) {
     if (!exactResolution || exactResolution.event.event.id !== surfaceResolution.event.event.id) return { reason: "claim_time_ambiguous", status: replacementStatus };
     const hasExactNewerBlockingFailure = evidence.filter((entry: any) => evidenceEntailsClaim(entry) && entry.passing === false && entry.blocking !== false)
@@ -566,7 +563,18 @@ export function reconcileSurfaceBundleReport(bundle: any, report: any, evaluatio
   // The reconciled report is stored on canonical evidence and can be rendered
   // outside a gate. Recompute Surface's public projections rather than leaving
   // a stale summary or group rollup beside corrected claim statuses.
-  reconciled.summary = summarizeClaims(reconciled.claims, reconciled.transparencyGaps, reconciled.changeRecords);
+  const staleReasons = Object.create(null);
+  for (const claim of reconciled.claims) {
+    if (claim.status !== "stale") continue;
+    const source = context.claims.get(claim.id);
+    const exactReason = source?.expiresAt !== undefined ? "intrinsic-window"
+      : source?.ttlSeconds !== undefined ? "ttl"
+      : resolvePolicyForClaim(source, context.policies)?.validityRule?.kind === "duration" ? "duration"
+      : "intrinsic-window";
+    staleReasons[claim.id] = report.summary?.staleReasonByClaimId?.[claim.id]
+      ?? (exactlyStale.has(claim.id) ? exactReason : "derived-input");
+  }
+  reconciled.summary = summarizeClaims(reconciled.claims, reconciled.transparencyGaps, reconciled.changeRecords, staleReasons);
   reconciled.claimGroupRollups = deriveClaimGroupRollups({ claimGroups: reconciled.claimGroups ?? [], claims: reconciled.claims });
   return { report: reconciled, diagnostics, reconciliations, context };
 }

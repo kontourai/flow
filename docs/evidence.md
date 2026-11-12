@@ -174,7 +174,7 @@ The 16,384 ceiling gives this normal input room to grow while retaining the
 independent multiplicative caps. Flow refuses over-budget attachments with
 `trust bundle exceeds Flow Surface derivation budget`; gate evaluation reports
 `bundle_invalid`. The acceptance-policy change is bound to trust attachment
-reducer version `1.3.8` and its identity hash.
+reducer version `2.0.0` and its identity hash.
 
 ## The run-output TrustBundle
 
@@ -284,3 +284,7 @@ To recover after failed evidence routed work back, attach the replacement with `
 The CLI attaches evidence from files; `flow capture` first creates such a file
 for a declared command. Richer adapters — CI jobs, agent harness hooks, release
 tooling — can write the same manifest shape directly through the [library API](library.md).
+
+Flow's demo and release-evidence adapters declare historical verification
+policies requiring their recorded human attestations. External bundles receive
+no inferred policy or passing result: producers must supply those facts.

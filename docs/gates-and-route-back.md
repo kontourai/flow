@@ -14,6 +14,22 @@ For the current step, `flow evaluate` applies the v0.1 rules in order:
 | all required typed expectations are satisfied | `pass` |
 | no authored expectations and no decision | `wait` |
 
+### Surface 6 status derivation
+
+Flow derives attached bundles with Surface 6.3.0 status function `4`; it does
+not select legacy status function `2` to preserve earlier passing results.
+A verified event alone cannot satisfy a verified-only expectation: a resolving
+verification policy must require evidence or methods, and required check outputs
+(`test_output`, `calculation_trace`, `runtime_observation`) must carry
+`passing: true`. Missing policies and result-less checks remain unverified;
+blocking failed checks remain disputed. Producers must supply actual policy and
+check facts rather than having Flow infer success.
+
+Surface compares RFC 3339 instants and authority bounds exactly. Flow retains
+its stricter exact evaluation-clock and authority-scope fences. Unknown bundle
+keys and duplicate claim/evidence identifiers are invalid. Existing stored
+bundles are re-derived under these rules and may stop satisfying a gate.
+
 ### Reported gate status vs gate outcome
 
 A gate's *outcome* (`pass`, `block`, `route-back`, `wait`) is what an evaluation

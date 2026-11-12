@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.3.8` reducer for an
+`reduceTrustAttachment()` is the separately versioned `2.0.0` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -294,8 +294,8 @@ supersession, and other authority-only synchronization. That mode validates and
 attaches the bundle, derives reports, and deliberately leaves run state and
 route-back accounting unchanged; its write set therefore omits `state.json`.
 
-The reducer exposes one trusted adapter for the locked `hachure@0.15.0` schema
-validator and `@kontourai/surface@2.14.0` validator, report builder, and
+The reducer exposes one trusted adapter for the locked `hachure@0.18.0` schema
+validator and `@kontourai/surface@6.3.0` validator, report builder, and
 authority checker: `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`. The reducer
 requires those exact helper references, snapshots them once, and rejects
 substituted or access-varying adapters before they can make identity and
@@ -711,3 +711,22 @@ behavior is unchanged. Normal loads validate all anchored snapshot bytes/history
 exact receipt disclosure additionally reconfirms the target and canonical state
 durability. Local storage remains trusted: these unsigned commitments detect
 inconsistent history, not an attacker coherently rewriting all state and hashes.
+
+### Surface 6 dependency migration
+
+The default attachment reducer is now `2.0.0`, with Hachure `0.18.0` and
+Surface `6.3.0`. Its identity and dependency-version fields change. Gate reads,
+attachment reduction, and canonical reports explicitly use status function `4`.
+Existing bundles can derive different statuses without any JSON shape change;
+see [Surface 6 status derivation](gates-and-route-back.md#surface-6-status-derivation).
+Reports and checkpoints record status function `4`; checkpoints without matching
+input digests trigger a full fold. Hachure schema versions 5 through 9 are
+accepted, with the constraints of their declared version.
+
+Run-output bundles now declare a historical stage-reference policy requiring
+an `attestation` produced by method `attestation`. A stage without a referenced
+gate-evidence bundle cannot derive verified merely from a verified transition.
+Exceptions remain visible without upgrading trust. Reference records retain the child report's status function,
+falling back to the current function when that field is absent. The nested Surface panel also adopts Surface 6's
+basis, gap labels, visibility and erasure projections; Flow does not use the
+removed caller-asserted assessment-v1 API.

@@ -29,7 +29,7 @@
           {
             "id": "evidence.tests.old",
             "claimId": "claim.quality.tests.stale",
-            "evidenceType": "test_output",
+            "evidenceType": "test_output", "passing": true,
             "method": "validation",
             "sourceRef": "ci:old-run",
             "excerptOrSummary": "Old test run passed.",

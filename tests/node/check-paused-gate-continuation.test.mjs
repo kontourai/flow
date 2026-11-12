@@ -27,9 +27,9 @@ const definition = {
 function bundle(subjectId = "work-42", expiresAt, authorityTrace) {
   return {
     schemaVersion: 7, source: "test/paused-gate",
-    claims: [{ id: "claim.review", subjectType: "work-item", subjectId, facet: "quality.review", claimType: "quality.review", fieldOrBehavior: "review", value: "accepted", createdAt: "2026-07-22T11:00:00.000Z", updatedAt: "2026-07-22T11:00:00.000Z", ...(expiresAt ? { expiresAt } : {}) }],
-    evidence: [], policies: [],
-    events: [{ id: "event.review", claimId: "claim.review", status: "verified", actor: "reviewer:test", method: "review", evidenceIds: [], createdAt: "2026-07-22T11:30:00.000Z", verifiedAt: "2026-07-22T11:30:00.000Z" }],
+    claims: [{ id: "claim.review", subjectType: "work-item", subjectId, facet: "quality.review", claimType: "quality.review", verificationPolicyId: "policy.fixture", fieldOrBehavior: "review", value: "accepted", createdAt: "2026-07-22T11:00:00.000Z", updatedAt: "2026-07-22T11:00:00.000Z", ...(expiresAt ? { expiresAt } : {}) }],
+    evidence: [{ id: "evidence.review", claimId: "claim.review", evidenceType: "human_attestation", method: "attestation", sourceRef: "fixture:review", excerptOrSummary: "Review accepted", observedAt: "2026-07-22T11:00:00.000Z", collectedBy: "test/reviewer" }], policies: [{ id: "policy.fixture", claimType: "quality.review", requiredEvidence: ["human_attestation"], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
+    events: [{ id: "event.review", claimId: "claim.review", status: "verified", actor: "reviewer:test", method: "review", evidenceIds: ["evidence.review"], createdAt: "2026-07-22T11:30:00.000Z", verifiedAt: "2026-07-22T11:30:00.000Z" }],
     ...(authorityTrace ? { authorityTrace: [authorityTrace] } : {})
   };
 }

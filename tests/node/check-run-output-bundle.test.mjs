@@ -70,7 +70,7 @@ function passedRun() {
       {
         id: "evidence.tests",
         claimId: "claim.quality.tests",
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: "ci:1",
         excerptOrSummary: "tests passed",
@@ -78,7 +78,7 @@ function passedRun() {
         collectedBy: "ci"
       }
     ],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [
       {
         id: "event.tests.verified",
@@ -126,12 +126,12 @@ test("run-output bundle validates against Hachure schema and Surface", () => {
   for (const ev of bundle.evidence) {
     assert.ok(ev.metadata?.bundleReference, "evidence carries a bundleReference");
     assert.ok(!("claims" in ev), "evidence does not inline child claims");
-    assert.equal(ev.metadata.bundleReference.statusFunctionVersion, "2");
+    assert.equal(ev.metadata.bundleReference.statusFunctionVersion, "4");
     assert.ok(ev.metadata.bundleReference.asOf, "reference pins asOf");
   }
 });
 
-test("run verified is a Surface rollup (all-required claimGroup), not Flow-computed", () => {
+test("a passed stage without reference evidence cannot certify a run through Surface", () => {
   const { definition, state, manifest } = passedRun();
   const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
 
@@ -142,11 +142,11 @@ test("run verified is a Surface rollup (all-required claimGroup), not Flow-compu
   const report = buildTrustReport(validateTrustBundle(bundle), { now: NOW });
   // All member stages derive verified, so the run-verified rollup is satisfied.
   for (const claim of report.claims) {
-    assert.equal(claim.status, "verified", `${claim.id} should derive verified`);
+    assert.equal(claim.status, claim.id.endsWith(".plan") ? "proposed" : "verified", claim.id);
   }
   const rollup = report.claimGroupRollups.find((g) => g.id === bundle.claimGroups[0].id);
   assert.ok(rollup, "claim group rollup is present");
-  assert.equal(rollup.status, "verified", "Surface rolls up the run as verified");
+  assert.notEqual(rollup.status, "verified", "Missing plan attestation prevents verified rollup");
 });
 
 test("run-output bundle round-trips as evidence into a parent flow's gate", () => {

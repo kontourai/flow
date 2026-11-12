@@ -196,8 +196,8 @@ test("Surface-accepted claim freshness and event chronology retain exact RFC3339
     createdAt: "2026-06-16T00:00:00.00009Z"
   });
   const ambiguousOutcome = evaluate(sameMillisecondConflict, now);
-  assert.equal(ambiguousOutcome.status, "route-back", "lossy same-millisecond event ordering must not choose an authorization result");
-  assert.equal(claimDiagnostic(ambiguousOutcome)?.reason, "claim_time_ambiguous");
+  assert.equal(ambiguousOutcome.status, "route-back", "status function 4 must select the exactly later rejection");
+  assert.equal(claimDiagnostic(ambiguousOutcome)?.reason, "rejected");
 
   const assumedWithExpiry = await passingFixture();
   assumedWithExpiry.evidence[0].bundle.claims[0].expiresAt = "2026-06-15T00:00:00.00005Z";
@@ -777,7 +777,7 @@ test("exact reconciliation fences future facts, duration freshness, and resoluti
   });
   const resolutionOutcome = evaluate(resolutionWithNewerBlockingEvidence, now);
   assert.equal(resolutionOutcome.status, "route-back", "a blocking failure exactly newer than a resolution must re-open the dispute");
-  assert.equal(claimDiagnostic(resolutionOutcome)?.reason, "claim_time_ambiguous");
+  assert.equal(claimDiagnostic(resolutionOutcome)?.reason, "disputed");
 
   const citedOnlyFailure = structuredClone(resolutionWithNewerBlockingEvidence);
   citedOnlyFailure.evidence[0].bundle.evidence.at(-1).supportStrength = "cited";
@@ -825,7 +825,7 @@ test("producer authority binds to Surface's governing authorization event, never
   bundle.evidence.push({
     id: "evidence.quality.tests.untrusted",
     claimId: "claim.quality.tests.verify",
-    evidenceType: "test_output",
+    evidenceType: "test_output", passing: true,
     method: "validation",
     sourceRef: "ci:untrusted",
     excerptOrSummary: "new untrusted verification",
@@ -856,7 +856,7 @@ test("event-driven stale binds its invalidation event instead of a historical ve
   manifest.evidence[0].bundle.evidence.push({
     id: "evidence.quality.tests.revoked-untrusted",
     claimId: "claim.quality.tests.verify",
-    evidenceType: "test_output",
+    evidenceType: "test_output", passing: true,
     method: "validation",
     sourceRef: "ci:untrusted",
     excerptOrSummary: "untrusted revocation",
@@ -959,7 +959,7 @@ test("governing-event actor binding preserves linked collectors and explicit eva
   unrelatedCollector.evidence[0].bundle.evidence.push({
     id: "evidence.quality.tests.unrelated",
     claimId: "claim.quality.tests.verify",
-    evidenceType: "test_output",
+    evidenceType: "test_output", passing: true,
     method: "validation",
     sourceRef: "ci:unrelated",
     excerptOrSummary: "not referenced by the governing event",
@@ -985,7 +985,7 @@ test("governing-event actor binding preserves linked collectors and explicit eva
   historicalCollector.evidence[0].bundle.evidence.push({
     id: "evidence.quality.tests.historical",
     claimId: "claim.quality.tests.verify",
-    evidenceType: "test_output",
+    evidenceType: "test_output", passing: true,
     method: "validation",
     sourceRef: "ci:historical",
     excerptOrSummary: "historical collector",

@@ -14,7 +14,7 @@ jobs:
   gate:
     uses: kontourai/.github/.github/workflows/docs-gate.yml@main
     with:
-      corpus-ref: b127e35a818b532369843731b3c64792baade83e
+      corpus-ref: 7c5ce04a3db278169da85bded2e25bb2cd92dc29
   pages:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: gate

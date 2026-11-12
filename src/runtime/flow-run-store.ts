@@ -386,7 +386,12 @@ export async function scaffoldDemoRun(cwd = process.cwd()) {
         collectedBy: "demo/reviewer"
       }
     ],
-    policies: [],
+    policies: [{
+      id: "policy.flow.attestation", claimType: "builder.acceptance",
+      requiredEvidence: ["human_attestation"], requiredMethods: ["attestation"],
+      acceptanceCriteria: ["Recorded producer attestation"], reviewAuthority: "Flow producer",
+      validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium"
+    }],
     events: [
       {
         id: "event.builder.acceptance.demo.verified",
@@ -3139,7 +3144,7 @@ export function reDeriveBundleReports(manifest: any, now: Date | string): Mutabl
       });
     let liveReport: any;
     try {
-      const surfaceReport = buildTrustReport(validated, since && !requiresFullRefold ? { now: surfaceNow, since } : { now: surfaceNow });
+      const surfaceReport = buildTrustReport(validated, since && !requiresFullRefold ? { now: surfaceNow, since, statusFunctionVersion: "4" } : { now: surfaceNow, statusFunctionVersion: "4" });
       const reconciled = reconcileSurfaceBundleReport(validated, surfaceReport, exactNow);
       liveReport = reconciled.report;
     } catch {

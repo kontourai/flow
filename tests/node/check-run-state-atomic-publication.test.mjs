@@ -58,7 +58,7 @@ function planBundle(index) {
       createdAt: "2026-07-10T00:00:00.000Z",
       verifiedAt: "2026-07-10T00:00:00.000Z"
     }],
-    policies: []
+    policies: [{ id: "policy.fixture", claimType: "builder.acceptance", requiredEvidence: ["attestation"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }]
   };
 }
 

@@ -30,7 +30,28 @@
       "blocking": true
     }
   ],
-  "policies": [],
+  "policies": [
+    {
+      "id": "policy.claim.quality.tests.release-worker",
+      "claimType": "quality.tests",
+      "requiredEvidence": [
+        "test_output"
+      ],
+      "requiredMethods": [
+        "validation"
+      ],
+      "acceptanceCriteria": [
+        "Recorded fixture evidence"
+      ],
+      "reviewAuthority": "scenario producer",
+      "validityRule": {
+        "kind": "historical"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "medium"
+    }
+  ],
   "events": [
     {
       "id": "event.quality.tests.release-worker.verified",
@@ -38,7 +59,9 @@
       "status": "verified",
       "actor": "ci",
       "method": "npm test",
-      "evidenceIds": ["evidence.quality.tests.release-worker"],
+      "evidenceIds": [
+        "evidence.quality.tests.release-worker"
+      ],
       "createdAt": "2026-07-16T16:00:01.000Z",
       "verifiedAt": "2026-07-16T16:00:01.000Z"
     }

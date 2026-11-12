@@ -124,7 +124,12 @@ function releaseEvidenceEntry(fields: MutableRecord): FlowEvidenceEntry {
           collectedBy: producer
         }
       ],
-      policies: [],
+      policies: [{
+        id: "policy.flow.attestation", claimType: claim.type,
+        requiredEvidence: ["human_attestation"], requiredMethods: ["attestation"],
+        acceptanceCriteria: ["Recorded producer attestation"], reviewAuthority: "Flow producer",
+        validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium"
+      }],
       events: [
         {
           id: eventId,
