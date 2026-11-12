@@ -370,3 +370,34 @@ test("exact status correction recomputes Surface conflict gaps and summary", () 
   assert.ok(report.transparencyGaps.some((gap) => gap.id === "evidence-authored-contradiction" && gap.metadata?.source === "evidence.metadata.transparencyGapHints"), "evidence-authored contradiction hints survive policy-conflict recomputation");
   assert.equal(report.summary.transparencyGapsByType.contradiction, 1);
 });
+
+test("stale reason summaries preserve Surface reasons and exact-clock correction reasons", async () => {
+  const { buildTrustReport } = await import("@kontourai/surface");
+  const { reconcileSurfaceBundleReport } = await import("../../dist/gates/flow-gates.js");
+  for (const [reason, change] of [
+    ["intrinsic-window", b => { b.claims[0].expiresAt = "2026-06-10T00:00:00.00005Z"; }],
+    ["ttl", b => { delete b.claims[0].expiresAt; b.claims[0].ttlSeconds = 0.00005; }],
+    ["duration", b => { delete b.claims[0].expiresAt; b.policies[0].validityRule = { kind: "duration", durationDays: 0.000000001 }; }]
+  ]) {
+    const bundle = freshnessBearingManifest().evidence[0].bundle;
+    change(bundle);
+    const floor = buildTrustReport(bundle, { now: new Date(T0), statusFunctionVersion: "4" });
+    assert.equal(floor.claims[0].status, "verified");
+    const corrected = reconcileSurfaceBundleReport(bundle, floor, "2026-06-10T00:00:00.0001Z").report;
+    assert.equal(corrected.claims[0].status, "stale", reason);
+    assert.deepEqual(corrected.summary.staleReasonByClaimId, { "claim.window": reason });
+    const later = buildTrustReport(bundle, { now: new Date(T1), statusFunctionVersion: "4" });
+    assert.equal(later.summary.staleReasonByClaimId["claim.window"], reason);
+    assert.deepEqual(reconcileSurfaceBundleReport(bundle, later, T1).report.summary.staleReasonByClaimId, later.summary.staleReasonByClaimId);
+  }
+  const bundle = freshnessBearingManifest().evidence[0].bundle;
+  bundle.claims[0].expiresAt = "2026-06-10T00:00:00.00005Z";
+  bundle.claims.push({ ...bundle.claims[0], id: "derived", derivedFrom: ["claim.window"] });
+  delete bundle.claims[1].expiresAt;
+  bundle.evidence.push({ ...bundle.evidence[0], id: "derived-evidence", claimId: "derived" });
+  bundle.events.push({ ...bundle.events[0], id: "derived-event", claimId: "derived", evidenceIds: ["derived-evidence"] });
+  const floor = buildTrustReport(bundle, { now: new Date(T0), statusFunctionVersion: "4" });
+  const corrected = reconcileSurfaceBundleReport(bundle, floor, "2026-06-10T00:00:00.0001Z").report;
+  assert.deepEqual(corrected.summary.staleReasonByClaimId, { "claim.window": "intrinsic-window", derived: "derived-input" });
+  assert.deepEqual(floor.summary.staleReasonByClaimId, {}, "reconciliation does not mutate the Surface report");
+});

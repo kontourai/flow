@@ -210,6 +210,11 @@ export function renderMarkdownReport(definition, state, manifest) {
     if (gate.optional_missing?.length) lines.push(`  - Optional missing: ${gate.optional_missing.map(evidenceLabel).map(markdownText).join(", ")}`);
     if (gate.diagnostics?.claim_evaluation?.length) {
       lines.push(`  - Claim diagnostics: ${gate.diagnostics.claim_evaluation.map((entry) => markdownText(`${entry.expectation_id}/${entry.evidence_id}:${entry.reason}`)).join(", ")}`);
+      for (const entry of gate.diagnostics.claim_evaluation) {
+        for (const gap of entry.surface_gaps ?? []) {
+          lines.push(`    - ${markdownText(`${gap.reason} (${gap.type}): ${gap.message}`)}`);
+        }
+      }
     }
     if (gate.evidence_refs.length) lines.push(`  - Evidence: ${gate.evidence_refs.map(markdownText).join(", ")}`);
     if (gate.status === "route-back" || gate.limit_exceeded) {
@@ -273,7 +278,7 @@ export function renderSummary(definition, state, reportPath = `.kontourai/flow/r
       }
     }
     if (outcome?.diagnostics?.claim_evaluation?.length) {
-      lines.push(`      claim diagnostics: ${outcome.diagnostics.claim_evaluation.map((entry) => entry.reason).join(", ")}`);
+      lines.push(`      claim diagnostics: ${outcome.diagnostics.claim_evaluation.map((entry) => [entry.specific_reason ?? entry.reason, ...(entry.surface_gaps ?? []).map((gap) => `${gap.type}: ${gap.message}`)].join("; ")).join(", ")}`);
     }
     if (outcome?.status === "route-back" || outcome?.limit_exceeded) {
       const attempt = outcome.attempt ? `${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "n/a";

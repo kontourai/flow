@@ -730,3 +730,19 @@ Exceptions remain visible without upgrading trust. Reference records retain the 
 falling back to the current function when that field is absent. The nested Surface panel also adopts Surface 6's
 basis, gap labels, visibility and erasure projections; Flow does not use the
 removed caller-asserted assessment-v1 API.
+
+Run-output reference attestations now require current verified support, not the
+presence of a bundle attachment or a cached report. Flow re-derives the child
+bundle at the projection instant. For outcomes with match metadata, only the
+claim IDs actually matched by a passing gate can back a reference; unmatched
+optional evidence does not certify a run. Outcomes without legacy match metadata
+require all referenced claims to re-derive verified. A stored 5.4.0 pass whose
+child now derives proposed therefore produces a proposed run-output stage, even
+if its cached report still says verified. Unrelated proposed claims do not veto
+a current matched verified claim.
+
+Claim diagnostics add `specific_reason` and `surface_gaps` while retaining the
+existing coarse `reason` and route-reason values. Reports carry Surface's gap
+types and messages; see [actionable claim diagnostics](gates-and-route-back.md#actionable-claim-diagnostics).
+A qualifying reference cannot hide a different recorded match that no longer
+qualifies: all recorded matches for a stage must retain qualifying references.

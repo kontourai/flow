@@ -79,3 +79,8 @@ Dependency updates use weekly Dependabot jobs for npm and GitHub Actions. The
 local Corpus commands and shared docs gate use the same pinned Corpus revision;
 update them together. The toolchain currently uses pnpm 12.18.0 and TypeScript
 7.0.2, with Node 22 and 24 checked by CI.
+
+Dependabot's npm updates use a one-day cooldown, matching the 24-hour pnpm
+release-age floor. Automatic semver-major updates for `@kontourai/surface` and
+`hachure` are ignored so changes to trust semantics receive deliberate migration
+review. Other dependency updates keep the weekly schedule.

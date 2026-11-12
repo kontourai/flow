@@ -5,6 +5,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
+    ignore:
+      - dependency-name: "@kontourai/surface"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "hachure"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-dependencies:
         dependency-type: development

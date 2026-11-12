@@ -30,6 +30,25 @@ its stricter exact evaluation-clock and authority-scope fences. Unknown bundle
 keys and duplicate claim/evidence identifiers are invalid. Existing stored
 bundles are re-derived under these rules and may stop satisfying a gate.
 
+### Actionable claim diagnostics
+
+Failed trust-bundle expectations retain their existing coarse `reason` codes
+(such as `rejected`, `disputed`, `stale`, or `bundle_invalid`) and existing
+`route_reason` values. Each diagnostic can additionally carry `specific_reason`
+and `surface_gaps`: the blocking gaps for the selected claims, each with its
+Surface `type`, `message`, claim identity, and specific `reason`. These details
+appear in the gate outcome, JSON Flow Report, Markdown report, and CLI summary.
+They explain the required repair without changing routing or retry budgets.
+
+Policy detail codes include `policy_unresolved`, `policy_unresolved_reference`,
+`policy_requires_nothing`, and `check_result_missing`. Other codes distinguish
+failed checks, missing evidence, unsatisfied methods, corroboration, unsupported
+inference, and unevaluable validity. Surface messages are retained rather than
+replaced with a generic rejection. A dangling policy remains structurally
+invalid; its explanatory Surface fold is display-only and cannot authorize a
+transition. Fix the referenced policy or provide the missing check result, then
+attach the corrected evidence through the normal supersession path.
+
 ### Reported gate status vs gate outcome
 
 A gate's *outcome* (`pass`, `block`, `route-back`, `wait`) is what an evaluation

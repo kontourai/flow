@@ -715,3 +715,81 @@ test("Surface 6 migration refuses policy-free and result-less verified events", 
     assert.notEqual(evaluate(manifest).status, "pass", mutation);
   }
 });
+
+test("Surface 6 blocking gaps retain specific reasons and messages in gate outcomes and reports", async () => {
+  const { buildTrustReport } = await import("@kontourai/surface");
+  const { reportJson, renderMarkdownReport, renderSummary } = await import("../../dist/index.js");
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const now = new Date("2026-06-16T00:00:00Z");
+  const cases = [
+    ["no policy", "policy_unresolved", b => { delete b.claims[0].verificationPolicyId; b.policies = []; }],
+    ["dangling policy", "policy_unresolved_reference", b => { b.claims[0].verificationPolicyId = "absent"; }],
+    ["empty policy", "policy_requires_nothing", b => { b.policies[0].requiredEvidence = []; b.policies[0].requiredMethods = []; }],
+    ["no check result", "check_result_missing", b => { delete b.evidence[0].passing; }],
+    ["failed check", "check_failed", b => { b.evidence[0].passing = false; }],
+    ["failed cited check", "check_failed", b => { b.evidence[0].passing = false; b.evidence[0].supportStrength = "cited"; }],
+    ["missing evidence", "required_evidence_missing", b => { b.evidence = []; b.events[0].evidenceIds = []; }],
+    ["missing method", "verification_method_unsatisfied", b => { b.policies[0].requiredMethods = ["observation"]; }],
+    ["corroboration", "corroboration_missing", b => { b.policies[0].requiresCorroboration = true; }],
+    ["conflicting values", "claim_conflict", b => {
+      delete b.evidence[0].passing;
+      b.policies[0].incompatibleValues = [{ values: [b.claims[0].value, "rival"], message: "Two incompatible reviewed values." }];
+      b.claims.push({ ...b.claims[0], id: "rival", value: "rival" });
+    }],
+    ["unevaluable validity", "validity_unevaluable", b => { delete b.claims[0].currentIntegrityRef; }]
+  ];
+  const observed = new Set(), observedTypes = new Set();
+  for (const [label, specific, mutate] of cases) {
+    const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+    const bundle = manifest.evidence[0].bundle;
+    mutate(bundle);
+    const state = initialState(definition, "gap-diagnostics"); state.current_step = "verify";
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig(), now);
+    assert.equal(outcome.status, "route-back", label);
+    assert.equal(outcome.route_reason, "missing_evidence", label);
+    const diagnostic = outcome.diagnostics.claim_evaluation[0];
+    assert.ok(["rejected", "disputed", "stale", "bundle_invalid"].includes(diagnostic.reason), `${label}: legacy coarse codes are stable: ${JSON.stringify(diagnostic)}`);
+    assert.equal(typeof diagnostic.specific_reason, "string", label);
+    if (["no policy", "dangling policy", "empty policy", "no check result"].includes(label)) assert.equal(diagnostic.specific_reason, specific, label);
+    const wanted = diagnostic.surface_gaps.find(gap => gap.reason === specific);
+    assert.ok(wanted, `${label}: ${JSON.stringify(diagnostic)}`);
+    const surfaceGaps = buildTrustReport(bundle, { now, statusFunctionVersion: "4" }).transparencyGaps.filter(gap => gap.blocking !== false);
+    for (const gap of surfaceGaps) {
+      const carried = diagnostic.surface_gaps.find(item => item.id === gap.id);
+      assert.ok(carried, `${label}: missing ${gap.id}`);
+      assert.equal(carried.type, gap.type); assert.equal(carried.message, gap.message);
+      observed.add(carried.reason); observedTypes.add(carried.type);
+    }
+    state.gate_outcomes = [outcome];
+    const report = reportJson(definition, state, manifest);
+    assert.deepEqual(report.gate_summaries[0].diagnostics, outcome.diagnostics);
+    assert.ok(renderMarkdownReport(definition, state, manifest).replaceAll("\\(", "(").replaceAll("\\)", ")").includes(wanted.message), label);
+    assert.ok(renderSummary(definition, state).includes(wanted.message), label);
+  }
+  for (const reason of ["policy_unresolved", "policy_unresolved_reference", "policy_requires_nothing", "check_result_missing", "check_failed", "required_evidence_missing", "verification_method_unsatisfied", "corroboration_missing", "validity_unevaluable", "evidence_not_entailing", "verification_stale", "claim_conflict"]) assert.ok(observed.has(reason), reason);
+  assert.deepEqual([...observedTypes].sort(), ["contradiction", "corroboration_absent", "freshness_breach", "policy_violation", "provenance_gap", "unsupported_inference"]);
+});
+
+test("persisted Flow Reports explain unresolved Surface policy without changing routing", async t => {
+  const { mkdtemp, writeFile, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { startRun, attachEvidence, evaluateRun } = await import("../../dist/index.js");
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-policy-report-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const bundle = manifest.evidence[0].bundle;
+  delete bundle.claims[0].verificationPolicyId; bundle.policies = [];
+  const file = path.join(cwd, "definition.json"), evidence = path.join(cwd, "bundle.json");
+  await writeFile(file, JSON.stringify(definition)); await writeFile(evidence, JSON.stringify(bundle));
+  const run = await startRun(file, { cwd, runId: "policy-report" });
+  await attachEvidence(run.runId, { cwd, gate: "verify-gate", file: evidence, kind: "trust.bundle" });
+  const result = await evaluateRun(run.runId, { cwd, gate: "verify-gate" });
+  const outcome = result.outcomes[0];
+  assert.equal(outcome.route_reason, "missing_evidence");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].specific_reason, "policy_unresolved");
+  const report = JSON.parse(await readFile(path.join(run.dir, "report.json"), "utf8"));
+  assert.deepEqual(report.gate_summaries[0].diagnostics, outcome.diagnostics);
+  assert.match(await readFile(path.join(run.dir, "report.md"), "utf8"), /has no resolved verification policy/);
+});

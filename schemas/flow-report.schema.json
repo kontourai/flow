@@ -89,7 +89,7 @@
           "limit_exceeded": { "type": "boolean" },
           "expectation_ids": { "type": "array", "items": { "type": "string" } },
           "classifier": { "type": "object", "additionalProperties": true },
-          "diagnostics": { "type": "object", "additionalProperties": true },
+          "diagnostics": { "type": "object", "additionalProperties": true, "description": "Claim evaluation entries retain coarse reason codes and may add specific_reason plus surface_gaps containing Surface gap type, message, claim identity and detail reason." },
           "analytics": { "type": "object", "additionalProperties": true },
           "analytics_loop_key": { "type": "string" },
           "missing": { "type": "array", "items": { "type": "string" } },
