@@ -121,6 +121,7 @@ Flow consumes a neutral bundle shape:
       "id": "evidence.quality.tests.output",
       "claimId": "claim.quality.tests.verify",
       "evidenceType": "test_output",
+      "passing": true,
       "method": "validation",
       "sourceRef": "ci:run-1847",
       "excerptOrSummary": "All test suites passed.",
@@ -128,7 +129,18 @@ Flow consumes a neutral bundle shape:
       "collectedBy": "ci/main"
     }
   ],
-  "policies": [],
+  "policies": [{
+    "id": "policy.quality.tests",
+    "claimType": "quality.tests",
+    "requiredEvidence": ["test_output"],
+    "requiredMethods": ["validation"],
+    "acceptanceCriteria": ["Recorded passing test output"],
+    "reviewAuthority": "CI policy",
+    "validityRule": { "kind": "historical" },
+    "stalenessTriggers": [],
+    "conflictRules": [],
+    "impactLevel": "high"
+  }],
   "events": [
     {
       "id": "event.quality.tests.verified",
@@ -174,7 +186,7 @@ The 16,384 ceiling gives this normal input room to grow while retaining the
 independent multiplicative caps. Flow refuses over-budget attachments with
 `trust bundle exceeds Flow Surface derivation budget`; gate evaluation reports
 `bundle_invalid`. The acceptance-policy change is bound to trust attachment
-reducer version `1.3.8` and its identity hash.
+reducer version `2.0.0` and its identity hash.
 
 ## The run-output TrustBundle
 
@@ -245,6 +257,8 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | --- | --- |
 | `stale` | the artifact expired or fails freshness checks |
 | `rejected` | the claim status is not an accepted status |
+| `disputed` | Surface derives a dispute, including a blocking failed check |
+| `bundle_invalid` | structural validation failed; additive details can identify an unresolved policy reference |
 | `untrusted_producer` | an otherwise matching claim has no configured `producerId` or active scoped embedded authority trace; `diagnostics.claim_evaluation[].authority.code` names failures such as `no_trace`, `authority_ref_mismatch`, `subject_mismatch`, `scope_mismatch`, `actor_mismatch`, `not_yet_valid`, `expired`, or `revoked` |
 | `integrity_mismatch` | the copied artifact no longer matches its recorded integrity metadata |
 | `subject_mismatch` | the claim subject does not match the expectation |
@@ -253,6 +267,22 @@ Unsatisfied artifacts are never hidden as generic missing evidence. Reports carr
 | `gate_reentry_timestamp_invalid` | the transition back into the gate has an invalid timestamp |
 | `attachment_timestamp_invalid` | the evidence attachment timestamp is invalid |
 | `attachment_not_current` | the evidence attachment predates the current gate visit |
+| `specific_reason` | additive headline detail; the existing coarse `reason`, status and `route_reason` remain unchanged. Explicit failed checks take priority, followed by unevaluable validity, rather than the first gap carrying a source |
+| `surface_gaps` | blocking gap records with `id`, `claim_id`, `type`, display-safe `message`, and detail `reason`; at most 32 records total per gate outcome, including across multiple selectors and evidence bundles |
+| `surface_gaps_truncated` | true on a diagnostic and/or the outcome diagnostic payload when additional gaps were omitted; JSON retains the flag and text renderers display an explicit truncation marker |
+| `check_failed` (specific reason) | a result is present with `passing: false`; fix and rerun the failing check before attaching a new authentic result |
+| `check_result_missing` (specific reason) | the required check did not report its result; collect and record the actual result |
+| `validity_unevaluable` (specific reason) | validity cannot be evaluated; this takes priority over a generic `verification_stale` detail |
+| `policy_unresolved`, `policy_unresolved_reference`, `policy_requires_nothing` (specific reasons) | provide the intended policy, repair its reference, or state actual verification requirements |
+| `required_evidence_missing`, `verification_method_unsatisfied`, `corroboration_missing`, `evidence_not_entailing`, `claim_conflict`, `verification_stale` (specific reasons) | distinguish the remaining Surface gap kinds; each retained gap carries its own type and repair message |
+
+Gap text is untrusted producer data, including for unmatched bundles from
+unauthorized producers. Text fields are bounded to 1,024 UTF-16 units with an
+explicit ` [truncated]` marker, controls/newlines are visibly escaped, and
+Markdown formatting controls remain literal. These bounds are applied when gaps
+are collected, before state is published, and again when projecting legacy
+stored diagnostics into JSON, Markdown and CLI output. Gap-count truncation does
+not discard the specific headline reason. Original bundles remain audit input.
 
 Trusted producer mappings and gate overrides live in `.flow/config.json` — see [Project Config](project-config.md). `--authority-trace` and attachment `authorityTrace(s)` were removed: opaque manifest metadata has zero trust weight. Put validated rich authority records in the `trust.bundle` itself; unknown or removed attachment options reject before evidence is copied.
 
@@ -284,3 +314,7 @@ To recover after failed evidence routed work back, attach the replacement with `
 The CLI attaches evidence from files; `flow capture` first creates such a file
 for a declared command. Richer adapters — CI jobs, agent harness hooks, release
 tooling — can write the same manifest shape directly through the [library API](library.md).
+
+Flow's demo and release-evidence adapters declare historical verification
+policies requiring their recorded human attestations. External bundles receive
+no inferred policy or passing result: producers must supply those facts.

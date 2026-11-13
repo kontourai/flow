@@ -12,7 +12,7 @@ npm test
 
 `npm run build` syncs Console Kit assets, compiles the TypeScript runtime, compiles the local console UI, and writes package output under `dist/`.
 
-`npm test` runs the full local lane: build, Node contract checks, local console smoke, and Playwright browser tests. CI and npm publication pin browser-installing jobs to Ubuntu 24.04: the pinned Playwright 1.60.0 does not support Ubuntu 26.04. Keep the runner and browser dependency support aligned when upgrading either.
+`npm test` runs the full local lane: build, Node contract checks, local console smoke, and Playwright browser tests. CI and npm publication pin browser-installing jobs to Ubuntu 24.04: the pinned Playwright 1.65.0 does not support Ubuntu 26.04. Keep the runner and browser dependency support aligned when upgrading either.
 
 ## Optional Git Hooks
 
@@ -74,3 +74,15 @@ npm pack --dry-run --cache /private/tmp/flow-npm-cache
 ```
 
 Publishing is handled by the repository's tag-triggered GitHub workflow after the release PR is merged.
+
+Dependency updates use weekly Dependabot jobs for npm and GitHub Actions. The
+local Corpus commands and shared docs gate use the same pinned Corpus revision;
+update them together. The toolchain currently uses pnpm 12.18.0 and TypeScript
+7.0.2, with Node 22 and 24 checked by CI.
+
+Dependabot's third-party npm updates use a one-day cooldown, matching the
+24-hour pnpm release-age floor. `@kontourai/*` is exempt from both pnpm's floor
+and Dependabot's cooldown, so first-party packages remain available immediately.
+Automatic semver-major updates for `@kontourai/surface` and
+`hachure` are ignored so changes to trust semantics receive deliberate migration
+review. Other dependency updates keep the weekly schedule.

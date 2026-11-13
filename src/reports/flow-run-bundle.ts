@@ -1,6 +1,9 @@
-import { statusFunctionVersion } from "@kontourai/surface";
+import { statusFunctionVersion, buildTrustReport, validateTrustBundle } from "@kontourai/surface";
 
 import type { FlowEvidenceEntry, MutableRecord } from "../contracts/flow-types.js";
+import { surfaceDerivationWithinBudget } from "../gates/surface-derivation-budget.js";
+import { reconcileSurfaceBundleReport } from "../gates/flow-gates.js";
+import { surfaceTimestampValidationView } from "../shared/rfc3339.js";
 import { stageStatuses, normalizeFlowDefinition } from "../definition/flow-definition.js";
 
 /**
@@ -148,20 +151,42 @@ function stagePassedOnOutcomes(status: string, stepGateIds: string[], state: any
 
 /**
  * Extract a by-reference pointer to each gate-evidence bundle backing a step's
- * gates. Returns one ref per trust.bundle evidence entry — id + selector +
+ * gates. Returns refs only for currently qualifying trust.bundle matches — id + selector +
  * statusFunctionVersion + asOf — without inlining the child ledger.
  */
 function bundleReferencesForStep(
   stepGateIds: string[],
   evidence: FlowEvidenceEntry[],
   asOf: string,
+  state: any,
 ): MutableRecord[] {
   const refs: MutableRecord[] = [];
   for (const entry of evidence) {
     if (entry.superseded_by) continue;
     if (!entry.gate_id || !stepGateIds.includes(entry.gate_id)) continue;
     if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") continue;
-    const report: any = entry.bundle_report;
+    const outcome = state.gate_outcomes?.find((candidate: any) => candidate.gate_id === entry.gate_id);
+    if (outcome?.status !== "pass" || entry.status === "failed") continue;
+    const matches = outcome.matched_expectations;
+    const matchedClaims = Array.isArray(matches)
+      ? matches.filter((match: any) => match.evidence_id === entry.id).flatMap((match: any) => match.claim_ids ?? [])
+      : null;
+    if (matchedClaims !== null && matchedClaims.length === 0) continue;
+    let report: any;
+    try {
+      if (!surfaceDerivationWithinBudget(entry.bundle)) continue;
+      const bundle = validateTrustBundle(surfaceTimestampValidationView(entry.bundle));
+      const folded = buildTrustReport(bundle, { now: new Date(asOf), statusFunctionVersion: "4" });
+      const reconciled = reconcileSurfaceBundleReport(bundle, folded, asOf);
+      report = reconciled.report;
+      const selected = matchedClaims === null ? report.claims
+        : matchedClaims.map((id: string) => report.claims.find((claim: any) => claim.id === id));
+      if (!selected.length || selected.some((claim: any) => !claim || claim.status !== "verified" || reconciled.diagnostics.has(claim.id))) continue;
+      report = { ...report, claims: selected };
+    } catch {
+      // A historical pass or cached report is not current qualifying support.
+      continue;
+    }
     // Cite each derived claim in the child bundle by selector (subjectType +
     // subjectId + claimType), pinned to the version + asOf it was derived at.
     const claimSelectors = Array.isArray(report?.claims)
@@ -179,6 +204,13 @@ function bundleReferencesForStep(
         (report?.statusFunctionVersion as string | undefined) ?? statusFunctionVersion,
       asOf,
     });
+  }
+  // Do not filter away a failed current match while retaining another green
+  // reference from the same stage: every recorded match must remain supported.
+  for (const outcome of state.gate_outcomes ?? []) {
+    if (!stepGateIds.includes(outcome.gate_id) || outcome.status !== "pass" || !Array.isArray(outcome.matched_expectations)) continue;
+    if (outcome.matched_expectations.some((match: any) => !refs.some(ref =>
+      ref.gateId === outcome.gate_id && ref.evidenceId === match.evidence_id))) return [];
   }
   return refs;
 }
@@ -303,7 +335,7 @@ export function projectRunOutputBundle(
     // is only meaningful if Surface receives the failures.
     memberClaimIds.push(claimId);
 
-    const refs = bundleReferencesForStep(gatesByStep.get(step.id) ?? [], evidence, asOf);
+    const refs = bundleReferencesForStep(gatesByStep.get(step.id) ?? [], evidence, asOf, state);
     const waiver = stageWaiver(state, gatesByStep.get(step.id) ?? []);
 
     const claim: MutableRecord = {
@@ -312,6 +344,7 @@ export function projectRunOutputBundle(
       subjectId: `${def.id}:${step.id}`,
       facet: "flow.process",
       claimType: RUN_CLAIM_TYPE,
+      verificationPolicyId: "policy.flow.stage-reference",
       fieldOrBehavior: "stagePassed",
       value: stagePassedOnOutcomes(status, gatesByStep.get(step.id) ?? [], state),
       createdAt: nowIso,
@@ -393,7 +426,17 @@ export function projectRunOutputBundle(
     source: options.source ?? `flow-run:${def.id}:${state.run_id}`,
     claims,
     evidence: bundleEvidence,
-    policies: [],
+    policies: [{
+      id: "policy.flow.stage-reference",
+      claimType: RUN_CLAIM_TYPE,
+      requiredEvidence: ["attestation"],
+      requiredMethods: ["attestation"],
+      requiresCorroboration: false,
+      acceptanceCriteria: ["Stage outcome backed by a referenced gate-evidence bundle"],
+      reviewAuthority: "Flow stage gate evaluation",
+      validityRule: { kind: "historical" },
+      stalenessTriggers: [], conflictRules: [], impactLevel: "medium",
+    }],
     events,
     claimGroups,
   };

@@ -67,7 +67,7 @@ async function retainedReport(runDir: string, entry: any, selection: GateEvaluat
     // never heal the receipt if a manifest is later modified.
     const bundle = JSON.parse(bytes.toString("utf8"));
     const validated = validateTrustBundle(surfaceTimestampValidationView(bundle));
-    return { bundle, report: buildTrustReport(validated, { now: time.surfaceNow }) };
+    return { bundle, report: buildTrustReport(validated, { now: time.surfaceNow, statusFunctionVersion: "4" }) };
   } catch {
     return undefined;
   }

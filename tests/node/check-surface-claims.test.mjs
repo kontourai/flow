@@ -203,7 +203,7 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
         {
           id: "evidence.tests",
           claimId: "claim.quality.tests.verify",
-          evidenceType: "test_output",
+          evidenceType: "test_output", passing: true,
           method: "validation",
           sourceRef: "ci:run",
           excerptOrSummary: "All tests passed.",
@@ -211,7 +211,7 @@ test("trust.bundle gate passes when selected claim status is in accepted_statuse
           collectedBy: "ci/main"
         }
       ],
-      policies: [],
+      policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
       events: [
         {
           id: "event.verified",
@@ -274,14 +274,14 @@ test("trust.bundle claims must be current after a gate is revisited", () => {
     evidence: [{
       id: "evidence.tests",
       claimId: "claim.quality.tests.verify",
-      evidenceType: "test_output",
+      evidenceType: "test_output", passing: true,
       method: "validation",
       sourceRef: "ci:run",
       excerptOrSummary: "All tests passed.",
       observedAt,
       collectedBy: "ci/main"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.verified",
       claimId: "claim.quality.tests.verify",
@@ -545,7 +545,7 @@ test("surface timestamp canonicalization preserves timestamp-shaped claim identi
       {
         id: "evidence.tests",
         claimId,
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: claimId,
         excerptOrSummary: "All tests passed.",
@@ -553,7 +553,7 @@ test("surface timestamp canonicalization preserves timestamp-shaped claim identi
         collectedBy: "ci/main"
       }
     ],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [
       {
         id: "event.verified",
@@ -616,14 +616,14 @@ test("trust.bundle current-visit checks preserve fractional precision and reject
       evidence: [{
         id: "evidence.fractional-precision",
         claimId: "claim.fractional-precision",
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: "ci:run",
         excerptOrSummary: "All tests passed.",
         observedAt: "2026-06-16t00:00:00.0001z",
         collectedBy: "ci/main"
       }],
-      policies: [],
+      policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
       events: [{
         id: "event.fractional-precision.verified",
         claimId: "claim.fractional-precision",
@@ -694,4 +694,250 @@ test("trust.bundle Hachure conformance: test vectors produce expected claim stat
     checked++;
   }
   assert.ok(checked > 0, "should have validated at least one Hachure conformance vector");
+});
+
+test("Surface 6 migration refuses policy-free and result-less verified events", async () => {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const evaluate = manifest => {
+    const state = initialState(definition, "surface-6-policy");
+    state.current_step = "verify";
+    return evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig(), new Date("2026-06-15T00:01:00Z"));
+  };
+  const good = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  assert.equal(evaluate(good).status, "pass");
+  for (const mutation of ["no-policy", "missing-policy", "empty-policy", "missing-result", "failed-check"]) {
+    const manifest = structuredClone(good), bundle = manifest.evidence[0].bundle;
+    if (mutation === "no-policy") { delete bundle.claims[0].verificationPolicyId; bundle.policies = []; }
+    if (mutation === "missing-policy") bundle.claims[0].verificationPolicyId = "absent";
+    if (mutation === "empty-policy") { bundle.policies[0].requiredEvidence = []; bundle.policies[0].requiredMethods = []; }
+    if (mutation === "missing-result") delete bundle.evidence[0].passing;
+    if (mutation === "failed-check") bundle.evidence[0].passing = false;
+    assert.notEqual(evaluate(manifest).status, "pass", mutation);
+  }
+});
+
+test("Surface 6 blocking gaps retain specific reasons and messages in gate outcomes and reports", async () => {
+  const { buildTrustReport } = await import("@kontourai/surface");
+  const { reportJson, renderMarkdownReport, renderSummary } = await import("../../dist/index.js");
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const now = new Date("2026-06-16T00:00:00Z");
+  const cases = [
+    ["no policy", "policy_unresolved", b => { delete b.claims[0].verificationPolicyId; b.policies = []; }],
+    ["dangling policy", "policy_unresolved_reference", b => { b.claims[0].verificationPolicyId = "absent"; }],
+    ["empty policy", "policy_requires_nothing", b => { b.policies[0].requiredEvidence = []; b.policies[0].requiredMethods = []; }],
+    ["no check result", "check_result_missing", b => { delete b.evidence[0].passing; }],
+    ["failed check", "check_failed", b => { b.evidence[0].passing = false; }],
+    ["failed cited check", "check_failed", b => { b.evidence[0].passing = false; b.evidence[0].supportStrength = "cited"; }],
+    ["cited evidence", "evidence_not_entailing", b => { b.evidence[0].supportStrength = "cited"; }],
+    ["missing evidence", "required_evidence_missing", b => { b.evidence = []; b.events[0].evidenceIds = []; }],
+    ["missing method", "verification_method_unsatisfied", b => { b.policies[0].requiredMethods = ["observation"]; }],
+    ["corroboration", "corroboration_missing", b => { b.policies[0].requiresCorroboration = true; }],
+    ["conflicting values", "claim_conflict", b => {
+      delete b.evidence[0].passing;
+      b.policies[0].incompatibleValues = [{ values: [b.claims[0].value, "rival"], message: "Two incompatible reviewed values." }];
+      b.claims.push({ ...b.claims[0], id: "rival", value: "rival" });
+    }],
+    ["unevaluable validity", "validity_unevaluable", b => { delete b.claims[0].currentIntegrityRef; }]
+  ];
+  const observed = new Set(), observedTypes = new Set();
+  for (const [label, specific, mutate] of cases) {
+    const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+    const bundle = manifest.evidence[0].bundle;
+    mutate(bundle);
+    const state = initialState(definition, "gap-diagnostics"); state.current_step = "verify";
+    const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig(), now);
+    assert.equal(outcome.status, "route-back", label);
+    assert.equal(outcome.route_reason, "missing_evidence", label);
+    const diagnostic = outcome.diagnostics.claim_evaluation[0];
+    assert.ok(["rejected", "disputed", "stale", "bundle_invalid"].includes(diagnostic.reason), `${label}: legacy coarse codes are stable: ${JSON.stringify(diagnostic)}`);
+    assert.equal(typeof diagnostic.specific_reason, "string", label);
+    assert.equal(diagnostic.specific_reason, specific, label);
+    const wanted = diagnostic.surface_gaps.find(gap => gap.reason === specific);
+    assert.ok(wanted, `${label}: ${JSON.stringify(diagnostic)}`);
+    const surfaceGaps = buildTrustReport(bundle, { now, statusFunctionVersion: "4" }).transparencyGaps.filter(gap => gap.blocking !== false);
+    for (const gap of surfaceGaps) {
+      const carried = diagnostic.surface_gaps.find(item => item.id === gap.id);
+      assert.ok(carried, `${label}: missing ${gap.id}`);
+      assert.equal(carried.type, gap.type); assert.equal(carried.message, gap.message);
+      observed.add(carried.reason); observedTypes.add(carried.type);
+    }
+    state.gate_outcomes = [outcome];
+    const report = reportJson(definition, state, manifest);
+    assert.deepEqual(report.gate_summaries[0].diagnostics, outcome.diagnostics);
+    const escapedMessage = wanted.message.replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("_", "\\_");
+    assert.ok(renderMarkdownReport(definition, state, manifest).includes(escapedMessage), label);
+    assert.ok(renderSummary(definition, state).includes(wanted.message), label);
+  }
+  for (const reason of ["policy_unresolved", "policy_unresolved_reference", "policy_requires_nothing", "check_result_missing", "check_failed", "required_evidence_missing", "verification_method_unsatisfied", "corroboration_missing", "validity_unevaluable", "evidence_not_entailing", "verification_stale", "claim_conflict"]) assert.ok(observed.has(reason), reason);
+  assert.deepEqual([...observedTypes].sort(), ["contradiction", "corroboration_absent", "freshness_breach", "policy_violation", "provenance_gap", "unsupported_inference"]);
+});
+
+test("persisted Flow Reports explain unresolved Surface policy without changing routing", async t => {
+  const { mkdtemp, writeFile, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { startRun, attachEvidence, evaluateRun } = await import("../../dist/index.js");
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-policy-report-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const bundle = manifest.evidence[0].bundle;
+  delete bundle.claims[0].verificationPolicyId; bundle.policies = [];
+  const file = path.join(cwd, "definition.json"), evidence = path.join(cwd, "bundle.json");
+  await writeFile(file, JSON.stringify(definition)); await writeFile(evidence, JSON.stringify(bundle));
+  const run = await startRun(file, { cwd, runId: "policy-report" });
+  await attachEvidence(run.runId, { cwd, gate: "verify-gate", file: evidence, kind: "trust.bundle" });
+  const result = await evaluateRun(run.runId, { cwd, gate: "verify-gate" });
+  const outcome = result.outcomes[0];
+  assert.equal(outcome.route_reason, "missing_evidence");
+  assert.equal(outcome.diagnostics.claim_evaluation[0].specific_reason, "policy_unresolved");
+  const report = JSON.parse(await readFile(path.join(run.dir, "report.json"), "utf8"));
+  assert.deepEqual(report.gate_summaries[0].diagnostics, outcome.diagnostics);
+  assert.match(await readFile(path.join(run.dir, "report.md"), "utf8"), /has no resolved verification policy/);
+});
+
+async function messageOutcome(message, { blocking = true, now = new Date("2026-06-16T00:00:00Z"), reconcile = false } = {}) {
+  const definition = await surfaceClaimFixture("flow-definition.json");
+  const manifest = await surfaceClaimEvidenceFixture("pass-trust-report.json");
+  const bundle = manifest.evidence[0].bundle;
+  if (reconcile) bundle.claims[0].expiresAt = "2026-06-16T00:00:00.00005Z";
+  else bundle.evidence[0].passing = false;
+  bundle.evidence[0].metadata = { transparencyGapHints: [{ id: "producer-hint", type: "policy_violation", message, blocking }] };
+  const state = initialState(definition, "producer-diagnostic"); state.current_step = "verify";
+  const outcome = evaluateGate(definition, state, manifest, "verify-gate", defaultFlowConfig(), now);
+  state.gate_outcomes = [outcome];
+  return { definition, manifest, state, outcome };
+}
+
+test("producer gap messages are bounded and single-line in outcomes, JSON reports, Markdown and CLI", async () => {
+  const { reportJson, renderMarkdownReport, renderSummary } = await import("../../dist/index.js");
+  for (const payload of [
+    "producer\nstatus: INJECTED_STATUS\r\nnext action: INJECTED_RUN\u2028INJECTED_SEPARATOR",
+    "\u001b[31mRED\u001b[0m\u001b]8;;https://example.invalid\u0007LINK\u001b]8;;\u0007\u009b31m\u202eBIDI",
+    "\u001b".repeat(300),
+    "😀".repeat(600),
+    "producer\nstatus: INJECTED_STATUS\nnext action: INJECTED_RUN\u001b[31m" + "x".repeat(200_000)
+  ]) {
+    const f = await messageOutcome(payload);
+    assert.equal(f.outcome.status, "route-back");
+    const gap = f.outcome.diagnostics.claim_evaluation[0].surface_gaps.find(gap => gap.id === "producer-hint");
+    assert.ok(gap.message.length <= 1024);
+    assert.doesNotMatch(gap.message, /[\u0000-\u001f\u007f-\u009f\p{Cf}\p{Zl}\p{Zp}]/u);
+    assert.ok(gap.message.isWellFormed());
+    if (payload.length > 1024 || payload === "\u001b".repeat(300)) assert.match(gap.message, / \[truncated\]$/);
+    const json = reportJson(f.definition, f.state, f.manifest);
+    const projected = json.gate_summaries[0].diagnostics.claim_evaluation[0].surface_gaps.find(gap => gap.id === "producer-hint");
+    assert.equal(projected.message, gap.message);
+    // Model old persisted outcomes that predate the sanitizer as well.
+    gap.message = payload;
+    const legacy = reportJson(f.definition, f.state, f.manifest).gate_summaries[0].diagnostics.claim_evaluation[0].surface_gaps.find(gap => gap.id === "producer-hint");
+    assert.ok(legacy.message.length <= 1024);
+    assert.doesNotMatch(legacy.message, /[\u0000-\u001f\u007f-\u009f\p{Cf}\p{Zl}\p{Zp}]/u);
+    for (const text of [renderMarkdownReport(f.definition, f.state, f.manifest), renderSummary(f.definition, f.state)]) {
+      assert.ok(text.length < 20_000, "the text projection must not repeat the 200 KB message");
+      assert.doesNotMatch(text, /[\u001b\u0007\u009b\u202e\u2028]/u);
+      assert.doesNotMatch(text, /^status: INJECTED_STATUS\r?$/m);
+      assert.doesNotMatch(text, /^next action: INJECTED_RUN\r?$/m);
+      if (payload.length > 1024) assert.match(text, /truncated/);
+    }
+    assert.equal(gap.message, payload, "rendering does not rewrite the stored audit input");
+  }
+});
+
+test("producer Markdown controls remain literal in the new gap-detail lines", async () => {
+  const { renderMarkdownReport } = await import("../../dist/index.js");
+  const f = await messageOutcome('*bold* _emphasis_ [repair](javascript:alert(1)) <img src=x> `run` ![image](x) |cell| ~~strike~~\n# INJECTED_HEADING');
+  const text = renderMarkdownReport(f.definition, f.state, f.manifest);
+  const detail = text.split("\n").find(line => line.includes("bold"));
+  assert.ok(detail);
+  for (const literal of ['\\*bold\\*', '\\_emphasis\\_', '\\[repair\\]\\(javascript:alert\\(1\\)\\)', '&lt;img src=x&gt;', '\\`run\\`', '\\!\\[image\\]', '\\|cell\\|', '\\~\\~strike\\~\\~', '\\# INJECTED\\_HEADING']) assert.ok(detail.includes(literal), literal);
+  assert.doesNotMatch(text, /^# INJECTED_HEADING$/m);
+  assert.doesNotMatch(detail, /<img|(?<!\\)\[repair\]\(/);
+});
+
+test("non-blocking producer gaps are excluded while blocking gaps remain visible", async () => {
+  const f = await messageOutcome("NON_BLOCKING_ONLY", { blocking: false });
+  const diagnostic = f.outcome.diagnostics.claim_evaluation[0];
+  assert.equal(f.outcome.status, "route-back");
+  assert.ok(diagnostic.surface_gaps.some(gap => gap.reason === "check_failed"));
+  assert.ok(!diagnostic.surface_gaps.some(gap => gap.id === "producer-hint"));
+  assert.ok(!JSON.stringify(diagnostic).includes("NON_BLOCKING_ONLY"));
+});
+
+test("reconciliation diagnostics retain bounded blocking Surface gaps in all reports", async () => {
+  const { reportJson, renderMarkdownReport, renderSummary } = await import("../../dist/index.js");
+  const f = await messageOutcome("RECONCILIATION_GAP\nstatus: INJECTED_STATUS", { reconcile: true, now: "2026-06-16T00:00:00.0001Z" });
+  const diagnostic = f.outcome.diagnostics.claim_evaluation[0];
+  assert.equal(diagnostic.reason, "stale", "the exact-clock reconciliation path governed the refusal");
+  assert.equal(diagnostic.specific_reason, "verification_stale");
+  assert.ok(Array.isArray(diagnostic.surface_gaps), "reconciliation must forward its Surface gaps");
+  const gap = diagnostic.surface_gaps.find(gap => gap.id === "producer-hint");
+  assert.ok(gap); assert.ok(gap.message.includes("RECONCILIATION_GAP"));
+  assert.doesNotMatch(gap.message, /[\n\r]/);
+  assert.deepEqual(reportJson(f.definition, f.state, f.manifest).gate_summaries[0].diagnostics, f.outcome.diagnostics);
+  assert.match(renderSummary(f.definition, f.state), /RECONCILIATION_GAP/);
+  assert.ok(renderMarkdownReport(f.definition, f.state, f.manifest).includes("RECONCILIATION\\_GAP"));
+});
+
+test("failed check detail codes distinguish a negative result from no result", async () => {
+  for (const [passing, expected] of [[false, "check_failed"], [undefined, "check_result_missing"]]) {
+    const f = await messageOutcome("classification");
+    const bundle = f.manifest.evidence[0].bundle;
+    delete bundle.evidence[0].metadata;
+    if (passing === undefined) delete bundle.evidence[0].passing;
+    else bundle.evidence[0].passing = passing;
+    const state = initialState(f.definition, "result-codes"); state.current_step = "verify";
+    const outcome = evaluateGate(f.definition, state, f.manifest, "verify-gate", defaultFlowConfig(), new Date("2026-06-16T00:00:00Z"));
+    assert.equal(outcome.diagnostics.claim_evaluation[0].specific_reason, expected);
+    const gap = outcome.diagnostics.claim_evaluation[0].surface_gaps.find(gap => gap.source === "policy.checkResultMissing");
+    assert.equal(gap.reason, expected);
+    assert.equal(outcome.route_reason, "missing_evidence");
+  }
+});
+
+test("Surface gap counts are bounded per outcome across selectors and unauthorized producers", async () => {
+  const { reportJson, renderMarkdownReport, renderSummary } = await import("../../dist/index.js");
+  const f = await messageOutcome("count");
+  f.definition.gates["verify-gate"].expects.push({ ...f.definition.gates["verify-gate"].expects[0], id: "also-tests" });
+  const entry = f.manifest.evidence[0];
+  entry.producer = "untrusted"; entry.bundle.producerId = "untrusted";
+  entry.bundle.evidence[0].metadata.transparencyGapHints = Array.from({ length: 80 }, (_, i) => ({
+    id: `count-${i}`, type: "policy_violation", message: `PRODUCER_COUNT_${i}`, blocking: true
+  }));
+  f.manifest.evidence.push({ ...structuredClone(entry), id: "ev.second" });
+  const config = defaultFlowConfig(); config.trusted_producers["quality.tests"] = { producers: ["trusted"] };
+  const outcome = evaluateGate(f.definition, f.state, f.manifest, "verify-gate", config, new Date("2026-06-16T00:00:00Z"));
+  const diagnostic = outcome.diagnostics;
+  assert.equal(diagnostic.claim_evaluation.length, 4, "two failed selectors each consider both untrusted bundles");
+  assert.equal(diagnostic.surface_gaps_truncated, true);
+  assert.equal(diagnostic.claim_evaluation.reduce((sum, entry) => sum + entry.surface_gaps.length, 0), 32);
+  for (const entry of diagnostic.claim_evaluation) assert.equal(entry.specific_reason, "check_failed", "headlines remain specific even after display budget exhaustion");
+  f.state.gate_outcomes = [outcome];
+  for (const text of [renderMarkdownReport(f.definition, f.state, f.manifest), renderSummary(f.definition, f.state)]) {
+    assert.match(text, /truncated; maximum 32 per outcome/);
+    assert.ok((text.match(/PRODUCER_COUNT_/g) ?? []).length <= 32);
+  }
+  // Legacy stored outcomes must obey the same aggregate bound when projected.
+  for (const entry of diagnostic.claim_evaluation) entry.surface_gaps = Array.from({ length: 80 }, (_, i) => ({
+    id: `legacy-${i}`, claim_id: "claim", type: "policy_violation", reason: "policy_violation", message: `LEGACY_COUNT_${i}`
+  }));
+  const projected = reportJson(f.definition, f.state, f.manifest).gate_summaries[0].diagnostics;
+  assert.equal(projected.claim_evaluation.reduce((sum, entry) => sum + entry.surface_gaps.length, 0), 32);
+  assert.equal(projected.surface_gaps_truncated, true);
+  for (const text of [renderMarkdownReport(f.definition, f.state, f.manifest), renderSummary(f.definition, f.state)]) assert.ok((text.match(/LEGACY_COUNT_/g) ?? []).length <= 32);
+  // The producer really is unauthorized even when its claim would otherwise match.
+  const passing = structuredClone(f.manifest);
+  for (const entry of passing.evidence) entry.bundle.evidence[0].passing = true;
+  const denied = evaluateGate(f.definition, f.state, passing, "verify-gate", config, new Date("2026-06-16T00:00:00Z"));
+  assert.ok(denied.diagnostics.claim_evaluation.every(entry => entry.reason === "untrusted_producer"));
+});
+
+test("explicit failure and unevaluable validity outrank generic producer gap sources", async () => {
+  const failed = await messageOutcome("producer opinion");
+  assert.equal(failed.outcome.diagnostics.claim_evaluation[0].specific_reason, "check_failed");
+  const bundle = failed.manifest.evidence[0].bundle;
+  bundle.evidence[0].passing = true; delete bundle.claims[0].currentIntegrityRef;
+  const outcome = evaluateGate(failed.definition, failed.state, failed.manifest, "verify-gate", defaultFlowConfig(), new Date("2026-06-16T00:00:00Z"));
+  assert.equal(outcome.diagnostics.claim_evaluation[0].specific_reason, "validity_unevaluable");
+  assert.ok(outcome.diagnostics.claim_evaluation[0].surface_gaps.some(gap => gap.reason === "verification_stale"));
 });

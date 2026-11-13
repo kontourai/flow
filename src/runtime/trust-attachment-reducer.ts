@@ -11,7 +11,7 @@ import { parseRfc3339Timestamp, surfaceTimestampValidationView } from "../shared
 import { buildTrustReport, checkAuthorityActive, validateTrustBundle } from "@kontourai/surface";
 
 /** The independently versioned, pure attachment-reducer contract. */
-export const TRUST_ATTACHMENT_REDUCER_VERSION = "1.3.8";
+export const TRUST_ATTACHMENT_REDUCER_VERSION = "2.0.0";
 export const TRUST_ATTACHMENT_REDUCER_ARTIFACT_ID = "kontourai.flow.trust-attachment-reducer";
 export type TrustAttachmentEvaluationMode = "evaluate" | "attach-only";
 
@@ -31,7 +31,7 @@ export interface TrustAttachmentReducerDependencies {
 }
 
 const reducerSurfaceValidate = (bundle: unknown) => validateTrustBundle(bundle) as MutableRecord;
-const reducerSurfaceBuildReport = (bundle: MutableRecord, options: { now: Date }) => buildTrustReport(bundle as any, options) as MutableRecord;
+const reducerSurfaceBuildReport = (bundle: MutableRecord, options: { now: Date }) => buildTrustReport(bundle as any, { ...options, statusFunctionVersion: "4" }) as MutableRecord;
 const reducerSurfaceCheckAuthority = (actorRef: string, traces: MutableRecord[], now: Date) => checkAuthorityActive(actorRef, traces as any, now);
 
 /**
@@ -40,10 +40,10 @@ const reducerSurfaceCheckAuthority = (actorRef: string, traces: MutableRecord[],
  * closure state while retaining Flow's reducer identity.
  */
 export const FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES: TrustAttachmentReducerDependencies = Object.freeze({
-  hachure: Object.freeze({ package: "hachure" as const, version: "0.15.0", validate: validateTrustBundleSchema }),
+  hachure: Object.freeze({ package: "hachure" as const, version: "0.18.0", validate: validateTrustBundleSchema }),
   surface: Object.freeze({
     package: "@kontourai/surface" as const,
-    version: "2.14.0",
+    version: "6.3.0",
     validate: reducerSurfaceValidate,
     buildReport: reducerSurfaceBuildReport,
     checkAuthorityActive: reducerSurfaceCheckAuthority

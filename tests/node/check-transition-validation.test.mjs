@@ -119,7 +119,7 @@ test("transition validator accepts Resource-shaped request definitions", async (
             observedAt: "2026-06-09T00:00:00.000Z",
             collectedBy: "ci/acceptance"
           }],
-          policies: [],
+          policies: [{ id: "policy.fixture", claimType: "builder.acceptance", requiredEvidence: ["human_attestation"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
           events: [{
             id: "event.builder.acceptance.verified",
             claimId: "claim.builder.acceptance",

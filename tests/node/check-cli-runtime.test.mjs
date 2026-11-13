@@ -1055,7 +1055,7 @@ test("CLI --cwd scopes run lifecycle commands and relative file inputs", async (
       observedAt: "2026-06-10T00:00:00.000Z",
       collectedBy: "cli/acceptance"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "builder.acceptance", requiredEvidence: ["human_attestation"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.builder.acceptance.cwd.verified",
       claimId: "claim.builder.acceptance.cwd",
@@ -1405,14 +1405,14 @@ test("CLI attaches trust.bundle evidence and reports claim diagnostics", async (
     evidence: [{
       id: "evidence.quality.tests.output",
       claimId: "claim.quality.tests.verify",
-      evidenceType: "test_output",
+      evidenceType: "test_output", passing: true,
       method: "validation",
       sourceRef: "ci:run-1",
       excerptOrSummary: "All tests passed.",
       observedAt: "2026-05-26T00:00:00.000Z",
       collectedBy: "ci/main"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.quality.tests.verified",
       claimId: "claim.quality.tests.verify",
@@ -1495,14 +1495,14 @@ test("CLI attach-evidence --trust-artifact is a working deprecated alias for --k
     evidence: [{
       id: "evidence.quality.tests.output",
       claimId: "claim.quality.tests.verify",
-      evidenceType: "test_output",
+      evidenceType: "test_output", passing: true,
       method: "validation",
       sourceRef: "ci:run-1",
       excerptOrSummary: "All tests passed.",
       observedAt: "2026-05-26T00:00:00.000Z",
       collectedBy: "ci/main"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.quality.tests.verified",
       claimId: "claim.quality.tests.verify",

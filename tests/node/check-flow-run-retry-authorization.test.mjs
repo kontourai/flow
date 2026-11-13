@@ -25,11 +25,11 @@ function passingTestsBundle() {
       createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z"
     }],
     evidence: [{
-      id: "evidence.tests", claimId: "claim.quality.tests", evidenceType: "test_output",
+      id: "evidence.tests", claimId: "claim.quality.tests", evidenceType: "test_output", passing: true,
       method: "validation", sourceRef: "ci:1", excerptOrSummary: "tests passed",
       observedAt: "2026-01-01T00:00:00.000Z", collectedBy: "ci"
     }],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [{
       id: "event.tests.verified", claimId: "claim.quality.tests", status: "verified", actor: "ci",
       method: "validation", evidenceIds: ["evidence.tests"], createdAt: "2026-01-01T00:00:00.000Z",

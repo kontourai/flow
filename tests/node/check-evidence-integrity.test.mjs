@@ -84,7 +84,7 @@ function approvalBundle() {
         collectedBy: "approver"
       }
     ],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "approval", requiredEvidence: ["human_attestation"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [
       {
         id: "event.approval.verified",

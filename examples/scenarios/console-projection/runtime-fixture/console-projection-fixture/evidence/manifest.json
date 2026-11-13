@@ -59,7 +59,7 @@
           {
             "id": "evidence.tests.output",
             "claimId": "claim.quality.tests.fixture",
-            "evidenceType": "test_output",
+            "evidenceType": "test_output", "passing": true,
             "method": "validation",
             "sourceRef": "ci:fixture-run",
             "excerptOrSummary": "All fixture tests passed.",
@@ -143,7 +143,7 @@
           {
             "id": "evidence.tests.output",
             "claimId": "claim.quality.tests.fixture",
-            "evidenceType": "test_output",
+            "evidenceType": "test_output", "passing": true,
             "method": "validation",
             "sourceRef": "ci:fixture-run",
             "excerptOrSummary": "All fixture tests passed.",

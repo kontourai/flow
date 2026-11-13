@@ -280,7 +280,7 @@ claim APIs until migrated explicitly.
 
 ### Pure trust attachment reducer
 
-`reduceTrustAttachment()` is the separately versioned `1.3.8` reducer for an
+`reduceTrustAttachment()` is the separately versioned `2.0.0` reducer for an
 OS-owned lifecycle coordinator. It accepts canonical in-memory run state,
 manifest, bundle, attachment metadata (including ID, source digest, and
 timestamp), an explicit `now`, and version-pinned Hachure/Surface dependency
@@ -294,8 +294,8 @@ supersession, and other authority-only synchronization. That mode validates and
 attaches the bundle, derives reports, and deliberately leaves run state and
 route-back accounting unchanged; its write set therefore omits `state.json`.
 
-The reducer exposes one trusted adapter for the locked `hachure@0.15.0` schema
-validator and `@kontourai/surface@2.14.0` validator, report builder, and
+The reducer exposes one trusted adapter for the locked `hachure@0.18.0` schema
+validator and `@kontourai/surface@6.3.0` validator, report builder, and
 authority checker: `FLOW_TRUST_ATTACHMENT_REDUCER_DEPENDENCIES`. The reducer
 requires those exact helper references, snapshots them once, and rejects
 substituted or access-varying adapters before they can make identity and
@@ -711,3 +711,56 @@ behavior is unchanged. Normal loads validate all anchored snapshot bytes/history
 exact receipt disclosure additionally reconfirms the target and canonical state
 durability. Local storage remains trusted: these unsigned commitments detect
 inconsistent history, not an attacker coherently rewriting all state and hashes.
+
+### Surface 6 dependency migration
+
+The default attachment reducer is now `2.0.0`, with Hachure `0.18.0` and
+Surface `6.3.0`. Its identity and dependency-version fields change. Gate reads,
+attachment reduction, and canonical reports explicitly use status function `4`.
+Existing bundles can derive different statuses without any JSON shape change;
+see [Surface 6 status derivation](gates-and-route-back.md#surface-6-status-derivation).
+Reports and checkpoints record status function `4`; checkpoints without matching
+input digests trigger a full fold. Hachure schema versions 5 through 9 are
+accepted, with the constraints of their declared version.
+
+Run-output bundles now declare a historical stage-reference policy requiring
+an `attestation` produced by method `attestation`. A stage without a referenced
+gate-evidence bundle cannot derive verified merely from a verified transition.
+Exceptions remain visible without upgrading trust. Reference records retain the child report's status function,
+falling back to the current function when that field is absent. The nested Surface panel also adopts Surface 6's
+basis, gap labels, visibility and erasure projections; Flow does not use the
+removed caller-asserted assessment-v1 API.
+
+Run-output reference attestations now require current verified support, not the
+presence of a bundle attachment or a cached report. Flow re-derives the child
+bundle at the projection instant. For outcomes with match metadata, only the
+claim IDs actually matched by a passing gate can back a reference; unmatched
+optional evidence does not certify a run. Outcomes with no `matched_expectations`
+field at all require all referenced claims to re-derive verified. A stored 5.4.0 pass whose
+child now derives proposed therefore produces a proposed run-output stage, even
+if its cached report still says verified. Unrelated proposed claims do not veto
+a current matched verified claim.
+
+Runs stored before Flow 5.1 can contain `matched_expectations` entries without
+`claim_ids`. Those entries cannot qualify reference attestations: a previously
+verified run-output stage or rollup becomes `proposed`. This is distinct from outcomes
+with no match metadata at all, whose entire referenced bundle must re-derive
+verified.
+
+Claim diagnostics add `specific_reason` and `surface_gaps` while retaining the
+existing coarse `reason` and route-reason values. Reports carry Surface's gap
+types and messages; see [actionable claim diagnostics](gates-and-route-back.md#actionable-claim-diagnostics).
+A qualifying reference cannot hide a different recorded match that no longer
+qualifies: all recorded matches for a stage must retain qualifying references.
+
+Generated diagnostic gap text fields are bounded to 1,024 UTF-16 units with an
+explicit truncation marker and visible escapes for controls/newlines, including
+when projecting legacy stored diagnostics into JSON, Markdown, or CLI text.
+A reported failing check has `specific_reason: check_failed`; a missing result
+has `specific_reason: check_result_missing`. Fix and rerun a failing check;
+collect an actual result when it is absent.
+
+At most 32 `surface_gaps` records are retained per gate outcome across all its
+selectors and evidence bundles. `surface_gaps_truncated` flags and explicit text
+markers disclose omitted gaps. The headline remains specific even when its gap
+message is outside the display budget. See the [claim-diagnostic code table](evidence.md#how-claim-evidence-is-evaluated).

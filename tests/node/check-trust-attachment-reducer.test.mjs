@@ -43,8 +43,8 @@ function bundle({ id = "claim.review", expiresAt, producerId, authorityTrace } =
       createdAt: "2026-07-19T15:00:00.000Z", updatedAt: "2026-07-19T15:00:00.000Z",
       ...(expiresAt ? { expiresAt } : {})
     }],
-    evidence: [], policies: [],
-    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: [], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }],
+    evidence: [{ id: "evidence.review", claimId: id, evidenceType: "human_attestation", method: "attestation", sourceRef: "fixture:review", excerptOrSummary: "Review accepted", observedAt: "2026-07-19T15:00:00.000Z", collectedBy: "test/reviewer" }], policies: [{ id: "policy.fixture", claimType: "quality.review", requiredEvidence: ["human_attestation"], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
+    events: [{ id: `event.${id}`, claimId: id, status: "verified", actor: "test/reviewer", method: "review", evidenceIds: ["evidence.review"], createdAt: "2026-07-19T15:30:00.000Z", verifiedAt: "2026-07-19T15:30:00.000Z" }],
     ...(producerId ? { producerId } : {}),
     ...(authorityTrace ? { authorityTrace } : {})
   };
@@ -113,9 +113,9 @@ test("trust attachment reducer is pure, versioned, schema-valid, and returns the
   assert.equal(validate(result), true, JSON.stringify(validate.errors));
   assert.deepEqual(run, before, "the reducer must not mutate canonical inputs");
   assert.equal(result.identity.artifact_id, "kontourai.flow.trust-attachment-reducer");
-  assert.equal(result.identity.version, "1.3.8");
+  assert.equal(result.identity.version, "2.0.0");
   assert.equal(result.evaluation_mode, "evaluate");
-  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.15.0", surface: "2.14.0" });
+  assert.deepEqual(result.identity.dependency_versions, { hachure: "0.18.0", surface: "6.3.0" });
   for (const integrity of [
     result.identity.dependency_integrities.hachure.validate,
     ...Object.values(result.identity.dependency_integrities.surface)

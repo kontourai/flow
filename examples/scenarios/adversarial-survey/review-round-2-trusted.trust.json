@@ -26,7 +26,28 @@
       "collectedBy": "survey/adversarial-reviewer"
     }
   ],
-  "policies": [],
+  "policies": [
+    {
+      "id": "policy.claim.adversarial.review.round2",
+      "claimType": "adversarial.review",
+      "requiredEvidence": [
+        "human_attestation"
+      ],
+      "requiredMethods": [
+        "attestation"
+      ],
+      "acceptanceCriteria": [
+        "Recorded fixture evidence"
+      ],
+      "reviewAuthority": "scenario producer",
+      "validityRule": {
+        "kind": "historical"
+      },
+      "stalenessTriggers": [],
+      "conflictRules": [],
+      "impactLevel": "medium"
+    }
+  ],
   "events": [
     {
       "id": "event.adversarial.review.round2.verified",
@@ -34,7 +55,9 @@
       "status": "verified",
       "actor": "survey/adversarial-reviewer",
       "method": "attestation",
-      "evidenceIds": ["evidence.adversarial.review.round2"],
+      "evidenceIds": [
+        "evidence.adversarial.review.round2"
+      ],
       "createdAt": "2025-01-01T00:00:00.000Z",
       "verifiedAt": "2025-01-01T00:00:00.000Z"
     }

@@ -56,6 +56,7 @@
             "id": "evidence.quality.tests.output",
             "claimId": "claim.quality.tests.release",
             "evidenceType": "test_output",
+            "passing": true,
             "method": "validation",
             "sourceRef": "fixture:test-log",
             "excerptOrSummary": "All tests passed.",
@@ -63,7 +64,28 @@
             "collectedBy": "fixture/test-runner"
           }
         ],
-        "policies": [],
+        "policies": [
+          {
+            "id": "policy.claim.quality.tests.release",
+            "claimType": "quality.tests",
+            "requiredEvidence": [
+              "test_output"
+            ],
+            "requiredMethods": [
+              "validation"
+            ],
+            "acceptanceCriteria": [
+              "Recorded fixture evidence"
+            ],
+            "reviewAuthority": "scenario producer",
+            "validityRule": {
+              "kind": "historical"
+            },
+            "stalenessTriggers": [],
+            "conflictRules": [],
+            "impactLevel": "medium"
+          }
+        ],
         "events": [
           {
             "id": "event.quality.tests.verified",

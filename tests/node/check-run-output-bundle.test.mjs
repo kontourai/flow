@@ -70,7 +70,7 @@ function passedRun() {
       {
         id: "evidence.tests",
         claimId: "claim.quality.tests",
-        evidenceType: "test_output",
+        evidenceType: "test_output", passing: true,
         method: "validation",
         sourceRef: "ci:1",
         excerptOrSummary: "tests passed",
@@ -78,7 +78,7 @@ function passedRun() {
         collectedBy: "ci"
       }
     ],
-    policies: [],
+    policies: [{ id: "policy.fixture", claimType: "quality.tests", requiredEvidence: ["test_output"], requiredMethods: [], acceptanceCriteria: ["Fixture evidence"], reviewAuthority: "test", validityRule: { kind: "historical" }, stalenessTriggers: [], conflictRules: [], impactLevel: "medium" }],
     events: [
       {
         id: "event.tests.verified",
@@ -126,12 +126,12 @@ test("run-output bundle validates against Hachure schema and Surface", () => {
   for (const ev of bundle.evidence) {
     assert.ok(ev.metadata?.bundleReference, "evidence carries a bundleReference");
     assert.ok(!("claims" in ev), "evidence does not inline child claims");
-    assert.equal(ev.metadata.bundleReference.statusFunctionVersion, "2");
+    assert.equal(ev.metadata.bundleReference.statusFunctionVersion, "4");
     assert.ok(ev.metadata.bundleReference.asOf, "reference pins asOf");
   }
 });
 
-test("run verified is a Surface rollup (all-required claimGroup), not Flow-computed", () => {
+test("a passed stage without reference evidence cannot certify a run through Surface", () => {
   const { definition, state, manifest } = passedRun();
   const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
 
@@ -140,13 +140,13 @@ test("run verified is a Surface rollup (all-required claimGroup), not Flow-compu
   assert.equal(bundle.claimGroups[0].rollupPolicy.mode, "all-required");
 
   const report = buildTrustReport(validateTrustBundle(bundle), { now: NOW });
-  // All member stages derive verified, so the run-verified rollup is satisfied.
+  // Only the stage with qualifying reference evidence can derive verified.
   for (const claim of report.claims) {
-    assert.equal(claim.status, "verified", `${claim.id} should derive verified`);
+    assert.equal(claim.status, claim.id.endsWith(".plan") ? "proposed" : "verified", claim.id);
   }
   const rollup = report.claimGroupRollups.find((g) => g.id === bundle.claimGroups[0].id);
   assert.ok(rollup, "claim group rollup is present");
-  assert.equal(rollup.status, "verified", "Surface rolls up the run as verified");
+  assert.equal(rollup.status, "proposed", "Missing plan attestation leaves the rollup proposed");
 });
 
 test("run-output bundle round-trips as evidence into a parent flow's gate", () => {
@@ -279,4 +279,80 @@ test("projectRunOutputBundle THROWS when a leaf bundle references the run being 
     () => projectRunOutputBundle(definition, state, manifest, { now: NOW }),
     EvidenceReferenceCycleError
   );
+});
+
+test("run-output re-derives legacy 5.4.0 reports before emitting reference attestations", () => {
+  const { definition, state, manifest } = passedRun();
+  // The cached report and historical pass remain verified, but the current
+  // ledger no longer meets Surface 6's policy requirement.
+  manifest.evidence[0].bundle.policies = [];
+  assert.equal(manifest.evidence[0].bundle_report.claims[0].status, "verified");
+  const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
+  assert.equal(bundle.evidence.length, 0);
+  const report = buildTrustReport(bundle, { now: NOW });
+  assert.equal(report.claims.find(claim => claim.id.endsWith(".verify")).status, "proposed");
+  assert.equal(report.claimGroupRollups[0].status, "proposed");
+});
+
+test("real API optional-only gate cannot certify a proposed child bundle as a verified run", async t => {
+  const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { startRun, attachEvidence, evaluateRun, loadRun } = await import("../../dist/index.js");
+  const cwd = await mkdtemp(path.join(tmpdir(), "flow-optional-rollup-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const { manifest } = passedRun();
+  const definition = {
+    id: "optional-only", version: "1", steps: [{ id: "verify", next: null }],
+    gates: { "verify-gate": { step: "verify", expects: [{
+      id: "tests", kind: "trust.bundle", required: false, description: "Optional test evidence",
+      bundle_claim: { claimType: "quality.tests", accepted_statuses: ["verified"] }
+    }] } }
+  };
+  const file = path.join(cwd, "definition.json"), evidenceFile = path.join(cwd, "evidence.json");
+  const child = manifest.evidence[0].bundle; child.policies = [];
+  await writeFile(file, JSON.stringify(definition)); await writeFile(evidenceFile, JSON.stringify(child));
+  await startRun(file, { cwd, runId: "optional" });
+  await attachEvidence("optional", { cwd, gate: "verify-gate", file: evidenceFile, kind: "trust.bundle" });
+  const evaluated = await evaluateRun("optional", { cwd });
+  assert.equal(evaluated.outcomes[0].status, "pass");
+  assert.deepEqual(evaluated.outcomes[0].matched_expectations, []);
+  const run = await loadRun("optional", cwd);
+  assert.equal(run.manifest.evidence[0].bundle_report.claims[0].status, "proposed");
+  const bundle = projectRunOutputBundle(run.definition, run.state, run.manifest);
+  assert.equal(bundle.evidence.length, 0);
+  const report = buildTrustReport(bundle);
+  assert.equal(report.claims[0].status, "proposed");
+  assert.equal(report.claimGroupRollups[0].status, "proposed");
+});
+
+test("run-output references only the matched verified claim, not an unrelated proposed claim", () => {
+  const { definition, state, manifest } = passedRun();
+  state.gate_outcomes[1].matched_expectations = [{ evidence_id: "ev.verify", claim_ids: ["claim.quality.tests"] }];
+  manifest.evidence[0].bundle.claims.push({ ...manifest.evidence[0].bundle.claims[0], id: "unrelated" });
+  const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
+  assert.equal(bundle.evidence.length, 1);
+  assert.equal(bundle.evidence[0].metadata.bundleReference.claimSelectors.length, 1);
+  assert.equal(buildTrustReport(bundle, { now: NOW }).claims.find(claim => claim.id.endsWith(".verify")).status, "verified");
+});
+
+test("a qualifying reference cannot hide another recorded match that now derives proposed", () => {
+  const { definition, state, manifest } = passedRun();
+  const invalid = structuredClone(manifest.evidence[0]); invalid.id = "ev.other"; invalid.bundle.policies = [];
+  manifest.evidence.push(invalid);
+  state.gate_outcomes[1].matched_expectations = ["ev.verify", "ev.other"].map(evidence_id => ({ evidence_id, claim_ids: ["claim.quality.tests"] }));
+  const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
+  assert.equal(bundle.evidence.length, 0);
+  assert.equal(buildTrustReport(bundle, { now: NOW }).claims.find(claim => claim.id.endsWith(".verify")).status, "proposed");
+});
+
+test("pre-5.1 matches without claim_ids leave run-output trust proposed", () => {
+  const { definition, state, manifest } = passedRun();
+  state.gate_outcomes[1].matched_expectations = [{ expectation_id: "tests", evidence_id: "ev.verify" }];
+  assert.equal(manifest.evidence[0].bundle_report.claims[0].status, "verified");
+  const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
+  assert.equal(bundle.evidence.length, 0);
+  const report = buildTrustReport(bundle, { now: NOW });
+  assert.equal(report.claims.find(claim => claim.id.endsWith(".verify")).status, "proposed");
+  assert.equal(report.claimGroupRollups[0].status, "proposed");
 });
