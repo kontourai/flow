@@ -19,6 +19,22 @@
 
 * Runtime legacy support is removed: current commands do not read or mutate `.flow/runs/<run-id>/` and do not auto-migrate older state. Operators upgrading from older Flow versions must back up old generated state, reject destination collisions, copy each run to `.kontourai/flow/runs/`, verify run and definition identity, and retain the backup for rollback.
 
+## [6.0.0](https://github.com/kontourai/flow/compare/v5.4.0...v6.0.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** gates now require a resolved verification policy and an explicit passing result on required checks; stored bundles without them stop satisfying verified-only gates. Run-output certification requires currently accepting referenced claims. The attachment reducer identity changes to 2.0.0. Downstream consumers pinning Flow 5.4.0 or the old reducer must adopt and qualify this release explicitly.
+
+### Features
+
+* **deps:** adopt latest dependencies and Surface 6 trust semantics ([#299](https://github.com/kontourai/flow/issues/299)) ([6c10280](https://github.com/kontourai/flow/commit/6c102806fc3931d97603f5432f378a1f573f9fec))
+
+
+### Documentation
+
+* route kernel changes to maintained contract guides ([#296](https://github.com/kontourai/flow/issues/296)) ([028baa2](https://github.com/kontourai/flow/commit/028baa2c5a557bb9c6bc569469885149dc78be94))
+
 ## [5.4.0](https://github.com/kontourai/flow/compare/v5.3.0...v5.4.0) (2026-10-27)
 
 
