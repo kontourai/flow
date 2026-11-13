@@ -13,8 +13,13 @@ import {
 } from "../definition/flow-definition.js";
 import { expectationsForGate } from "../gates/flow-gates.js";
 import { evidenceLabel, expectationLabel, markdownText, slugLabel, STATUS_ORDER } from "../shared/flow-utils.js";
+import { diagnosticText, diagnosticPayload, SURFACE_GAP_LIMIT } from "../shared/diagnostic-text.js";
 import { flowRunHead } from "../runtime/flow-run-retry-authorization.js";
 import { definitionIdentity } from "../runtime/flow-run-definition-amendment.js";
+
+function diagnosticMarkdownText(value: unknown): string {
+  return markdownText(diagnosticText(value)).replace(/([_!#~|{}])/g, "\\$1");
+}
 
 export function reportJson(definition: any, state: any, manifest: any) {
   const effective_definition = definitionIdentity(definition);
@@ -142,7 +147,7 @@ export function reportJson(definition: any, state: any, manifest: any) {
         "analytics_loop_key",
         "transition_validation"
       ]) {
-        if (outcome?.[field] !== undefined) summary[field] = outcome[field];
+        if (outcome?.[field] !== undefined) summary[field] = field === "diagnostics" ? diagnosticPayload(outcome[field]) : outcome[field];
       }
       return summary;
     })
@@ -212,10 +217,11 @@ export function renderMarkdownReport(definition, state, manifest) {
       lines.push(`  - Claim diagnostics: ${gate.diagnostics.claim_evaluation.map((entry) => markdownText(`${entry.expectation_id}/${entry.evidence_id}:${entry.reason}`)).join(", ")}`);
       for (const entry of gate.diagnostics.claim_evaluation) {
         for (const gap of entry.surface_gaps ?? []) {
-          lines.push(`    - ${markdownText(`${gap.reason} (${gap.type}): ${gap.message}`)}`);
+          lines.push(`    - ${diagnosticMarkdownText(gap.reason)} (${diagnosticMarkdownText(gap.type)}): ${diagnosticMarkdownText(gap.message)}`);
         }
       }
     }
+    if (gate.diagnostics?.surface_gaps_truncated) lines.push(`  - Surface gaps [truncated; maximum ${SURFACE_GAP_LIMIT} per outcome].`);
     if (gate.evidence_refs.length) lines.push(`  - Evidence: ${gate.evidence_refs.map(markdownText).join(", ")}`);
     if (gate.status === "route-back" || gate.limit_exceeded) {
       const attempt = gate.attempt ? `${gate.attempt}${gate.max_attempts ? `/${gate.max_attempts}` : ""}` : "n/a";
@@ -277,9 +283,11 @@ export function renderSummary(definition, state, reportPath = `.kontourai/flow/r
         }
       }
     }
-    if (outcome?.diagnostics?.claim_evaluation?.length) {
-      lines.push(`      claim diagnostics: ${outcome.diagnostics.claim_evaluation.map((entry) => [entry.specific_reason ?? entry.reason, ...(entry.surface_gaps ?? []).map((gap) => `${gap.type}: ${gap.message}`)].join("; ")).join(", ")}`);
+    const displayDiagnostics = diagnosticPayload(outcome?.diagnostics);
+    if (displayDiagnostics?.claim_evaluation?.length) {
+      lines.push(`      claim diagnostics: ${displayDiagnostics.claim_evaluation.map((entry) => [diagnosticText(entry.specific_reason ?? entry.reason), ...(entry.surface_gaps ?? []).map((gap) => `${diagnosticText(gap.type)}: ${diagnosticText(gap.message)}`)].join("; ")).join(", ")}`);
     }
+    if (displayDiagnostics?.surface_gaps_truncated) lines.push(`      Surface gaps [truncated; maximum ${SURFACE_GAP_LIMIT} per outcome].`);
     if (outcome?.status === "route-back" || outcome?.limit_exceeded) {
       const attempt = outcome.attempt ? `${outcome.attempt}${outcome.max_attempts ? `/${outcome.max_attempts}` : ""}` : "n/a";
       lines.push(`      route: ${outcome.route_reason ?? outcome.reason ?? "default"} -> ${outcome.route_back_to}; attempt ${attempt}; limit exceeded: ${outcome.limit_exceeded ? "yes" : "no"}`);

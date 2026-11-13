@@ -36,18 +36,33 @@ Failed trust-bundle expectations retain their existing coarse `reason` codes
 (such as `rejected`, `disputed`, `stale`, or `bundle_invalid`) and existing
 `route_reason` values. Each diagnostic can additionally carry `specific_reason`
 and `surface_gaps`: the blocking gaps for the selected claims, each with its
-Surface `type`, `message`, claim identity, and specific `reason`. These details
+Surface `type`, display-safe `message`, claim identity, and specific `reason`. These details
 appear in the gate outcome, JSON Flow Report, Markdown report, and CLI summary.
 They explain the required repair without changing routing or retry budgets.
 
 Policy detail codes include `policy_unresolved`, `policy_unresolved_reference`,
 `policy_requires_nothing`, and `check_result_missing`. Other codes distinguish
 failed checks, missing evidence, unsatisfied methods, corroboration, unsupported
-inference, and unevaluable validity. Surface messages are retained rather than
-replaced with a generic rejection. A dangling policy remains structurally
-invalid; its explanatory Surface fold is display-only and cannot authorize a
-transition. Fix the referenced policy or provide the missing check result, then
-attach the corrected evidence through the normal supersession path.
+inference, and unevaluable validity. A reported `passing: false` is `check_failed`;
+`check_result_missing` means the result was not reported. For `check_failed`, fix
+the failed check and rerun it before attaching a new authentic result. For
+`check_result_missing`, collect and record the actual result of that check.
+Surface messages are carried as diagnostic data rather than generic rejection.
+A dangling policy remains structurally invalid; its explanatory Surface fold is display-only and cannot authorize a
+transition. Repair the referenced policy or check as indicated, then attach the
+corrected evidence through the normal supersession path.
+
+Producer diagnostic text is untrusted. Generated gap text fields are limited to
+1,024 UTF-16 units, including an explicit ` [truncated]` marker when text exceeds
+the bound. At most 32 blocking gaps are retained across all claim diagnostics in
+one gate outcome; `surface_gaps_truncated` flags and text markers disclose any
+omitted gaps. Headline selection still considers all eligible gaps, preferring
+explicit check failures and unevaluable validity over generic producer hints.
+Controls, ANSI escape characters, line breaks, and Unicode format or
+line-separator characters are rendered as visible escapes. JSON report
+projections apply the same bound to legacy stored gap diagnostics; Markdown
+also escapes formatting controls. The original producer bundle remains audit
+input, not text to execute or additional report lines.
 
 ### Reported gate status vs gate outcome
 

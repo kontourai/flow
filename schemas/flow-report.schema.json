@@ -89,7 +89,23 @@
           "limit_exceeded": { "type": "boolean" },
           "expectation_ids": { "type": "array", "items": { "type": "string" } },
           "classifier": { "type": "object", "additionalProperties": true },
-          "diagnostics": { "type": "object", "additionalProperties": true, "description": "Claim evaluation entries retain coarse reason codes and may add specific_reason plus surface_gaps containing Surface gap type, message, claim identity and detail reason." },
+          "diagnostics": {
+            "type": "object", "additionalProperties": true,
+            "description": "Claim evaluation retains coarse reason codes and may add specific_reason plus display-safe surface_gaps. Diagnostic text is bounded, controls are escaped, and truncation is explicit. At most 32 surface_gaps records are emitted per outcome across all claim evaluation entries.",
+            "properties": {
+              "surface_gaps_truncated": { "type": "boolean" },
+              "claim_evaluation": { "type": "array", "items": {
+                "type": "object", "additionalProperties": true,
+                "properties": {
+                  "surface_gaps_truncated": { "type": "boolean" },
+                  "surface_gaps": { "type": "array", "maxItems": 32, "items": {
+                    "type": "object", "additionalProperties": true,
+                    "properties": { "message": { "type": "string", "maxLength": 1024 } }
+                  } }
+                }
+              } }
+            }
+          },
           "analytics": { "type": "object", "additionalProperties": true },
           "analytics_loop_key": { "type": "string" },
           "missing": { "type": "array", "items": { "type": "string" } },

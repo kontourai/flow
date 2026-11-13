@@ -7,6 +7,8 @@ updates:
       interval: weekly
     cooldown:
       default-days: 1
+      exclude:
+        - "@kontourai/*"
     ignore:
       - dependency-name: "@kontourai/surface"
         update-types: ["version-update:semver-major"]

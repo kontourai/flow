@@ -22,6 +22,7 @@ import { compareRfc3339Timestamps, parseRfc3339Timestamp, surfaceTimestampValida
 import type { ParsedRfc3339Timestamp } from "../shared/rfc3339.js";
 import { applyDerivation, buildIdentityIndex, buildTrustReport, checkAuthorityActive, deriveClaimGroupRollups, deriveConflictTransparencyGaps, deriveWaiverValidity, evidenceEntailsClaim, resolvePolicyForClaim, summarizeClaims, validateTrustBundle } from "@kontourai/surface";
 import { validateTrustBundleSchema } from "./trust-bundle-validator.js";
+import { diagnosticText, SURFACE_GAP_LIMIT } from "../shared/diagnostic-text.js";
 import { surfaceDerivationWithinBudget } from "./surface-derivation-budget.js";
 
 interface GateAuthorityDependencies {
@@ -258,7 +259,6 @@ function exactResolutionAuthorizedForClaim(event: TimedEvent, trace: TimedTrace,
 function surfaceResolutionAuthorized(event: TimedEvent, trace: TimedTrace): boolean {
   return exactResolutionAuthorized(event, trace);
 }
-
 
 function resolutionCandidate(context: BundleContext, events: TimedEvent[], order: (left: TimedEvent, right: TimedEvent) => number, authorized: (event: TimedEvent, trace: TimedTrace) => boolean, pass: "surface" | "exact"): { event: TimedEvent; trace: TimedTrace } | "over_budget" | undefined {
   let chosen: { event: TimedEvent; trace: TimedTrace } | undefined;
@@ -628,9 +628,16 @@ type DerivedBundle = { diagnosticReport?: any; bundle?: any; report: any | null;
  * report order so the subsequent producer/authority decision can return the
  * exact claim it authorized, rather than re-selecting a broader set later.
  */
+type SurfaceGapBudget = { remaining: number; truncated: boolean };
+type SurfaceGapDetails = {
+  surfaceGaps?: MutableRecord[];
+  surfaceSpecificReason?: string;
+  surfaceGapsTruncated?: boolean;
+};
+
 type EvidenceBundleDecision =
   | { matched: true; acceptedClaims: readonly any[] }
-  | { matched: false; diagnostic: string; surfaceGaps?: MutableRecord[] };
+  | ({ matched: false; diagnostic: string } & SurfaceGapDetails);
 
 type AuthorityWitness = Exclude<GateEvaluationEvidenceSelection["authorityWitness"], null | undefined>;
 
@@ -640,7 +647,7 @@ type EvidenceProducerDecision =
 
 type EvidenceMatchDecision =
   | { matched: true; evidenceId: string; witnessClaimIds: readonly [string]; authorityWitness: AuthorityWitness | null }
-  | { matched: false; bundleDiagnostic?: string; surfaceGaps?: MutableRecord[]; producerDiagnostic?: NonNullable<ProducerAuthorityResult> };
+  | ({ matched: false; bundleDiagnostic?: string; producerDiagnostic?: NonNullable<ProducerAuthorityResult> } & SurfaceGapDetails);
 
 function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies): DerivedBundle {
   if (!evaluationNow) {
@@ -684,18 +691,21 @@ function deriveBundleReport(bundle: unknown, evaluationNow: GateEvaluationTime |
 }
 
 // Additive detail codes: existing coarse reason and routing contracts stay stable.
-function surfaceGapReason(gap: any): string {
+function surfaceGapReason(gap: any, report: any): string {
   const sources: Record<string, string> = {
     "policy.unresolved": "policy_unresolved",
     "policy.unresolvedReference": "policy_unresolved_reference",
     "policy.requiresNothing": "policy_requires_nothing",
-    "policy.checkResultMissing": "check_result_missing",
     "validity.unevaluable": "validity_unevaluable"
   };
   if (gap.metadata?.source !== "evidence.metadata.transparencyGapHints" && gap.id === `${gap.claimId}.gap.policy-violation`) return "verification_method_unsatisfied";
-  if (gap.id === `${gap.claimId}.gap.unevaluable-validity-rule`) return "validity_unevaluable";
-  if (gap.id === `${gap.claimId}.gap.evidence-${gap.evidenceIds?.[0]}`) return "check_failed";
+  if (gap.metadata?.source !== "evidence.metadata.transparencyGapHints" && gap.id === `${gap.claimId}.gap.unevaluable-validity-rule`) return "validity_unevaluable";
+  if (gap.metadata?.source !== "evidence.metadata.transparencyGapHints" && gap.id === `${gap.claimId}.gap.evidence-${gap.evidenceIds?.[0]}`) return "check_failed";
   const source = typeof gap.metadata?.source === "string" ? gap.metadata.source : "";
+  if (source === "policy.checkResultMissing") {
+    const checks = (report.evidence ?? []).filter((item: any) => item.claimId === gap.claimId && gap.evidenceIds?.includes(item.id));
+    return checks.length > 0 && checks.every((item: any) => item.passing === false) ? "check_failed" : "check_result_missing";
+  }
   return (Object.hasOwn(sources, source) ? sources[source] : undefined) ?? ({
     provenance_gap: "required_evidence_missing", policy_violation: "policy_violation",
     corroboration_absent: "corroboration_missing", unsupported_inference: "evidence_not_entailing",
@@ -703,17 +713,38 @@ function surfaceGapReason(gap: any): string {
   } as Record<string, string>)[gap.type] ?? "surface_blocking_gap";
 }
 
-function blockingSurfaceGaps(report: any, claims: any[]): MutableRecord[] {
-  return (report.transparencyGaps ?? [])
-    .filter((gap: any) => gap.blocking !== false && claims.some((claim: any) => claim.id === gap.claimId))
-    .map((gap: any) => ({
-      id: gap.id, claim_id: gap.claimId, type: gap.type, message: gap.message,
-      reason: surfaceGapReason(gap),
-      ...(typeof gap.metadata?.source === "string" ? { source: gap.metadata.source } : {})
-    }));
+const GAP_HEADLINE_ORDER = [
+  "check_failed", "validity_unevaluable", "policy_unresolved_reference", "policy_unresolved",
+  "policy_requires_nothing", "claim_conflict", "check_result_missing", "evidence_not_entailing",
+  "required_evidence_missing", "verification_method_unsatisfied", "corroboration_missing",
+  "verification_stale", "policy_violation", "surface_blocking_gap"
+];
+
+function blockingSurfaceGaps(report: any, claims: any[], budget: SurfaceGapBudget | false = { remaining: SURFACE_GAP_LIMIT, truncated: false }): SurfaceGapDetails {
+  if (budget === false) return {};
+  const surfaceGaps: MutableRecord[] = [];
+  let surfaceSpecificReason: string | undefined;
+  let bestPriority = Infinity;
+  let surfaceGapsTruncated = false;
+  for (const gap of report.transparencyGaps ?? []) {
+    if (gap.blocking === false || !claims.some((claim: any) => claim.id === gap.claimId)) continue;
+    const reason = surfaceGapReason(gap, report);
+    const rank = GAP_HEADLINE_ORDER.indexOf(reason);
+    const priority = (rank < 0 ? GAP_HEADLINE_ORDER.length : rank)
+      + (gap.metadata?.source === "evidence.metadata.transparencyGapHints" ? GAP_HEADLINE_ORDER.length : 0);
+    if (priority < bestPriority) { bestPriority = priority; surfaceSpecificReason = reason; }
+    if (budget.remaining === 0) { budget.truncated = true; surfaceGapsTruncated = true; continue; }
+    budget.remaining--;
+    surfaceGaps.push({
+      id: diagnosticText(gap.id), claim_id: diagnosticText(gap.claimId), type: diagnosticText(gap.type), message: diagnosticText(gap.message),
+      reason,
+      ...(typeof gap.metadata?.source === "string" ? { source: diagnosticText(gap.metadata.source) } : {})
+    });
+  }
+  return { surfaceGaps, surfaceSpecificReason, ...(surfaceGapsTruncated ? { surfaceGapsTruncated: true } : {}) };
 }
 
-function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): EvidenceBundleDecision {
+function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle, gapBudget?: SurfaceGapBudget | false): EvidenceBundleDecision {
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return { matched: false, diagnostic: "bundle_invalid" };
   if (entry.status === "failed") return { matched: false, diagnostic: "rejected" };
 
@@ -721,8 +752,8 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   const bundle = derived.bundle;
   if (!bundle) return {
     matched: false, diagnostic: "bundle_invalid",
-    ...(derived.diagnosticReport ? { surfaceGaps: blockingSurfaceGaps(derived.diagnosticReport,
-      findClaimsInReport(derived.diagnosticReport, expectation.bundle_claim ?? expectation.claim ?? {})) } : {})
+    ...(derived.diagnosticReport ? blockingSurfaceGaps(derived.diagnosticReport,
+      findClaimsInReport(derived.diagnosticReport, expectation.bundle_claim ?? expectation.claim ?? {}), gapBudget) : {})
   };
   if (!surfaceDerivationWithinBudget(bundle)) return { matched: false, diagnostic: "bundle_invalid" };
 
@@ -773,13 +804,13 @@ function evidenceBundleDiagnostic(entry: any, expectation: any, enteredAt: Parse
   }
 
   const reconciliationDiagnostic = currentClaims.map((claim: any) => derived.diagnostics.get(claim.id)).find(Boolean);
-  const surfaceGaps = blockingSurfaceGaps(report, currentClaims);
-  if (reconciliationDiagnostic) return { matched: false, diagnostic: reconciliationDiagnostic, surfaceGaps };
+  const gapDetails = blockingSurfaceGaps(report, currentClaims, gapBudget);
+  if (reconciliationDiagnostic) return { matched: false, diagnostic: reconciliationDiagnostic, ...gapDetails };
   const claimStatus = currentClaims[0].status ?? "unknown";
   if (!accepted.includes(claimStatus)) {
-    if (claimStatus === "stale") return { matched: false, diagnostic: "stale", surfaceGaps };
-    if (claimStatus === "disputed") return { matched: false, diagnostic: "disputed", surfaceGaps };
-    return { matched: false, diagnostic: "rejected", surfaceGaps };
+    if (claimStatus === "stale") return { matched: false, diagnostic: "stale", ...gapDetails };
+    if (claimStatus === "disputed") return { matched: false, diagnostic: "disputed", ...gapDetails };
+    return { matched: false, diagnostic: "rejected", ...gapDetails };
   }
 
   return { matched: false, diagnostic: "rejected" };
@@ -980,24 +1011,24 @@ function evidenceProducerDiagnostic(entry: any, expectation: any, config: Mutabl
   return authorityTraceDiagnostic(policies, evaluationNow, dependencies, derived, candidates);
 }
 
-function evidenceMatchDecision(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle): EvidenceMatchDecision {
+function evidenceMatchDecision(entry: any, expectation: any, config: MutableRecord, enteredAt: ParsedRfc3339Timestamp | null, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedBundle?: DerivedBundle, gapBudget?: SurfaceGapBudget | false): EvidenceMatchDecision {
   const integrityDiagnostic = evidenceIntegrityDiagnostic(entry);
   if (integrityDiagnostic !== null) return { matched: false, bundleDiagnostic: integrityDiagnostic };
   if (expectation.kind !== "trust.bundle") return { matched: false };
   if (entry.kind !== "trust.bundle" && entry.requested_kind !== "trust.bundle") return { matched: false };
   const derived = derivedBundle ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies);
-  const bundle = evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies, derived);
-  if (bundle.matched === false) return { matched: false, bundleDiagnostic: bundle.diagnostic, surfaceGaps: bundle.surfaceGaps };
+  const bundle = evidenceBundleDiagnostic(entry, expectation, enteredAt, evaluationNow, dependencies, derived, gapBudget);
+  if (bundle.matched === false) return { matched: false, bundleDiagnostic: bundle.diagnostic, surfaceGaps: bundle.surfaceGaps, surfaceSpecificReason: bundle.surfaceSpecificReason, surfaceGapsTruncated: bundle.surfaceGapsTruncated };
   const producer = evidenceProducerDiagnostic(entry, expectation, config, evaluationNow, dependencies, derived, bundle.acceptedClaims);
   if (producer.matched === false) return { matched: false, producerDiagnostic: producer.diagnostic };
   return { matched: true, evidenceId: entry.id, witnessClaimIds: producer.witnessClaimIds, authorityWitness: producer.authorityWitness };
 }
 
 export function evidenceMatchesExpectation(entry: any, expectation: any, config: MutableRecord = defaultFlowConfig(), enteredAt: ParsedRfc3339Timestamp | null = null, evaluationNow?: GateEvaluationInput) {
-  return evidenceMatchDecision(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES).matched;
+  return evidenceMatchDecision(entry, expectation, config, enteredAt, parseGateEvaluationTime(evaluationNow), DEFAULT_GATE_AUTHORITY_DEPENDENCIES, undefined, false).matched;
 }
 
-function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedFor?: (entry: any) => DerivedBundle) {
+function claimDiagnosticsForExpectation(evidence: any[], expectation: any, config: MutableRecord = defaultFlowConfig(), visit: GateVisit, evaluationNow: GateEvaluationTime | undefined, dependencies: GateAuthorityDependencies, derivedFor: ((entry: any) => DerivedBundle) | undefined, gapBudget: SurfaceGapBudget) {
   const diagnostics: MutableRecord[] = [];
   for (const entry of evidence) {
     // A tampered or missing copied artifact fails closed before any expensive
@@ -1009,7 +1040,7 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
     }
     const trustEntry = entry?.kind === "trust.bundle" || entry?.requested_kind === "trust.bundle";
     const derived = trustEntry ? (derivedFor?.(entry) ?? deriveBundleReport(entry.bundle, evaluationNow, dependencies)) : undefined;
-    const decision = evidenceMatchDecision(entry, expectation, config, visit.enteredAt, evaluationNow, dependencies, derived);
+    const decision = evidenceMatchDecision(entry, expectation, config, visit.enteredAt, evaluationNow, dependencies, derived, gapBudget);
     let bundleDiagnostic: string | undefined;
     let producerDiagnostic: NonNullable<ProducerAuthorityResult> | undefined;
     if (decision.matched === false) {
@@ -1024,10 +1055,10 @@ function claimDiagnosticsForExpectation(evidence: any[], expectation: any, confi
       expectation_id: expectation.id,
       evidence_id: entry.id,
       reason,
-      ...(decision.matched === false && decision.surfaceGaps?.length ? {
-        specific_reason: (decision.surfaceGaps.find((gap) => gap.reason === "policy_unresolved_reference")?.reason
-          ?? decision.surfaceGaps.find((gap) => gap.source)?.reason ?? decision.surfaceGaps[0].reason),
-        surface_gaps: decision.surfaceGaps
+      ...(decision.matched === false && decision.surfaceSpecificReason ? {
+        specific_reason: decision.surfaceSpecificReason,
+        surface_gaps: decision.surfaceGaps ?? [],
+        ...(decision.surfaceGapsTruncated ? { surface_gaps_truncated: true } : {})
       } : {}),
       ...(producerDiagnostic?.authority ? { authority: producerDiagnostic.authority } : {})
     });
@@ -1116,6 +1147,7 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
   const missingRequired: string[] = [];
   const missingOptional: string[] = [];
   const claimDiagnostics: MutableRecord[] = [];
+  const gapBudget: SurfaceGapBudget = { remaining: SURFACE_GAP_LIMIT, truncated: false };
   for (const expectation of expectations) {
     const expectationWithGate = { ...expectation, gate_id: gateId };
     let match: EvidenceMatchDecision | undefined;
@@ -1123,7 +1155,7 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
       for (const entry of evidence) {
         if (expectationWithGate.kind !== "trust.bundle") continue;
         if (entry?.kind !== "trust.bundle" && entry?.requested_kind !== "trust.bundle") continue;
-        const decision = evidenceMatchDecision(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies, derivedFor(entry));
+        const decision = evidenceMatchDecision(entry, expectationWithGate, config, visit.enteredAt, effectiveEvaluationNow, dependencies, derivedFor(entry), false);
         if (decision.matched) {
           match = decision;
           break;
@@ -1134,13 +1166,13 @@ export function evaluateGateWithReducerDependencies(definition: any, state: any,
       matched.push({ expectation_id: expectation.id, evidence_id: match.evidenceId, claim_ids: [...match.witnessClaimIds], authority_witness: match.authorityWitness });
     } else if (expectation.required) {
       missingRequired.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor, gapBudget));
     } else {
       missingOptional.push(expectation.id);
-      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor));
+      claimDiagnostics.push(...claimDiagnosticsForExpectation(attachedEvidence, expectationWithGate, config, visit, effectiveEvaluationNow, dependencies, derivedFor, gapBudget));
     }
   }
-  const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics } : undefined;
+  const diagnosticPayload = claimDiagnostics.length ? { claim_evaluation: claimDiagnostics, ...(gapBudget.truncated ? { surface_gaps_truncated: true } : {}) } : undefined;
   const outcomeEvidenceRefs = evidence.length
     ? evidence.map((entry) => entry.id)
     : [...new Set(claimDiagnostics.map((diagnostic) => diagnostic.evidence_id).filter(Boolean))];

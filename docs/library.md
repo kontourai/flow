@@ -735,14 +735,32 @@ Run-output reference attestations now require current verified support, not the
 presence of a bundle attachment or a cached report. Flow re-derives the child
 bundle at the projection instant. For outcomes with match metadata, only the
 claim IDs actually matched by a passing gate can back a reference; unmatched
-optional evidence does not certify a run. Outcomes without legacy match metadata
-require all referenced claims to re-derive verified. A stored 5.4.0 pass whose
+optional evidence does not certify a run. Outcomes with no `matched_expectations`
+field at all require all referenced claims to re-derive verified. A stored 5.4.0 pass whose
 child now derives proposed therefore produces a proposed run-output stage, even
 if its cached report still says verified. Unrelated proposed claims do not veto
 a current matched verified claim.
+
+Runs stored before Flow 5.1 can contain `matched_expectations` entries without
+`claim_ids`. Those entries cannot qualify reference attestations: a previously
+verified run-output stage or rollup becomes `proposed`. This is distinct from outcomes
+with no match metadata at all, whose entire referenced bundle must re-derive
+verified.
 
 Claim diagnostics add `specific_reason` and `surface_gaps` while retaining the
 existing coarse `reason` and route-reason values. Reports carry Surface's gap
 types and messages; see [actionable claim diagnostics](gates-and-route-back.md#actionable-claim-diagnostics).
 A qualifying reference cannot hide a different recorded match that no longer
 qualifies: all recorded matches for a stage must retain qualifying references.
+
+Generated diagnostic gap text fields are bounded to 1,024 UTF-16 units with an
+explicit truncation marker and visible escapes for controls/newlines, including
+when projecting legacy stored diagnostics into JSON, Markdown, or CLI text.
+A reported failing check has `specific_reason: check_failed`; a missing result
+has `specific_reason: check_result_missing`. Fix and rerun a failing check;
+collect an actual result when it is absent.
+
+At most 32 `surface_gaps` records are retained per gate outcome across all its
+selectors and evidence bundles. `surface_gaps_truncated` flags and explicit text
+markers disclose omitted gaps. The headline remains specific even when its gap
+message is outside the display budget. See the [claim-diagnostic code table](evidence.md#how-claim-evidence-is-evaluated).

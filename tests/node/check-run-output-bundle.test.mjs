@@ -345,3 +345,14 @@ test("a qualifying reference cannot hide another recorded match that now derives
   assert.equal(bundle.evidence.length, 0);
   assert.equal(buildTrustReport(bundle, { now: NOW }).claims.find(claim => claim.id.endsWith(".verify")).status, "proposed");
 });
+
+test("pre-5.1 matches without claim_ids leave run-output trust proposed", () => {
+  const { definition, state, manifest } = passedRun();
+  state.gate_outcomes[1].matched_expectations = [{ expectation_id: "tests", evidence_id: "ev.verify" }];
+  assert.equal(manifest.evidence[0].bundle_report.claims[0].status, "verified");
+  const bundle = projectRunOutputBundle(definition, state, manifest, { now: NOW });
+  assert.equal(bundle.evidence.length, 0);
+  const report = buildTrustReport(bundle, { now: NOW });
+  assert.equal(report.claims.find(claim => claim.id.endsWith(".verify")).status, "proposed");
+  assert.equal(report.claimGroupRollups[0].status, "proposed");
+});
